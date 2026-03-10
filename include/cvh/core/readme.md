@@ -24,6 +24,8 @@
 - 明确并固定 `Mat` 的 type/channel/shape/stride/ROI 行为。
 - 补齐 `clone/copyTo/convertTo/reshape` 行为一致性。
 - 对齐 OpenCV 风格的错误与断言接口。
+- 合同基线文档：`doc/mat-contract-v1.md`。
+- 执行计划文档：`doc/phase1-execution-plan.md`。
 
 ### P2：Core 能力闭环
 

@@ -36,6 +36,18 @@ cmake --build build --target test
 ./scripts/ci_smoke.sh
 ```
 
+可选 core 基础测试脚本（含 warning 计数）：
+
+```bash
+./scripts/ci_core_basic.sh
+```
+
+可通过环境变量设置 warning 预算（默认 `0`）：
+
+```bash
+CVH_WARNING_BUDGET=0 ./scripts/ci_core_basic.sh
+```
+
 默认会构建：
 
 - `cvh_headers`（接口头目标）

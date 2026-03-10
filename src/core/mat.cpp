@@ -368,7 +368,7 @@ Mat& Mat::operator=(const float v)
         }
     }
     else
-        M_Error_(NULL, ("Unsupported format at function \"Mat::operator= \" type = %d!", type()));
+        M_Error_(Error::Code::StsBadType, ("Unsupported format at function \"Mat::operator= \" type = %d!", type()));
 
     return *this;
 }
@@ -397,7 +397,7 @@ Mat& Mat::operator=(const int v)
         }
     }
     else
-        M_Error_(NULL, ("Unsupported format at function \"Mat::operator= \" type = %d!", type()));
+        M_Error_(Error::Code::StsBadType, ("Unsupported format at function \"Mat::operator= \" type = %d!", type()));
 
     return *this;
 }
@@ -442,7 +442,7 @@ Mat Mat::reshape(int newDims, const int* newSizes) const
 
     if (new_total != total())
     {
-        M_Error(NULL, "The total size of the new Mat is not equal to the original Mat!");
+        M_Error(Error::Code::StsBadSize, "The total size of the new Mat is not equal to the original Mat!");
         return Mat();
     }
 

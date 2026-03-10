@@ -147,6 +147,8 @@ MVP 暂不进入以下范围：
 ## 8. 目录规划文档索引
 
 - `doc/phase0-execution-plan.md`
+- `doc/phase1-execution-plan.md`
+- `doc/mat-contract-v1.md`
 - `doc/src-core-migration-tracker.md`
 - `include/cvh/readme.md`
 - `include/cvh/core/readme.md`

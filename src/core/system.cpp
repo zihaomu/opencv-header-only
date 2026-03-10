@@ -138,15 +138,15 @@ void Exception::formatMessage()
     if (func.size() > 0)
     {
         if (multiline)
-            msg = format("Minfer(%s) %s:%d: error (%d:%s) in function '%s' \n %s",
+            msg = format("cvh(%s) %s:%d: error (%d:%s) in function '%s' \n %s",
                          CV_VERSION, file.c_str(), line, code, mErrorStr(code), func.c_str(), err.c_str());
         else
-            msg = format("Minfer(%s) %s:%d: error (%d:%s) %s in function '%s' \n",
-                         CV_VERSION, file.c_str(), line, code, mErrorStr(code), func.c_str(), err.c_str());
+            msg = format("cvh(%s) %s:%d: error (%d:%s) %s in function '%s' \n",
+                         CV_VERSION, file.c_str(), line, code, mErrorStr(code), err.c_str(), func.c_str());
     }
     else
-        msg = format("Minfer(%s) %s:%d: error (%d:%s) %s%s \n",
-                     CV_VERSION, file.c_str(), line, code, mErrorStr(code), func.c_str(), err.c_str(), multiline ? "" : "\n");
+        msg = format("cvh(%s) %s:%d: error (%d:%s) %s%s",
+                     CV_VERSION, file.c_str(), line, code, mErrorStr(code), err.c_str(), multiline ? "" : "\n");
 
 }
 

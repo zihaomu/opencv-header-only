@@ -3,6 +3,13 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      run_core_basic:
+        description: "Run optional core_basic job"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   smoke:
@@ -13,3 +20,13 @@ jobs:
 
       - name: Configure Build Test (Smoke)
         run: ./scripts/ci_smoke.sh
+
+  core_basic:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_core_basic }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Build Test (Core Basic)
+        run: ./scripts/ci_core_basic.sh

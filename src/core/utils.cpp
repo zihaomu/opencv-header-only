@@ -156,7 +156,7 @@ MatShape get_gemm_shape(const MatShape& shape_a, const MatShape& shape_b)
             }
             else
             {
-                M_Error(NULL, "Mat shapes on gemm function are miss matching!");
+                M_Error(Error::Code::StsBadArg, "Mat shapes on gemm function are miss matching!");
             }
             index_a--;
             index_b--;
@@ -172,7 +172,7 @@ MatShape get_gemm_shape(const MatShape& shape_a, const MatShape& shape_b)
             index_b--;
         }
         else
-            M_Error(NULL, "Mat shapes on gemm function are miss matching!");
+            M_Error(Error::Code::StsBadArg, "Mat shapes on gemm function are miss matching!");
     }
 
     // 如果有一个维度为1维度，说明 出现 MxK x K = M的情况
