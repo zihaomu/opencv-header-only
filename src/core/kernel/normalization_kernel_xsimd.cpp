@@ -1,6 +1,6 @@
 #include "normalization_kernel_xsimd.h"
-#include "openmp_utils.h"
-#include "xsimd_kernel_utils.h"
+#include "cvh/core/detail/openmp_utils.h"
+#include "cvh/core/detail/xsimd_kernel_utils.h"
 
 #include "xsimd/xsimd.hpp"
 

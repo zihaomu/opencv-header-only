@@ -27,17 +27,38 @@ A lightweight header-only wrapper for OpenCV, enabling easy integration without 
 ```bash
 cmake -S . -B build
 cmake --build build -j
+cmake --build build --target test
+```
+
+推荐使用统一脚本（本地与 CI 一致）：
+
+```bash
+./scripts/ci_smoke.sh
 ```
 
 默认会构建：
 
 - `cvh_headers`（接口头目标）
-- `cvh_legacy_core`（`src/core` 临时静态库）
-- `cvh_header_compile_smoke`、`cvh_legacy_core_smoke`（最小 smoke 程序）
+- `cvh_header_compile_smoke`（最小 smoke 程序）
+- `cvh_include_only_smoke`（仅 `-Iinclude` 的 smoke 程序）
+
+公共头依赖检查：
+
+```bash
+./scripts/check_public_headers.sh
+```
 
 可选开关：
 
-- `CVH_BUILD_LEGACY_CORE=ON/OFF`：是否构建 `src/core` 临时静态库（默认 `ON`）
+- `CVH_BUILD_LEGACY_CORE=ON/OFF`：是否启用 legacy core 预留开关（当前未接线，默认 `OFF`）
 - `CVH_BUILD_BACKEND_KERNEL_SOURCES=ON/OFF`：是否编译依赖旧 backend 的源文件（默认 `OFF`）
 - `CVH_BUILD_SMOKE_TESTS=ON/OFF`：是否构建 smoke 程序（默认 `ON`）
-- `CVH_BUILD_LEGACY_TESTS=ON/OFF`：旧测试入口预留开关（当前未接线，默认 `OFF`）
+- `CVH_BUILD_LEGACY_TESTS=ON/OFF`：是否构建迁移中的 core 基础测试子集（默认 `OFF`）
+
+构建 core 基础测试子集：
+
+```bash
+cmake -S . -B build-core -DCVH_BUILD_LEGACY_TESTS=ON -DCVH_BUILD_SMOKE_TESTS=OFF
+cmake --build build-core -j
+cmake --build build-core --target test
+```

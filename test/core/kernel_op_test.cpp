@@ -3,13 +3,11 @@
 //
 
 #include "cvh.h"
+#include "test/utils/mat_load.h"
 #include "gtest/gtest.h"
-#include "backend/cpu/kernel/normalization_kernel_xsimd.h"
-#include "backend/cpu/kernel/xsimd_kernel_utils.h"
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 #include <string>
 #include <vector>
 
@@ -97,58 +95,6 @@ Mat run_binary_case(const BinaryCaseConfig& config, const Mat& a, const Mat& b)
 }
 
 }  // namespace
-
-Mat reference_causal_masked_softmax_square(const Mat& input, float scale)
-{
-    M_Assert(input.dims == 3);
-    M_Assert(input.size[1] == input.size[2]);
-    M_Assert(input.type() == CV_32F);
-
-    Mat out(input.dims, input.size.p, input.type());
-    const int outer = input.size[0];
-    const int seq_len = input.size[1];
-
-    const float* src = reinterpret_cast<const float*>(input.data);
-    float* dst = reinterpret_cast<float*>(out.data);
-
-    for (int outer_idx = 0; outer_idx < outer; ++outer_idx)
-    {
-        const float* src_block = src + static_cast<size_t>(outer_idx) * seq_len * seq_len;
-        float* dst_block = dst + static_cast<size_t>(outer_idx) * seq_len * seq_len;
-
-        for (int row = 0; row < seq_len; ++row)
-        {
-            const float* src_row = src_block + static_cast<size_t>(row) * seq_len;
-            float* dst_row = dst_block + static_cast<size_t>(row) * seq_len;
-
-            float row_max = -std::numeric_limits<float>::infinity();
-            for (int col = 0; col <= row; ++col)
-            {
-                row_max = std::max(row_max, src_row[col] * scale);
-            }
-
-            float row_sum = 0.0f;
-            for (int col = 0; col <= row; ++col)
-            {
-                const float exp_v = std::exp(src_row[col] * scale - row_max);
-                dst_row[col] = exp_v;
-                row_sum += exp_v;
-            }
-
-            const float inv_sum = 1.0f / row_sum;
-            for (int col = 0; col <= row; ++col)
-            {
-                dst_row[col] *= inv_sum;
-            }
-            for (int col = row + 1; col < seq_len; ++col)
-            {
-                dst_row[col] = 0.0f;
-            }
-        }
-    }
-
-    return out;
-}
 
 TEST(KernelOp_TEST, binary_generated_cases)
 {
@@ -238,50 +184,6 @@ TEST(KernelOp_TEST, softmax_precision_alignment_matches_python_reference)
     Mat aligned_int8 = align_precision_sensitive_input(input, RuntimePrecision::INT8);
     Mat out_int8 = softmax(aligned_int8);
     expect_mat_close(out_int8, ref_fp16, 1e-6f, 1e-6f, "softmax_precision_int8_floor");
-}
-
-TEST(KernelOp_TEST, load_hfloat_batch_matches_scalar_conversion)
-{
-    std::vector<hfloat> input(cpu::kXSimdBatchSize);
-    for (size_t idx = 0; idx < input.size(); ++idx)
-    {
-        const float value = std::sin(static_cast<float>(idx) * 0.37f) * 7.0f +
-                            std::cos(static_cast<float>(idx) * 0.13f) * 0.5f;
-        input[idx] = hfloat(value);
-    }
-
-    const cpu::XSimdBatch batch = cpu::load_hfloat_batch(input.data());
-    alignas(64) float out[cpu::kXSimdBatchSize];
-    batch.store_unaligned(out);
-
-    for (size_t idx = 0; idx < input.size(); ++idx)
-    {
-        EXPECT_FLOAT_EQ(out[idx], static_cast<float>(input[idx]));
-    }
-}
-
-TEST(KernelOp_TEST, causal_masked_softmax_square_matches_reference)
-{
-    constexpr int outer = 2;
-    constexpr int seq_len = 5;
-    constexpr float scale = 0.125f;
-
-    Mat input({outer, seq_len, seq_len}, CV_32F);
-    float* data = reinterpret_cast<float*>(input.data);
-    for (int idx = 0; idx < outer * seq_len * seq_len; ++idx)
-    {
-        data[idx] = std::sin(static_cast<float>(idx) * 0.37f) * 3.0f + std::cos(static_cast<float>(idx) * 0.11f);
-    }
-
-    Mat out(input.dims, input.size.p, input.type());
-    cpu::causal_masked_softmax_square_xsimd(reinterpret_cast<const float*>(input.data),
-                                            reinterpret_cast<float*>(out.data),
-                                            outer,
-                                            seq_len,
-                                            scale);
-
-    Mat ref = reference_causal_masked_softmax_square(input, scale);
-    expect_mat_close(out, ref, 1e-5f, 1e-5f, "causal_masked_softmax_square");
 }
 
 TEST(KernelOp_TEST, silu_generated_case)

@@ -160,7 +160,7 @@ std::string format(const char* fmt, ...) M_FORMAT_PRINTF(1, 2);
 
 /* This function is made for report error.
  * */
-#define M_Error(...) minfer::error(__VA_ARGS__, M_Func, __FILE__, __LINE__)
+#define M_Error(...) cvh::error(__VA_ARGS__, M_Func, __FILE__, __LINE__)
 
 /**  @brief Call the error handler.
 
@@ -174,22 +174,22 @@ for example:
 @param code one of Error::Code
 @param args printf-like formatted error message in parentheses
 */
-#define M_Error_( code, args ) minfer::error(code, minfer::format args, M_Func, __FILE__, __LINE__ )
+#define M_Error_( code, args ) cvh::error(code, cvh::format args, M_Func, __FILE__, __LINE__ )
 
 /** @brief Checks a condition at runtime and throws exception if it fails
 
 The macros M_Assert evaluate the specified expression. If it is 0, the macros
-raise an error (see minfer::error). The macro M_Assert checks the condition in both Debug and Release.
+raise an error (see cvh::error). The macro M_Assert checks the condition in both Debug and Release.
 */
-#define M_Assert( expr ) do { if(!!(expr)) ; else minfer::error( minfer::Error::StsAssert, #expr, M_Func, __FILE__, __LINE__ ); } while(0)
+#define M_Assert( expr ) do { if(!!(expr)) ; else cvh::error( cvh::Error::StsAssert, #expr, M_Func, __FILE__, __LINE__ ); } while(0)
 
 /**
  * @brief Call the warning handler.
  * 
  * This function is made for report warning.
  */
-#define M_Warning(...) minfer::warning(__VA_ARGS__, M_Func, __FILE__, __LINE__)
-#define M_Warning_(code, args ) minfer::warning(code, minfer::format args, M_Func, __FILE__, __LINE__)
+#define M_Warning(...) cvh::warning(__VA_ARGS__, M_Func, __FILE__, __LINE__)
+#define M_Warning_(code, args ) cvh::warning(code, cvh::format args, M_Func, __FILE__, __LINE__)
 
 
 /**
@@ -197,8 +197,8 @@ raise an error (see minfer::error). The macro M_Assert checks the condition in b
  *
  * This function is made for debug print.
  */
-#define M_PRINT_DBG(...) minfer::debug(__VA_ARGS__, M_Func, __FILE__, __LINE__)
-#define M_PRINT_DBG_(code, args) minfer::debug(code, minfer::format args, M_Func, __FILE__, __LINE__)
+#define M_PRINT_DBG(...) cvh::debug(__VA_ARGS__, M_Func, __FILE__, __LINE__)
+#define M_PRINT_DBG_(code, args) cvh::debug(code, cvh::format args, M_Func, __FILE__, __LINE__)
 
 }
 

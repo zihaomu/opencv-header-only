@@ -1,5 +1,5 @@
 #include "transpose_kernel.h"
-#include "openmp_utils.h"
+#include "cvh/core/detail/openmp_utils.h"
 
 #include <algorithm>
 #include <cstdint>

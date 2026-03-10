@@ -14,12 +14,12 @@ TEST(System, log_test)
     //     {
     //         M_Error(Error::StsNotImplemented, "Not implementation!");
     //     }
-    //     catch(const minfer::Exception& e)
+    //     catch(const cvh::Exception& e)
     //     {
     //         EXPECT_STREQ( "Cucumber overflow", e.what() );
     //         throw;
     //     }
-    // }, minfer::Exception);
+    // }, cvh::Exception);
 
 
 }

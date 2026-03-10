@@ -4,10 +4,10 @@
 
 #include "cvh/core/mat.h"
 #include "cvh/core/basic_op.h"
+#include "cvh/core/detail/openmp_utils.h"
 #include "cvh/core/system.h"
 #include "cvh/core/utils.h"
-#include "backend/cpu/kernel/gemm_kernel_xsimd.h"
-#include "backend/cpu/kernel/openmp_utils.h"
+#include "kernel/gemm_kernel_xsimd.h"
 
 #ifdef _OPENMP
 #include <omp.h>

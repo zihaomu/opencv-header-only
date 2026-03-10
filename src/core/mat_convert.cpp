@@ -236,7 +236,7 @@ BinaryFunc getConvertFunc(int stype, int dtype)
     return funcTab[stype][dtype];
 }
 
-void Mat::convertTo(minfer::Mat &m, int type_) const
+void Mat::convertTo(Mat &m, int type_) const
 {
     if (empty())
     {

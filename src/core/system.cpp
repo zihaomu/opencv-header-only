@@ -156,12 +156,12 @@ static void dumpException(const Exception& exc)
     char buf[1 << 12];
 
     m_snprintf(buf, sizeof(buf),
-                "Minfer(%s) Error: %s (%s) in %s, file %s, line %d",
+                "cvh(%s) Error: %s (%s) in %s, file %s, line %d",
                 CV_VERSION,
                 errorStr, exc.err.c_str(), exc.func.size() > 0 ?
                                            exc.func.c_str() : "unknown function", exc.file.c_str(), exc.line);
 #ifdef __ANDROID__
-    __android_log_print(ANDROID_LOG_ERROR, "minfer::error()", "%s", buf);
+    __android_log_print(ANDROID_LOG_ERROR, "cvh::error()", "%s", buf);
 #else
     fflush(stdout); fflush(stderr);
     fprintf(stderr, "%s\n", buf);
@@ -183,7 +183,7 @@ void error(const Exception& exc)
 
 void error(int code, const std::string& err, const std::string func, const std::string& file, int line)
 {
-    error(minfer::Exception(code, err, func, file, line));
+    error(cvh::Exception(code, err, func, file, line));
 #ifdef __GNUC__
 # if !defined __clang__ && !defined __APPLE__
     // this suppresses this warning: "noreturn" function does return [enabled by default]
@@ -196,7 +196,7 @@ void error(int code, const std::string& err, const std::string func, const std::
 void error(const std::string& err, const std::string func, const std::string& file, int line)
 {
     int code = Error::StsError;
-    error(minfer::Exception(code, err, func, file, line));
+    error(cvh::Exception(code, err, func, file, line));
 }
 
 void warning(int code, const std::string& msg,

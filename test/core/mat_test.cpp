@@ -3,8 +3,7 @@
 //
 
 #include "cvh.h"
-#include "backend/cpu/kernel/gemm_kernel_xsimd.h"
-#include "backend/cpu/layer/runtime_weight.h"
+#include "test/utils/mat_load.h"
 #include "gtest/gtest.h"
 #include <algorithm>
 #include <cmath>
@@ -347,101 +346,6 @@ TEST(Mat_TEST, gemm_supports_int8_weight_matrix)
     Mat ref = gemm(a, b, false, true);
     Mat out = gemm(a, b_int8, b_scales, false, true);
     expect_mat_close(out, ref, 2.5e-1f, 8e-2f, "gemm_int8_weight_matrix");
-}
-
-TEST(Mat_TEST, gemm_kernel_nn_nt_match_reference_with_tails)
-{
-    constexpr int M = 5;
-    constexpr int K = 13;
-    constexpr int N = 19;
-
-    Mat a({M, K}, CV_32F);
-    Mat b_nt({N, K}, CV_32F);
-    Mat b_nn({K, N}, CV_32F);
-
-    float* a_data = reinterpret_cast<float*>(a.data);
-    float* b_nt_data = reinterpret_cast<float*>(b_nt.data);
-    float* b_nn_data = reinterpret_cast<float*>(b_nn.data);
-
-    for (int idx = 0; idx < M * K; ++idx)
-    {
-        a_data[idx] = std::sin(static_cast<float>(idx) * 0.17f) * 0.7f + std::cos(static_cast<float>(idx) * 0.11f);
-    }
-
-    for (int row = 0; row < N; ++row)
-    {
-        for (int col = 0; col < K; ++col)
-        {
-            const float value = std::sin(static_cast<float>(row * K + col) * 0.13f) * 0.6f -
-                                std::cos(static_cast<float>(row * K + col) * 0.07f) * 0.4f;
-            b_nt_data[row * K + col] = value;
-            b_nn_data[col * N + row] = value;
-        }
-    }
-
-    Mat ref_nt = gemm(a, b_nt, false, true);
-    Mat ref_nn = gemm(a, b_nn, false, false);
-
-    Mat out_nt({M, N}, CV_32F);
-    Mat out_nn({M, N}, CV_32F);
-
-    cpu::gemm_kernel_xsimd_nt(reinterpret_cast<const float*>(a.data),
-                              reinterpret_cast<const float*>(b_nt.data),
-                              reinterpret_cast<float*>(out_nt.data),
-                              M,
-                              N,
-                              K);
-    cpu::gemm_kernel_xsimd_nn(reinterpret_cast<const float*>(a.data),
-                              reinterpret_cast<const float*>(b_nn.data),
-                              reinterpret_cast<float*>(out_nn.data),
-                              M,
-                              N,
-                              K);
-
-    expect_mat_close(out_nt, ref_nt, 1e-4f, 1e-5f, "gemm_kernel_nt_tail_shape");
-    expect_mat_close(out_nn, ref_nn, 1e-4f, 1e-5f, "gemm_kernel_nn_tail_shape");
-    expect_mat_close(out_nn, out_nt, 1e-4f, 1e-5f, "gemm_kernel_nn_vs_nt");
-}
-
-TEST(Mat_TEST, runtime_weight_gemmNT_matches_reference_with_decode_pack)
-{
-    constexpr int Batch = 3;
-    constexpr int K = 13;
-    constexpr int N = 17;
-
-    Mat input({Batch, 1, K}, CV_32F);
-    Mat weight({N, K}, CV_32F);
-
-    float* input_data = reinterpret_cast<float*>(input.data);
-    float* weight_data = reinterpret_cast<float*>(weight.data);
-
-    for (int idx = 0; idx < Batch * K; ++idx)
-    {
-        input_data[idx] = std::sin(static_cast<float>(idx) * 0.19f) * 0.8f + std::cos(static_cast<float>(idx) * 0.03f);
-    }
-
-    for (int idx = 0; idx < N * K; ++idx)
-    {
-        weight_data[idx] = std::sin(static_cast<float>(idx) * 0.09f) * 0.9f -
-                           std::cos(static_cast<float>(idx) * 0.05f) * 0.35f;
-    }
-
-    RuntimeWeight rw_fp32;
-    rw_fp32.init(weight, Int8QuantScheme::PerRow, true, RuntimePrecision::FP32);
-    ASSERT_TRUE(rw_fp32.hasDecodePacked());
-    expect_mat_close(rw_fp32.gemmNT(input), gemm(input, rw_fp32.active(), false, true), 1e-4f, 1e-5f, "runtime_weight_fp32_decode_pack");
-
-    RuntimeWeight rw_fp16;
-    rw_fp16.init(weight, Int8QuantScheme::PerRow, true, RuntimePrecision::FP16);
-    expect_mat_close(rw_fp16.gemmNT(input), gemm(input, rw_fp16.active(), false, true), 5e-2f, 1e-2f, "runtime_weight_fp16_decode_pack");
-
-    RuntimeWeight rw_int8;
-    rw_int8.init(weight, Int8QuantScheme::PerRow, true, RuntimePrecision::INT8);
-    expect_mat_close(rw_int8.gemmNT(input),
-                     gemm(input, rw_int8.active(), rw_int8.int8Scales(), false, true),
-                     2.5e-1f,
-                     8e-2f,
-                     "runtime_weight_int8_decode_pack");
 }
 
 TEST(Mat_TEST, test_mat_brodcast)

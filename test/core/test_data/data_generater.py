@@ -1,6 +1,6 @@
 # this file contains python test data generated code.
 # It's used to generate test input and output code for C++ layer defined in layer.h
-# NOTE: This script must be run at root directory of minfer.
+# NOTE: This script must be run at repository root directory.
 import numpy as np
 import math
 import sys
