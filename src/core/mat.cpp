@@ -2,12 +2,14 @@
 // Created by mzh on 2024/1/31.
 //
 
-#include "minfer/mat.h"
-#include "minfer/system.h"
-#include "minfer/utils.h"
-#include "minfer/saturate.h"
-#include "minfer/define.h"
+#include "cvh/core/mat.h"
+#include "cvh/core/system.h"
+#include "cvh/core/utils.h"
+#include "cvh/core/saturate.h"
+#include "cvh/core/define.h"
 #include <stdatomic.h>
+#include <cstring>
+#include <vector>
 
 // If is not Mac or IOS, then include the following code.
 #ifndef __APPLE__
@@ -18,7 +20,7 @@ void memset_pattern4(void *data, const void *pattern4, size_t len)
 }
 #endif
 
-namespace minfer
+namespace cvh
 {
 
 template<typename _Tp> static inline _Tp* alignPtr(_Tp* ptr, int n=(int)sizeof(_Tp))

@@ -2,11 +2,11 @@
 // Created by mzh on 2024/2/22.
 //
 
-#include "minfer/mat.h"
-#include "minfer/basic_op.h"
-#include "minfer/define.h"
+#include "cvh/core/mat.h"
+#include "cvh/core/basic_op.h"
+#include "cvh/core/define.h"
 
-namespace minfer {
+namespace cvh {
 
 // This and its overload below are used in various MatExpr operator overloads
 // implemented to check that Matrix operands exists.
@@ -108,11 +108,11 @@ void MatOp_AddEx::assign(const MatExpr &e, Mat &m, int _type) const
     {
         if (e.beta == 1)
         {
-            minfer::add(e.a, e.b, dst);
+            add(e.a, e.b, dst);
         }
         else if (e.beta == -1)
         {
-            minfer::subtract(e.a, e.b, dst);
+            subtract(e.a, e.b, dst);
         }
         else
             addWeighted(e.a, e.alpha, e.b, e.beta, dst);
@@ -123,7 +123,7 @@ void MatOp_AddEx::assign(const MatExpr &e, Mat &m, int _type) const
     }
     else if (e.alpha == -1)
     {
-        minfer::subtract(e.a, dst);
+        subtract(e.a, dst);
     }
     else
         M_Assert(0 && "Unsupported type in MatOp_AddEx::assign!");
@@ -140,11 +140,11 @@ void MatOp_Bin::assign(const MatExpr &e, Mat &m, int _type) const
 
     if (e.flags == '*')
     {
-        minfer::multiply(e.a, e.b, dst);
+        multiply(e.a, e.b, dst);
     }
     else if (e.flags == '/' && e.b.data)
     {
-        minfer::divide(e.a, e.b, dst);
+        divide(e.a, e.b, dst);
     }
     else
         M_Error(Error::StsNotImplemented, "Unsupported value!");
@@ -160,7 +160,7 @@ void MatOp_Cmp::assign(const MatExpr &expr, Mat &m, int _type) const
     Mat temp, &dst = _type == -1 || _type == CV_8U ? m : temp;
 }
 
-void MatOp_Cmp::makeExpr(minfer::MatExpr &res, int cmpop, const minfer::Mat &a, const minfer::Mat &b)
+void MatOp_Cmp::makeExpr(MatExpr &res, int cmpop, const Mat &a, const Mat &b)
 {
     res = MatExpr(&g_MatOp_Cmp, cmpop, a, b, Mat());
 }

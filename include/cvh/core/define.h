@@ -2,8 +2,8 @@
 // Created by mzh on 2023/11/2.
 //
 
-#ifndef MINFER_DEFINE_H
-#define MINFER_DEFINE_H
+#ifndef CVH_DEFINE_H
+#define CVH_DEFINE_H
 
 #include <assert.h>
 #include <stdio.h>
@@ -207,4 +207,4 @@ protected:
 
 
 
-#endif //MINFER_DEFINE_H
+#endif //CVH_DEFINE_H

@@ -2,12 +2,12 @@
 // Created by mzh on 2024/1/31.
 //
 
-#include "minfer/mat.h"
-#include "minfer/basic_op.h"
-#include "minfer/system.h"
-#include "minfer/utils.h"
+#include "cvh/core/mat.h"
+#include "cvh/core/basic_op.h"
+#include "cvh/core/system.h"
+#include "cvh/core/utils.h"
 
-namespace minfer
+namespace cvh
 {
 
 // The following code has taken from https://github.com/opencv/opencv/modules/dnn/test/npy_blob.cpp

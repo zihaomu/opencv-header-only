@@ -2,15 +2,16 @@
 // Created by mzh on 2024/8/5. 考虑把这个文件放到core中
 //
 
-#ifndef MINFER_UTILS_H
-#define MINFER_UTILS_H
+#ifndef CVH_UTILS_H
+#define CVH_UTILS_H
 
 #include <cstdint> // uint32_t, uint64_t, etc.
 #include <string>
+#include <vector>
 #include "context.h"
 #include "mat.h"
 
-namespace minfer{
+namespace cvh{
 
 // taken from https://gist.github.com/zhuker/b4bd1fb306c7b04975b712c37c4c4075
 float fp16_to_fp32(const uint16_t in);
@@ -38,4 +39,4 @@ Mat align_precision_sensitive_input(const Mat& input, RuntimePrecision precision
 
 }
 
-#endif //MINFER_UTILS_H
+#endif //CVH_UTILS_H

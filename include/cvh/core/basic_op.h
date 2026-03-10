@@ -2,12 +2,12 @@
 // Created by mzh on 2024/3/27.
 //
 
-#ifndef MINFER_BASIC_OP_H
-#define MINFER_BASIC_OP_H
+#ifndef CVH_CORE_BASIC_OP_H
+#define CVH_CORE_BASIC_OP_H
 
 #include "mat.h"
 
-namespace minfer
+namespace cvh
 {
 
 /*
@@ -114,4 +114,4 @@ MAT_AUG_OPERATOR(*=, multiply(a, b, (Mat &) a))
 MAT_AUG_OPERATOR(/=, divide(a, b, (Mat &) a))
 
 }
-#endif //MINFER_BASIC_OP_H
+#endif //CVH_BASIC_OP_H

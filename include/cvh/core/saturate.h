@@ -2,15 +2,15 @@
 // Created by mzh on 2024/8/5.
 //
 
-#ifndef MINFER_SATURATE_H
-#define MINFER_SATURATE_H
+#ifndef CVH_SATURATE_H
+#define CVH_SATURATE_H
 
 #include "mat.h"
 #include <cmath>
 #include <cstdint>
 #include <climits>
 
-namespace minfer
+namespace cvh
 {
 
 //! @addtogroup core_utils
@@ -135,4 +135,4 @@ template<> inline hfloat saturate_cast<hfloat>(float v)   { return hfloat(v); }
 template<> inline hfloat saturate_cast<hfloat>(double v)  { return hfloat((float)v); }
 }
 
-#endif //MINFER_SATURATE_H
+#endif //CVH_SATURATE_H

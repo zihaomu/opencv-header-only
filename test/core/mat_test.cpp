@@ -2,7 +2,7 @@
 // Created by mzh on 2024/10/29.
 //
 
-#include "minfer.h"
+#include "cvh.h"
 #include "backend/cpu/kernel/gemm_kernel_xsimd.h"
 #include "backend/cpu/layer/runtime_weight.h"
 #include "gtest/gtest.h"
@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-using namespace minfer;
+using namespace cvh;
 
 namespace {
 

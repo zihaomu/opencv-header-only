@@ -2,18 +2,19 @@
 // Created by mzh on 2024/1/31.
 //
 
-#include "minfer/mat.h"
-#include "minfer/system.h"
-#include "minfer/saturate.h"
-#include "minfer/utils.h"
+#include "cvh/core/mat.h"
+#include "cvh/core/system.h"
+#include "cvh/core/saturate.h"
+#include "cvh/core/utils.h"
 
 #include <climits>
 #include <cfloat>
 #include <vector>
 #include <limits>
+#include <cstring>
 
 
-namespace minfer
+namespace cvh
 {
 // TODO：目前的convert是没考虑对齐状态的，只有内存对齐速度才最快，未来为了能够在访存上最优，需要考虑对齐。
 template<typename _Ts, typename _Td> static inline void

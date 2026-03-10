@@ -2,11 +2,11 @@
 // Created by mzh on 2023/11/2.
 //
 
-#ifndef MINFER_MEMORY_UTILS_H
-#define MINFER_MEMORY_UTILS_H
+#ifndef CVH_MEMORY_UTILS_H
+#define CVH_MEMORY_UTILS_H
 
 #include <stdio.h>
-#include "minfer/define.h"
+#include "cvh/core/define.h"
 #include "define.impl.h"
 
 #ifdef __cplusplus
@@ -48,4 +48,4 @@ CV_EXPORTS void MMemoryFreeAlign(void* mem);
 #ifdef __cplusplus
 }
 #endif
-#endif //MINFER_MEMORY_UTILS_H
+#endif //CVH_MEMORY_UTILS_H

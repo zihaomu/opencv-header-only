@@ -2,10 +2,10 @@
 // Created by mzh on 2024/3/27.
 //
 
-#ifndef MINFER_MAT_INL_H
-#define MINFER_MAT_INL_H
+#ifndef CVH_MAT_INL_H
+#define CVH_MAT_INL_H
 
-namespace minfer
+namespace cvh
 {
 
 inline
@@ -92,4 +92,4 @@ const Mat& operator /= (const Mat& a, const MatExpr& b)
 
 }
 
-#endif //MINFER_MAT_INL_H
+#endif //CVH_MAT_INL_H

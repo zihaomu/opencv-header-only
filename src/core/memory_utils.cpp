@@ -1,5 +1,5 @@
 #include "memory_utils.h"
-#include "minfer/system.h"
+#include "cvh/core/system.h"
 
 static inline void **alignPointer(void **ptr, size_t alignment) {
     return (void **)((intptr_t)((unsigned char *)ptr + alignment - 1) & -alignment);

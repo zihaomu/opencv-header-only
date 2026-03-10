@@ -2,10 +2,10 @@
 // Created by mzh on 2024/1/31.
 //
 
-#include "minfer/mat.h"
-#include "minfer/basic_op.h"
-#include "minfer/system.h"
-#include "minfer/utils.h"
+#include "cvh/core/mat.h"
+#include "cvh/core/basic_op.h"
+#include "cvh/core/system.h"
+#include "cvh/core/utils.h"
 #include "backend/cpu/kernel/gemm_kernel_xsimd.h"
 #include "backend/cpu/kernel/openmp_utils.h"
 
@@ -13,7 +13,7 @@
 #include <omp.h>
 #endif
 
-namespace minfer
+namespace cvh
 {
 
 // GEMM 的输入输出对Mat Shape的要求是：目前只支持单通道的Mat计算，支持多维度，支持广播机制，输出维度为输入维度的广播结果，输入维度必须大于等于2，最后两个维度分别是M和K，K和N，输出维度的最后两个维度分别是M和N。

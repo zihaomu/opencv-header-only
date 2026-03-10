@@ -2,8 +2,8 @@
 // Created by mzh on 2023/11/2.
 //
 
-#ifndef MINFER_DEFINE_IMPL_H
-#define MINFER_DEFINE_IMPL_H
+#ifndef CVH_DEFINE_IMPL_H
+#define CVH_DEFINE_IMPL_H
 
 // usefull macro
 
@@ -16,10 +16,10 @@
 #define ALIGN_UP8(x) ROUND_UP((x), 8)
 
 #include <mutex>
-namespace minfer
+namespace cvh
 {
     typedef std::recursive_mutex Mutex;
     typedef std::lock_guard<Mutex> AutoLock;
 }
 
-#endif //MINFER_DEFINE_IMPL_H
+#endif //CVH_DEFINE_IMPL_H

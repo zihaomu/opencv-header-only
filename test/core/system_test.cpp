@@ -2,10 +2,10 @@
 // Created by mzh on 2024/8/2.
 //
 
-#include "minfer.h"
+#include "cvh.h"
 #include "gtest/gtest.h"
 
-using namespace minfer;
+using namespace cvh;
 
 TEST(System, log_test)
 {

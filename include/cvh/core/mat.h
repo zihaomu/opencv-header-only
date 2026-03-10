@@ -2,16 +2,17 @@
 // Created by mzh on 2024/3/27.
 //
 
-#ifndef MINFER_MAT_H
-#define MINFER_MAT_H
+#ifndef CVH_MAT_H
+#define CVH_MAT_H
 
 #include <iostream>
 #include <assert.h>
+#include <vector>
 
 #include "define.h"
 #include "system.h"
 
-namespace minfer
+namespace cvh
 {
 
 typedef std::vector<int> MatShape;
@@ -296,4 +297,4 @@ Mat gemm(const Mat& a, const Mat& b, const Mat& b_scales, bool transA = false, b
 
 #include "./mat.inl.h"
 
-#endif //MINFER_MAT_H
+#endif //CVH_MAT_H

@@ -2,12 +2,12 @@
 // Created by mzh on 2024/8/2.
 //
 
-#include "minfer.h"
+#include "cvh.h"
 #include <ostream>
 #include <sstream>
 #include <stdarg.h>
 
-namespace minfer
+namespace cvh
 {
 
 const char* mErrorStr(int status)

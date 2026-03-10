@@ -3,8 +3,8 @@
 // Created by mzh on 2024/8/2.
 //
 
-#ifndef MINFER_SYSTEM_H
-#define MINFER_SYSTEM_H
+#ifndef CVH_SYSTEM_H
+#define CVH_SYSTEM_H
 
 #ifndef __cplusplus
 #  error system.hpp header must be compiled as C++
@@ -81,7 +81,7 @@
 #endif
 
 
-namespace minfer
+namespace cvh
 {
 
 namespace Error {
@@ -202,4 +202,4 @@ raise an error (see minfer::error). The macro M_Assert checks the condition in b
 
 }
 
-#endif //MINFER_SYSTEM_H
+#endif //CVH_SYSTEM_H

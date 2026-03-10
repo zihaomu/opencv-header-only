@@ -2,7 +2,7 @@
 // Created by OpenAI Codex on 2026/3/6.
 //
 
-#include "minfer.h"
+#include "cvh.h"
 #include "gtest/gtest.h"
 #include "backend/cpu/kernel/normalization_kernel_xsimd.h"
 #include "backend/cpu/kernel/xsimd_kernel_utils.h"
@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-using namespace minfer;
+using namespace cvh;
 
 namespace {
 

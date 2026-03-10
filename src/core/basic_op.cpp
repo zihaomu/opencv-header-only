@@ -1,11 +1,10 @@
-#include "minfer.h"
-#include "backend/cpu/kernel/activation_kernel_xsimd.h"
-#include "backend/cpu/kernel/binary_kernel_xsimd.h"
-#include "backend/cpu/kernel/normalization_kernel_xsimd.h"
-#include "backend/cpu/kernel/rope_kernel.h"
-#include "backend/cpu/kernel/transpose_kernel.h"
+#include "cvh.h"
 
-namespace minfer
+#include "kernel/binary_kernel_xsimd.h"
+#include "kernel/normalization_kernel_xsimd.h"
+#include "kernel/transpose_kernel.h"
+
+namespace cvh
 {
 
 inline void checkIsSameType(const Mat& a, const Mat& b)

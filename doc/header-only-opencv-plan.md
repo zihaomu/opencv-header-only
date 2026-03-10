@@ -52,7 +52,7 @@
 
 扫描结果显示：
 
-- 当前核心头文件和测试代码仍大量使用 `namespace minfer`、`minfer::`、`MINFER_*` include guard。
+- 当前核心头文件和测试代码仍大量使用 `namespace cvh`、`minfer::`、`CVH_*` include guard。
 - `namespace cvh` 目前未真正落地。
 
 这会直接带来两个问题：
@@ -81,7 +81,7 @@
 
 当前测试文件中仍存在大量旧依赖，例如：
 
-- `minfer.h`
+- `cvh.h`
 - `backend/cpu/kernel/*`
 - `backend/cpu/layer/runtime_weight.h`
 - 旧项目中的 xsimd kernel 头文件
@@ -221,7 +221,7 @@
 
 #### 当前信号
 
-- 测试仍依赖不存在于本仓库中的旧 `backend` 和 `minfer.h`。
+- 测试仍依赖不存在于本仓库中的旧 `backend` 和 `cvh.h`。
 - 当前测试对象不是公开 header-only API。
 
 #### 影响
@@ -475,7 +475,7 @@ example/
 #### 主要工作
 
 - 将公共命名空间统一到 `cvh`。
-- 清理 `MINFER_*` include guard、错误宏、日志宏的项目命名。
+- 清理 `CVH_*` include guard、错误宏、日志宏的项目命名。
 - 定义兼容策略：
   - 是否保留 `minfer` 临时兼容别名；
   - 是否用宏开关控制兼容期。
@@ -494,7 +494,7 @@ example/
 
 #### 验收目标
 
-- 公共头中不再暴露 `namespace minfer` 作为主命名空间。
+- 公共头中不再暴露 `namespace cvh` 作为主命名空间。
 - `Mat::type()` 和基础类型宏可表达 OpenCV 风格通道信息。
 - 类型相关单元测试覆盖深度、通道数、元素大小和辅助宏。
 
@@ -575,7 +575,7 @@ example/
 
 - 重写现有测试入口，仅依赖 `include/cvh/*`。
 - 清理对以下旧依赖的直接引用：
-  - `minfer.h`
+  - `cvh.h`
   - `backend/cpu/kernel/*`
   - `backend/cpu/layer/*`
 - 保留现有 `.npy` 数据集和脚本中仍有价值的样例，迁移为项目自有测试资产。
