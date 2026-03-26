@@ -195,8 +195,16 @@ public:
     void copySize(const Mat& m);
 
     uchar* ptr();
+    const uchar* ptr() const;
+
+    // Returns the address of the first channel of pixel (y, x) for 2D Mat.
+    uchar* pixelPtr(int y = 0, int x = 0);
+    const uchar* pixelPtr(int y = 0, int x = 0) const;
 
     template<typename _Tp> _Tp& at(int i0 = 0);
+    template<typename _Tp> const _Tp& at(int i0 = 0) const;
+    template<typename _Tp> _Tp& at(int y, int x, int ch = 0);
+    template<typename _Tp> const _Tp& at(int y, int x, int ch = 0) const;
 
     // This a atomic operation. The method increments the reference counter associated with the matrix data.
     void addref();

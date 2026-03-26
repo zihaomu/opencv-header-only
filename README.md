@@ -61,6 +61,7 @@ CVH_WARNING_BUDGET=0 ./scripts/ci_core_basic.sh
 
 - `cvh_header_compile_smoke`
 - `cvh_include_only_smoke`
+- `cvh_lite_pipeline_smoke`（当前依赖 `cvh::legacy_core`，验证链路：`imread -> resize -> cvtColor -> threshold -> imwrite`）
 - `cvh_mode_lite_smoke`
 - `cvh_mode_full_smoke`（仅 Full backend 构建时）
 - `cvh_legacy_core_smoke`（仅 Full backend 构建时）

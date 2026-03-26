@@ -3,7 +3,7 @@
 - 更新时间：2026-03-25
 - 目标来源：`doc/design.md`
 
-## 本次已落地（PR-0 骨架）
+## 本次已落地（PR-0 + PR-1 Lite 最小链路）
 
 1. 模式基础设施
 
@@ -30,11 +30,25 @@
 - `Subtract.scalarc1_matc3` / `Subtract.scalarc4_matc4` 从“临时可运行替代实现”改为显式 pending（`GTEST_SKIP`）
 - `test/failing-tests.md` 已同步更新构建状态
 
+5. Lite API 最小链路（fallback API 已接线）
+
+- 新增 `imgproc` fallback API：
+  - `resize`
+  - `cvtColor`（`BGR2GRAY` / `GRAY2BGR`）
+  - `threshold`（`THRESH_BINARY` / `THRESH_BINARY_INV`）
+- 新增 `imgcodecs` fallback API：
+  - `imread`
+  - `imwrite`
+- 新增 Lite 端到端 smoke：
+  - `cvh_lite_pipeline_smoke`（`imread -> resize -> cvtColor -> threshold -> imwrite`）
+  - 现阶段该 smoke 仍链接 `cvh::legacy_core`（根因：`Mat`/`system` 尚未完全 header-only）
+
 ## 当前差距（相对 design.md）
 
-1. Lite 可运行范围仍偏窄
+1. Lite 真实无链接运行仍未达成
 
-- 当前 Lite 仅 smoke 级别验证，尚未覆盖“读图->resize->blur->阈值->写图”的最小闭环。
+- `imgproc/imgcodecs` fallback API 已落地，但运行仍依赖 `cvh::legacy_core`（`Mat` 当前仍主要在 `src/core/*.cpp`）。
+- 仍缺少 `GaussianBlur/boxFilter` 的 Lite fallback 落地。
 
 2. dispatch/registry 机制尚未开始
 

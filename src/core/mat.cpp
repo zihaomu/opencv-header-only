@@ -987,10 +987,34 @@ uchar *Mat::ptr()
     return data;
 }
 
-template<typename _Tp>
-_Tp &Mat::at(int i0)
+const uchar* Mat::ptr() const
 {
-    return reinterpret_cast<_Tp*>(data)[i0];
+    return data;
+}
+
+const uchar* Mat::pixelPtr(int y, int x) const
+{
+    if (empty())
+    {
+        CV_Error(Error::StsBadArg, "pixelPtr expects a non-empty Mat");
+    }
+    if (dims != 2)
+    {
+        CV_Error_(Error::StsBadArg, ("pixelPtr expects a 2D Mat, dims=%d", dims));
+    }
+    if (y < 0 || y >= size.p[0] || x < 0 || x >= size.p[1])
+    {
+        CV_Error_(Error::StsOutOfRange,
+                  ("pixelPtr index out of range, y=%d x=%d shape=[%d,%d]",
+                   y, x, size.p[0], size.p[1]));
+    }
+
+    return data + static_cast<size_t>(y) * step(0) + static_cast<size_t>(x) * elemSize();
+}
+
+uchar* Mat::pixelPtr(int y, int x)
+{
+    return const_cast<uchar*>(static_cast<const Mat*>(this)->pixelPtr(y, x));
 }
 
 void Mat::addref()

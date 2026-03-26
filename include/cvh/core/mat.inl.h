@@ -127,6 +127,67 @@ Mat& Mat::operator = (const MatExpr& e)
     return *this;
 }
 
+template<typename _Tp>
+inline _Tp& Mat::at(int i0)
+{
+    if (empty())
+    {
+        CV_Error(Error::StsBadArg, "Mat::at(i0) expects a non-empty Mat");
+    }
+    if (i0 < 0)
+    {
+        CV_Error_(Error::StsOutOfRange, ("Mat::at(i0) out of range, i0=%d", i0));
+    }
+    return reinterpret_cast<_Tp*>(data)[i0];
+}
+
+template<typename _Tp>
+inline const _Tp& Mat::at(int i0) const
+{
+    if (empty())
+    {
+        CV_Error(Error::StsBadArg, "Mat::at(i0) expects a non-empty Mat");
+    }
+    if (i0 < 0)
+    {
+        CV_Error_(Error::StsOutOfRange, ("Mat::at(i0) out of range, i0=%d", i0));
+    }
+    return reinterpret_cast<const _Tp*>(data)[i0];
+}
+
+template<typename _Tp>
+inline const _Tp& Mat::at(int y, int x, int ch) const
+{
+    if (empty())
+    {
+        CV_Error(Error::StsBadArg, "Mat::at(y,x,ch) expects a non-empty Mat");
+    }
+    if (dims != 2)
+    {
+        CV_Error_(Error::StsBadArg, ("Mat::at(y,x,ch) expects a 2D Mat, dims=%d", dims));
+    }
+    if (ch < 0 || ch >= channels())
+    {
+        CV_Error_(Error::StsOutOfRange,
+                  ("Mat::at(y,x,ch) channel out of range, ch=%d channels=%d", ch, channels()));
+    }
+    if (sizeof(_Tp) != elemSize1())
+    {
+        CV_Error_(Error::StsBadType,
+                  ("Mat::at(y,x,ch) type size mismatch, sizeof(T)=%zu elemSize1=%zu",
+                   sizeof(_Tp), elemSize1()));
+    }
+
+    const uchar* p = pixelPtr(y, x) + static_cast<size_t>(ch) * elemSize1();
+    return *reinterpret_cast<const _Tp*>(p);
+}
+
+template<typename _Tp>
+inline _Tp& Mat::at(int y, int x, int ch)
+{
+    return const_cast<_Tp&>(static_cast<const Mat*>(this)->at<_Tp>(y, x, ch));
+}
+
 static inline
 Mat& operator += (Mat& a, const MatExpr& b)
 {

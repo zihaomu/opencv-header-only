@@ -65,6 +65,9 @@ if(CVH_BUILD_TESTS)
         add_executable(cvh_legacy_core_smoke test/smoke/cvh_legacy_core_smoke.cpp)
         target_link_libraries(cvh_legacy_core_smoke PRIVATE cvh::legacy_core)
 
+        add_executable(cvh_lite_pipeline_smoke test/smoke/cvh_lite_pipeline_smoke.cpp)
+        target_link_libraries(cvh_lite_pipeline_smoke PRIVATE cvh::legacy_core)
+
         add_executable(cvh_mode_full_smoke test/smoke/cvh_mode_smoke.cpp)
         target_compile_definitions(cvh_mode_full_smoke PRIVATE CVH_EXPECT_FULL=1)
         target_link_libraries(cvh_mode_full_smoke PRIVATE cvh::full)
@@ -76,6 +79,7 @@ if(CVH_BUILD_TESTS)
         add_test(NAME cvh_mode_lite_smoke COMMAND cvh_mode_lite_smoke)
         if(TARGET cvh_legacy_core)
             add_test(NAME cvh_legacy_core_smoke COMMAND cvh_legacy_core_smoke)
+            add_test(NAME cvh_lite_pipeline_smoke COMMAND cvh_lite_pipeline_smoke)
             add_test(NAME cvh_mode_full_smoke COMMAND cvh_mode_full_smoke)
         endif()
     endif()
@@ -84,6 +88,7 @@ if(CVH_BUILD_TESTS)
         add_executable(cvh_test_core
             test/core/core_ops_test.cpp
             test/core/mat_channel_contract_test.cpp
+            test/core/mat_layout_semantics_test.cpp
             test/core/mat_opencv_compat_test.cpp
             test/core/mat_submat_test.cpp
             test/core/mat_upstream_channel_port_test.cpp
