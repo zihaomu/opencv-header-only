@@ -70,6 +70,25 @@ inline void update_continuous_steps(Mat& m)
     }
 }
 
+template<typename _Tp>
+inline void fill_scalar_pattern(_Tp* out, size_t pixel_count, int cn, const Scalar& s)
+{
+    _Tp lane[4];
+    for (int ch = 0; ch < cn; ++ch)
+    {
+        lane[ch] = saturate_cast<_Tp>(s[ch]);
+    }
+
+    for (size_t i = 0; i < pixel_count; ++i)
+    {
+        _Tp* px = out + i * static_cast<size_t>(cn);
+        for (int ch = 0; ch < cn; ++ch)
+        {
+            px[ch] = lane[ch];
+        }
+    }
+}
+
 } // namespace
 
 template<typename _Tp> static inline _Tp* alignPtr(_Tp* ptr, int n=(int)sizeof(_Tp))
@@ -387,6 +406,12 @@ Mat& Mat::operator=(const float v)
 Mat& Mat::operator=(const int v)
 {
     setTo(static_cast<float>(v));
+    return *this;
+}
+
+Mat& Mat::operator=(const Scalar& s)
+{
+    setTo(s);
     return *this;
 }
 
@@ -826,6 +851,58 @@ void Mat::setTo(float v)
     {
         uchar* row_ptr = data + i * outer_step;
         fill_block(row_ptr, scalar_per_outer);
+    }
+}
+
+void Mat::setTo(const Scalar& s)
+{
+    if (empty())
+        return;
+
+    const int d = depth();
+    const int cn = channels();
+    if (cn > 4)
+    {
+        CV_Error_(Error::StsBadArg,
+                 ("Mat::setTo(Scalar) supports channels <= 4 in v1, channels=%d", cn));
+    }
+
+    const size_t outer = dims > 1 ? static_cast<size_t>(size.p[0]) : 1;
+    const size_t pixel_per_outer = dims > 1 ? total(1, dims) : total();
+    const size_t outer_step = dims > 1 ? step(0) : pixel_per_outer * elemSize();
+
+    for (size_t i = 0; i < outer; ++i)
+    {
+        uchar* row_ptr = data + i * outer_step;
+        switch (d)
+        {
+            case CV_8U:
+                fill_scalar_pattern(reinterpret_cast<uchar*>(row_ptr), pixel_per_outer, cn, s);
+                break;
+            case CV_8S:
+                fill_scalar_pattern(reinterpret_cast<schar*>(row_ptr), pixel_per_outer, cn, s);
+                break;
+            case CV_16U:
+                fill_scalar_pattern(reinterpret_cast<ushort*>(row_ptr), pixel_per_outer, cn, s);
+                break;
+            case CV_16S:
+                fill_scalar_pattern(reinterpret_cast<short*>(row_ptr), pixel_per_outer, cn, s);
+                break;
+            case CV_32F:
+                fill_scalar_pattern(reinterpret_cast<float*>(row_ptr), pixel_per_outer, cn, s);
+                break;
+            case CV_32S:
+                fill_scalar_pattern(reinterpret_cast<int*>(row_ptr), pixel_per_outer, cn, s);
+                break;
+            case CV_32U:
+                fill_scalar_pattern(reinterpret_cast<uint*>(row_ptr), pixel_per_outer, cn, s);
+                break;
+            case CV_16F:
+                fill_scalar_pattern(reinterpret_cast<hfloat*>(row_ptr), pixel_per_outer, cn, s);
+                break;
+            default:
+                CV_Error_(Error::StsNotImplemented, ("Unsupported type:%d in setTo(Scalar)", d));
+        }
     }
 }
 

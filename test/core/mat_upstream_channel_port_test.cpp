@@ -70,27 +70,27 @@ TEST(OpenCVUpstreamChannelPort_TEST, Core_MatExpr_issue_16655)
 // From modules/core/test/test_arithm.cpp
 TEST(OpenCVUpstreamChannelPort_TEST, Subtract_scalarc1_matc3)
 {
-    skip_pending("Subtract.scalarc1_matc3", "scalar-vs-mat subtract overload is not implemented");
+    skip_pending("Subtract.scalarc1_matc3", "upstream case body not ported yet (scalar-vs-mat subtract overload exists)");
 }
 
 TEST(OpenCVUpstreamChannelPort_TEST, Subtract_scalarc4_matc4)
 {
-    skip_pending("Subtract.scalarc4_matc4", "scalar-vs-mat subtract overload is not implemented");
+    skip_pending("Subtract.scalarc4_matc4", "upstream case body not ported yet (scalar-vs-mat subtract overload exists)");
 }
 
 TEST(OpenCVUpstreamChannelPort_TEST, Compare_empty)
 {
-    skip_pending("Compare.empty", "cvh::compare is not implemented");
+    skip_pending("Compare.empty", "compare(Mat,Mat) is not implemented");
 }
 
 TEST(OpenCVUpstreamChannelPort_TEST, Compare_regression_8999)
 {
-    skip_pending("Compare.regression_8999", "cvh::compare is not implemented");
+    skip_pending("Compare.regression_8999", "compare(Mat,Mat) is not implemented");
 }
 
 TEST(OpenCVUpstreamChannelPort_TEST, Compare_regression_16F_do_not_crash)
 {
-    skip_pending("Compare.regression_16F_do_not_crash", "cvh::compare is not implemented");
+    skip_pending("Compare.regression_16F_do_not_crash", "compare(Mat,Mat) is not implemented");
 }
 
 // From modules/core/test/test_operations.cpp

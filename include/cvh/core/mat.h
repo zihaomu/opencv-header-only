@@ -11,6 +11,7 @@
 
 #include "define.h"
 #include "system.h"
+#include "types.h"
 
 namespace cvh
 {
@@ -132,6 +133,7 @@ public:
 
     // set all mat value to given value
     Mat& operator=(const int v);
+    Mat& operator=(const Scalar& s);
 
     // Create a full copy of the array and the underlying data.
     Mat clone() const;
@@ -178,6 +180,7 @@ public:
 
     // 将Mat中的所有数值设置到给定的v中，注意，内部会将float v转换成Mat所对应的数据类型。
     void setTo(float v);
+    void setTo(const Scalar& s);
 
     size_t total() const;
 

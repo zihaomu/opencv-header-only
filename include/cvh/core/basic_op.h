@@ -45,6 +45,8 @@ void binaryFunc(BinaryOp op, const Mat& a, const Mat& b, Mat& c);
 
 // a + b = c
 void add(const Mat& a, const Mat& b, Mat& c);
+void add(const Mat& a, const Scalar& b, Mat& c);
+void add(const Scalar& a, const Mat& b, Mat& c);
 
 // a * alpha + b * beta = c
 void addWeighted(const Mat& a, double alpha, const Mat& b, double beta, Mat& c);
@@ -54,6 +56,8 @@ void subtract(const Mat& a, Mat& c);
 
 // a - b = c
 void subtract(const Mat& a, const Mat& b, Mat& c);
+void subtract(const Mat& a, const Scalar& b, Mat& c);
+void subtract(const Scalar& a, const Mat& b, Mat& c);
 
 // a * b = c
 void multiply(const Mat& a, const Mat& b, Mat& c);
@@ -62,6 +66,8 @@ void multiply(const Mat& a, const Mat& b, Mat& c);
 void divide(const Mat& a, const Mat& b, Mat& c);
 
 void compare(const Mat& a, const Mat& b, Mat& c, int op);
+void compare(const Mat& a, const Scalar& b, Mat& c, int op);
+void compare(const Scalar& a, const Mat& b, Mat& c, int op);
 
 // Apply softmax along the last dimension.
 void softmax(const Mat& input, Mat& output);

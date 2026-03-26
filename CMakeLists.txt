@@ -27,6 +27,7 @@ target_include_directories(cvh_headers INTERFACE
 target_compile_features(cvh_headers INTERFACE cxx_std_17)
 
 set(CVH_LEGACY_CORE_SOURCES
+    src/core/basic_op_scalar.cpp
     src/core/mat.cpp
     src/core/mat_convert.cpp
     src/core/system.cpp
@@ -90,9 +91,11 @@ if(CVH_BUILD_TESTS)
             test/core/mat_channel_contract_test.cpp
             test/core/mat_layout_semantics_test.cpp
             test/core/mat_opencv_compat_test.cpp
+            test/core/mat_scalar_ops_test.cpp
             test/core/mat_submat_test.cpp
             test/core/mat_upstream_channel_port_test.cpp
             test/core/mat_contract_test.cpp
+            test/core/scalar_contract_test.cpp
         )
         target_link_libraries(cvh_test_core PRIVATE cvh::legacy_core gtest_main)
         target_compile_features(cvh_test_core PRIVATE cxx_std_17)
