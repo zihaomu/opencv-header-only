@@ -16,6 +16,7 @@
 
 #include "display_fb.h"
 
+#include <algorithm>
 #include <errno.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -54,9 +55,12 @@ public:
 public:
     int ttyfd;
     long tty_oldmode;
+    bool tty_graphics_enabled;
+    bool tty_cursor_hidden;
 
     int fd;
 
+    struct fb_fix_screeninfo finfo;
     struct fb_var_screeninfo info;
 
     // 0=rgb32
@@ -69,20 +73,82 @@ public:
     int pixel_format;
 
     __u32 screen_size;
+    int screen_stride;
+    bool fb_is_mmap;
+    bool fb_is_mock;
     void* fb_base;
 };
+
+static inline bool cvh_fb_tty_switch_enabled()
+{
+    const char* env = getenv("CVH_FB_TTY_MODE");
+    if (!env)
+    {
+        return false;
+    }
+    return strcmp(env, "1") == 0 || strcmp(env, "true") == 0 || strcmp(env, "TRUE") == 0 ||
+           strcmp(env, "on") == 0 || strcmp(env, "ON") == 0;
+}
+
+enum class cvh_fb_test_mode
+{
+    none = 0,
+    force_fail_open,
+    mock_success
+};
+
+static inline cvh_fb_test_mode cvh_fb_get_test_mode()
+{
+    const char* env = getenv("CVH_FB_TEST_MODE");
+    if (!env)
+    {
+        return cvh_fb_test_mode::none;
+    }
+    if (strcmp(env, "force_fail_open") == 0)
+    {
+        return cvh_fb_test_mode::force_fail_open;
+    }
+    if (strcmp(env, "mock_success") == 0)
+    {
+        return cvh_fb_test_mode::mock_success;
+    }
+    return cvh_fb_test_mode::none;
+}
+
+static inline int cvh_fb_get_test_dim(const char* key, int fallback_value)
+{
+    const char* env = getenv(key);
+    if (!env || env[0] == '\0')
+    {
+        return fallback_value;
+    }
+
+    char* end = nullptr;
+    const long v = strtol(env, &end, 10);
+    if (!end || *end != '\0' || v <= 0 || v > 8192)
+    {
+        return fallback_value;
+    }
+    return static_cast<int>(v);
+}
 
 display_fb_impl::display_fb_impl()
 {
     ttyfd = -1;
     tty_oldmode = 0x00/*KD_TEXT*/;
+    tty_graphics_enabled = false;
+    tty_cursor_hidden = false;
     fd = -1;
 
+    memset(&finfo, 0, sizeof(finfo));
     memset(&info, 0, sizeof(info));
 
     pixel_format = -1;
 
     screen_size = 0;
+    screen_stride = 0;
+    fb_is_mmap = false;
+    fb_is_mock = false;
     fb_base = 0;
 }
 
@@ -96,41 +162,94 @@ int display_fb_impl::open()
     if (fb_base)
         return 0;
 
-    ttyfd = ::open("/dev/tty0", O_RDWR);
-    if (ttyfd < 0)
+    const cvh_fb_test_mode test_mode = cvh_fb_get_test_mode();
+    if (test_mode == cvh_fb_test_mode::force_fail_open)
     {
-        ttyfd = ::open("/dev/tty", O_RDWR);
+        return -1;
+    }
+    if (test_mode == cvh_fb_test_mode::mock_success)
+    {
+        const int w = cvh_fb_get_test_dim("CVH_FB_TEST_WIDTH", 64);
+        const int h = cvh_fb_get_test_dim("CVH_FB_TEST_HEIGHT", 64);
+
+        memset(&finfo, 0, sizeof(finfo));
+        memset(&info, 0, sizeof(info));
+        info.xres = static_cast<__u32>(w);
+        info.yres = static_cast<__u32>(h);
+        info.xres_virtual = static_cast<__u32>(w);
+        info.yres_virtual = static_cast<__u32>(h);
+        info.xoffset = 0;
+        info.yoffset = 0;
+        info.bits_per_pixel = 32;
+        info.grayscale = 0;
+
+        pixel_format = 1; // bgr32
+        screen_stride = w * 4;
+        screen_size = static_cast<__u32>(screen_stride * h);
+        fb_base = malloc(screen_size);
+        if (!fb_base)
+        {
+            return -1;
+        }
+        memset(fb_base, 0, screen_size);
+        fb_is_mmap = false;
+        fb_is_mock = true;
+        return 0;
+    }
+
+    if (cvh_fb_tty_switch_enabled())
+    {
+        ttyfd = ::open("/dev/tty0", O_RDWR);
         if (ttyfd < 0)
         {
-            ttyfd = ::open("/dev/console", O_RDWR);
+            ttyfd = ::open("/dev/tty", O_RDWR);
             if (ttyfd < 0)
             {
-                fprintf(stderr, "open /dev/tty0 failed\n");
-                goto OUT;
+                ttyfd = ::open("/dev/console", O_RDWR);
+                if (ttyfd < 0)
+                {
+                    fprintf(stderr, "open /dev/tty0 failed\n");
+                    goto OUT;
+                }
             }
         }
-    }
 
-    if (ioctl(ttyfd, 0x4b3b/*KDGETMODE*/, &tty_oldmode))
-    {
-        fprintf(stderr, "ioctl KDGETMODE failed %d %s\n", errno, strerror(errno));
-    }
+        if (ioctl(ttyfd, 0x4b3b/*KDGETMODE*/, &tty_oldmode))
+        {
+            fprintf(stderr, "ioctl KDGETMODE failed %d %s\n", errno, strerror(errno));
+        }
 
-    if (ioctl(ttyfd, 0x4b3a/*KDSETMODE*/, 0x01/*KD_GRAPHICS*/))
-    {
-        fprintf(stderr, "ioctl KDSETMODE KD_GRAPHICS failed %d %s\n", errno, strerror(errno));
-    }
+        if (ioctl(ttyfd, 0x4b3a/*KDSETMODE*/, 0x01/*KD_GRAPHICS*/) == 0)
+        {
+            tty_graphics_enabled = true;
+        }
+        else
+        {
+            fprintf(stderr, "ioctl KDSETMODE KD_GRAPHICS failed %d %s\n", errno, strerror(errno));
+        }
 
-    // disable tty blinking cursor
-    {
-        const char buf[] = "\033[9;0]\033[?33l\033[?25l\033[?1c";
-        ::write(ttyfd, buf, sizeof(buf));
+        // disable tty blinking cursor
+        {
+            const char buf[] = "\033[9;0]\033[?33l\033[?25l\033[?1c";
+            const ssize_t n = ::write(ttyfd, buf, sizeof(buf));
+            if (n == static_cast<ssize_t>(sizeof(buf)))
+            {
+                tty_cursor_hidden = true;
+            }
+        }
     }
 
     fd = ::open("/dev/fb0", O_RDWR);
     if (fd < 0)
     {
         fprintf(stderr, "open /dev/fb0 failed\n");
+        goto OUT;
+    }
+
+    memset(&finfo, 0, sizeof(finfo));
+    if (ioctl(fd, FBIOGET_FSCREENINFO, &finfo))
+    {
+        fprintf(stderr, "ioctl FBIOGET_FSCREENINFO failed %d %s\n", errno, strerror(errno));
         goto OUT;
     }
 
@@ -237,13 +356,27 @@ int display_fb_impl::open()
     fprintf(stderr, "bits_per_pixel = %u\n", info.bits_per_pixel);
     fprintf(stderr, "grayscale = %u\n", info.grayscale);
 
-    screen_size = info.xres * info.yres * info.bits_per_pixel / 8;
+    screen_stride = static_cast<int>(finfo.line_length);
+    if (screen_stride <= 0)
+    {
+        screen_stride = static_cast<int>(info.xres_virtual * info.bits_per_pixel / 8);
+    }
+
+    screen_size = finfo.smem_len;
+    if (screen_size == 0)
+    {
+        screen_size = static_cast<__u32>(screen_stride * info.yres_virtual);
+    }
+
     fb_base = mmap(NULL, screen_size, PROT_WRITE, MAP_SHARED, fd, 0);
-    if (!fb_base)
+    if (fb_base == MAP_FAILED)
     {
         fprintf(stderr, "mmap failed %d %s\n", errno, strerror(errno));
+        fb_base = 0;
         goto OUT;
     }
+    fb_is_mmap = true;
+    fb_is_mock = false;
 
     }
 
@@ -257,13 +390,33 @@ OUT:
 
 int display_fb_impl::show_bgr(const unsigned char* bgrdata, int width, int height)
 {
+    if (!fb_base || !bgrdata || width <= 0 || height <= 0 || screen_stride <= 0)
+    {
+        return -1;
+    }
+
+    const int src_width = width;
+    const int xoff = static_cast<int>(info.xoffset);
+    const int yoff = static_cast<int>(info.yoffset);
+    const int max_width = std::max(0, static_cast<int>(info.xres_virtual) - xoff);
+    const int max_height = std::max(0, static_cast<int>(info.yres_virtual) - yoff);
+
+    width = std::min(width, static_cast<int>(info.xres));
+    width = std::min(width, max_width);
+    height = std::min(height, static_cast<int>(info.yres));
+    height = std::min(height, max_height);
+    if (width <= 0 || height <= 0)
+    {
+        return -1;
+    }
+
     if (pixel_format == 0)
     {
         // BGR888 to RGBA8888
         for (int y = 0; y < height; y++)
         {
-            const unsigned char* p = bgrdata + y * width * 3;
-            unsigned char* pout = (unsigned char*)fb_base + y * width * 4;// FIXME HARDCODE
+            const unsigned char* p = bgrdata + y * src_width * 3;
+            unsigned char* pout = (unsigned char*)fb_base + static_cast<size_t>(y + yoff) * screen_stride + static_cast<size_t>(xoff) * 4;
 
             int x = 0;
 #if __ARM_NEON
@@ -312,8 +465,8 @@ int display_fb_impl::show_bgr(const unsigned char* bgrdata, int width, int heigh
         // BGR888 to BGRA8888
         for (int y = 0; y < height; y++)
         {
-            const unsigned char* p = bgrdata + y * width * 3;
-            unsigned char* pout = (unsigned char*)fb_base + y * width * 4;// FIXME HARDCODE
+            const unsigned char* p = bgrdata + y * src_width * 3;
+            unsigned char* pout = (unsigned char*)fb_base + static_cast<size_t>(y + yoff) * screen_stride + static_cast<size_t>(xoff) * 4;
 
             int x = 0;
 #if __ARM_NEON
@@ -362,8 +515,8 @@ int display_fb_impl::show_bgr(const unsigned char* bgrdata, int width, int heigh
         // BGR888 to RGB888
         for (int y = 0; y < height; y++)
         {
-            const unsigned char* p = bgrdata + y * width * 3;
-            unsigned char* pout = (unsigned char*)fb_base + y * width * 3;// FIXME HARDCODE
+            const unsigned char* p = bgrdata + y * src_width * 3;
+            unsigned char* pout = (unsigned char*)fb_base + static_cast<size_t>(y + yoff) * screen_stride + static_cast<size_t>(xoff) * 3;
 
             int x = 0;
 #if __ARM_NEON
@@ -408,8 +561,8 @@ int display_fb_impl::show_bgr(const unsigned char* bgrdata, int width, int heigh
         // BGR888 to BGR888
         for (int y = 0; y < height; y++)
         {
-            const unsigned char* p = bgrdata + y * width * 3;
-            unsigned char* pout = (unsigned char*)fb_base + y * width * 3;// FIXME HARDCODE
+            const unsigned char* p = bgrdata + y * src_width * 3;
+            unsigned char* pout = (unsigned char*)fb_base + static_cast<size_t>(y + yoff) * screen_stride + static_cast<size_t>(xoff) * 3;
 
             memcpy(pout, p, width * 3);
 
@@ -421,8 +574,8 @@ int display_fb_impl::show_bgr(const unsigned char* bgrdata, int width, int heigh
         // BGR888 to RGB565
         for (int y = 0; y < height; y++)
         {
-            const unsigned char* p = bgrdata + y * width * 3;
-            unsigned short* pout = (unsigned short*)fb_base + y * width;// FIXME HARDCODE
+            const unsigned char* p = bgrdata + y * src_width * 3;
+            unsigned short* pout = reinterpret_cast<unsigned short*>((unsigned char*)fb_base + static_cast<size_t>(y + yoff) * screen_stride + static_cast<size_t>(xoff) * 2);
 
             int x = 0;
 #if __ARM_NEON
@@ -467,8 +620,8 @@ int display_fb_impl::show_bgr(const unsigned char* bgrdata, int width, int heigh
         // BGR888 to BGR565
         for (int y = 0; y < height; y++)
         {
-            const unsigned char* p = bgrdata + y * width * 3;
-            unsigned short* pout = (unsigned short*)fb_base + y * width;// FIXME HARDCODE
+            const unsigned char* p = bgrdata + y * src_width * 3;
+            unsigned short* pout = reinterpret_cast<unsigned short*>((unsigned char*)fb_base + static_cast<size_t>(y + yoff) * screen_stride + static_cast<size_t>(xoff) * 2);
 
             int x = 0;
 #if __ARM_NEON
@@ -523,8 +676,8 @@ int display_fb_impl::show_bgr(const unsigned char* bgrdata, int width, int heigh
 #endif // __ARM_NEON
         for (int y = 0; y < height; y++)
         {
-            const unsigned char* p = bgrdata + y * width * 3;
-            unsigned char* pout = (unsigned char*)fb_base + y * width;// FIXME HARDCODE
+            const unsigned char* p = bgrdata + y * src_width * 3;
+            unsigned char* pout = (unsigned char*)fb_base + static_cast<size_t>(y + yoff) * screen_stride + static_cast<size_t>(xoff);
 
             int x = 0;
 #if __ARM_NEON
@@ -556,13 +709,33 @@ int display_fb_impl::show_bgr(const unsigned char* bgrdata, int width, int heigh
 
 int display_fb_impl::show_gray(const unsigned char* graydata, int width, int height)
 {
+    if (!fb_base || !graydata || width <= 0 || height <= 0 || screen_stride <= 0)
+    {
+        return -1;
+    }
+
+    const int src_width = width;
+    const int xoff = static_cast<int>(info.xoffset);
+    const int yoff = static_cast<int>(info.yoffset);
+    const int max_width = std::max(0, static_cast<int>(info.xres_virtual) - xoff);
+    const int max_height = std::max(0, static_cast<int>(info.yres_virtual) - yoff);
+
+    width = std::min(width, static_cast<int>(info.xres));
+    width = std::min(width, max_width);
+    height = std::min(height, static_cast<int>(info.yres));
+    height = std::min(height, max_height);
+    if (width <= 0 || height <= 0)
+    {
+        return -1;
+    }
+
     if (pixel_format == 0 || pixel_format == 1)
     {
         // GRAY to RGBA8888 or BGRA8888
         for (int y = 0; y < height; y++)
         {
-            const unsigned char* p = graydata + y * width;
-            unsigned char* pout = (unsigned char*)fb_base + y * width * 4;// FIXME HARDCODE
+            const unsigned char* p = graydata + y * src_width;
+            unsigned char* pout = (unsigned char*)fb_base + static_cast<size_t>(y + yoff) * screen_stride + static_cast<size_t>(xoff) * 4;
 
             int x = 0;
 #if __ARM_NEON
@@ -611,8 +784,8 @@ int display_fb_impl::show_gray(const unsigned char* graydata, int width, int hei
         // GRAY to RGB888 or BGR888
         for (int y = 0; y < height; y++)
         {
-            const unsigned char* p = graydata + y * width;
-            unsigned char* pout = (unsigned char*)fb_base + y * width * 3;// FIXME HARDCODE
+            const unsigned char* p = graydata + y * src_width;
+            unsigned char* pout = (unsigned char*)fb_base + static_cast<size_t>(y + yoff) * screen_stride + static_cast<size_t>(xoff) * 3;
 
             int x = 0;
 #if __ARM_NEON
@@ -657,8 +830,8 @@ int display_fb_impl::show_gray(const unsigned char* graydata, int width, int hei
         // GRAY to RGB565 or BGR565
         for (int y = 0; y < height; y++)
         {
-            const unsigned char* p = graydata + y * width;
-            unsigned short* pout = (unsigned short*)fb_base + y * width;// FIXME HARDCODE
+            const unsigned char* p = graydata + y * src_width;
+            unsigned short* pout = reinterpret_cast<unsigned short*>((unsigned char*)fb_base + static_cast<size_t>(y + yoff) * screen_stride + static_cast<size_t>(xoff) * 2);
 
             int x = 0;
 #if __ARM_NEON
@@ -703,8 +876,8 @@ int display_fb_impl::show_gray(const unsigned char* graydata, int width, int hei
         // GRAY to GRAY
         for (int y = 0; y < height; y++)
         {
-            const unsigned char* p = graydata + y * width;
-            unsigned char* pout = (unsigned char*)fb_base + y * width;// FIXME HARDCODE
+            const unsigned char* p = graydata + y * src_width;
+            unsigned char* pout = (unsigned char*)fb_base + static_cast<size_t>(y + yoff) * screen_stride + static_cast<size_t>(xoff);
 
             memcpy(pout, p, width);
 
@@ -719,14 +892,25 @@ int display_fb_impl::close()
 {
     if (fb_base)
     {
-        munmap(fb_base, screen_size);
+        if (fb_is_mmap)
+        {
+            munmap(fb_base, screen_size);
+        }
+        else if (fb_is_mock)
+        {
+            free(fb_base);
+        }
         screen_size = 0;
         fb_base = 0;
+        fb_is_mmap = false;
+        fb_is_mock = false;
     }
 
     memset(&info, 0, sizeof(info));
+    memset(&finfo, 0, sizeof(finfo));
 
     pixel_format = -1;
+    screen_stride = 0;
 
     if (fd >= 0)
     {
@@ -736,19 +920,22 @@ int display_fb_impl::close()
 
     if (ttyfd >= 0)
     {
-        if (ioctl(ttyfd, 0x4b3a/*KDSETMODE*/, tty_oldmode))
+        if (tty_graphics_enabled && ioctl(ttyfd, 0x4b3a/*KDSETMODE*/, tty_oldmode))
         {
             fprintf(stderr, "ioctl KDSETMODE tty_oldmode failed %d %s\n", errno, strerror(errno));
         }
 
-        // enable tty blinking cursor
+        if (tty_cursor_hidden)
         {
+            // enable tty blinking cursor
             const char buf[] = "\033[9;15]\033[?33h\033[?25h\033[?0c";
-            ::write(ttyfd, buf, sizeof(buf));
+            (void)::write(ttyfd, buf, sizeof(buf));
         }
 
         ::close(ttyfd);
         ttyfd = -1;
+        tty_graphics_enabled = false;
+        tty_cursor_hidden = false;
     }
 
     return 0;

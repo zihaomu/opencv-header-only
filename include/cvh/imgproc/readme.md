@@ -4,6 +4,17 @@
 
 承载图像处理 API（与 OpenCV `imgproc` 风格对齐），包括颜色转换、几何变换、滤波和基础特征提取。
 
+## 当前文件组织（已落地）
+
+- `imgproc.h`：唯一聚合入口（对外建议只包含这个头）。
+- `detail/common.h`：枚举、公共 helper、后端注册初始化。
+- `resize.h`：`resize` 算子与 dispatch/fallback。
+- `cvtcolor.h`：`cvtColor` 算子与 dispatch/fallback。
+- `threshold.h`：`threshold` 算子与 dispatch/fallback。
+- `box_filter.h`：`boxFilter` 算子与 dispatch/fallback。
+- `blur.h`：`blur`（对 `boxFilter` 的语义封装）。
+- `gaussian_blur.h`：`GaussianBlur` 算子与 dispatch/fallback。
+
 ## 开发前提
 
 - 依赖 `core` 的 `Mat` 语义先稳定（type/channel/stride/ROI）。

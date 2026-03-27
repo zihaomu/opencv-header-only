@@ -2,14 +2,8 @@
 #define CVH_HIGHGUI_HPP
 
 #include "../core/mat.h"
-#include "../imgcodecs/imgcodecs.h"
 
-#include <algorithm>
-#include <chrono>
-#include <cctype>
-#include <cstdlib>
 #include <string>
-#include <thread>
 
 namespace cvh {
 
@@ -22,64 +16,36 @@ namespace detail {
 using ImshowFn = void (*)(const std::string&, const Mat&);
 using WaitKeyFn = int (*)(int);
 
-inline std::string sanitize_window_name(std::string name)
-{
-    if (name.empty())
-    {
-        return "cvh_imshow";
-    }
+inline void imshow_fallback(const std::string& winname, const Mat& mat);
+inline int waitkey_fallback(int delay);
 
-    for (char& ch : name)
-    {
-        const bool alnum = std::isalnum(static_cast<unsigned char>(ch)) != 0;
-        if (!alnum && ch != '_' && ch != '-' && ch != '.')
-        {
-            ch = '_';
-        }
-    }
-    return name;
-}
+inline ImshowFn g_imshow_dispatch = &imshow_fallback;
+inline WaitKeyFn g_waitkey_dispatch = &waitkey_fallback;
 
 inline void imshow_fallback(const std::string& winname, const Mat& mat)
 {
-    CV_Assert(!mat.empty() && "imshow: source image can not be empty");
-    CV_Assert(mat.depth() == CV_8U && "imshow: v1 supports CV_8U only");
-    CV_Assert(mat.dims == 2 && "imshow: only 2D Mat is supported");
-
-    const std::string filename = sanitize_window_name(winname) + ".png";
-    if (!imwrite(filename, mat))
-    {
-        CV_Error_(Error::StsBadArg, ("imshow: failed to write fallback image '%s'", filename.c_str()));
-    }
-
-#if defined(_WIN32)
-    const std::string cmd = "start \"\" \"" + filename + "\"";
-    (void)std::system(cmd.c_str());
-#elif defined(__linux__) && !defined(__ANDROID__)
-    const std::string cmd = "xdg-open \"" + filename + "\" >/dev/null 2>&1 &";
-    (void)std::system(cmd.c_str());
-#endif
+    (void)winname;
+    (void)mat;
+    CV_Error(Error::StsNotImplemented,
+             "imshow requires CVH_FULL backend. Use imwrite(\"out.png\", mat) as temporary replacement.");
 }
 
 inline int waitkey_fallback(int delay)
 {
-    if (delay > 0)
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(delay));
-    }
+    (void)delay;
+    CV_Error(Error::StsNotImplemented,
+             "waitKey requires CVH_FULL backend. Use your app event loop or avoid waitKey in CVH_LITE.");
     return -1;
 }
 
 inline ImshowFn& imshow_dispatch()
 {
-    static ImshowFn fn = &imshow_fallback;
-    return fn;
+    return g_imshow_dispatch;
 }
 
 inline WaitKeyFn& waitkey_dispatch()
 {
-    static WaitKeyFn fn = &waitkey_fallback;
-    return fn;
+    return g_waitkey_dispatch;
 }
 
 inline void register_imshow_backend(ImshowFn fn)

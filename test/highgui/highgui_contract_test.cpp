@@ -1,7 +1,6 @@
 #include "cvh.h"
 #include "gtest/gtest.h"
 
-#include <filesystem>
 #include <string>
 
 using namespace cvh;
@@ -31,41 +30,36 @@ int test_waitkey_backend(int delay)
 
 }  // namespace
 
-TEST(Highgui_TEST, imshow_fallback_writes_png_file)
+TEST(Highgui_TEST, imshow_requires_full_or_imwrite_hint_in_lite)
 {
-    Mat img({3, 4}, CV_8UC3);
-    for (int y = 0; y < img.size[0]; ++y)
+    Mat img({2, 2}, CV_8UC3);
+    img = 0;
+
+    try
     {
-        for (int x = 0; x < img.size[1]; ++x)
-        {
-            img.at<uchar>(y, x, 0) = static_cast<uchar>(x * 10 + y);
-            img.at<uchar>(y, x, 1) = static_cast<uchar>(x * 3 + y * 7);
-            img.at<uchar>(y, x, 2) = static_cast<uchar>(x * 11 + y * 5);
-        }
+        imshow("lite_mode_window", img);
+        FAIL() << "imshow should throw in CVH_LITE mode";
     }
-
-    const std::string winname = "cvh:test/highgui fallback";
-    const std::string filename = detail::sanitize_window_name(winname) + ".png";
-    const std::filesystem::path out = std::filesystem::current_path() / filename;
-
-    std::filesystem::remove(out);
-    ASSERT_FALSE(std::filesystem::exists(out));
-
-    imshow(winname, img);
-    ASSERT_TRUE(std::filesystem::exists(out));
-
-    const Mat loaded = imread(out.string(), IMREAD_COLOR);
-    ASSERT_FALSE(loaded.empty());
-    EXPECT_EQ(loaded.size[0], img.size[0]);
-    EXPECT_EQ(loaded.size[1], img.size[1]);
-
-    std::filesystem::remove(out);
+    catch (const Exception& e)
+    {
+        const std::string msg = e.what();
+        EXPECT_NE(msg.find("CVH_FULL"), std::string::npos);
+        EXPECT_NE(msg.find("imwrite"), std::string::npos);
+    }
 }
 
-TEST(Highgui_TEST, waitkey_fallback_returns_minus_one)
+TEST(Highgui_TEST, waitkey_requires_full_in_lite)
 {
-    EXPECT_EQ(waitKey(1), -1);
-    EXPECT_EQ(waitKey(0), -1);
+    try
+    {
+        (void)waitKey(1);
+        FAIL() << "waitKey should throw in CVH_LITE mode";
+    }
+    catch (const Exception& e)
+    {
+        const std::string msg = e.what();
+        EXPECT_NE(msg.find("CVH_FULL"), std::string::npos);
+    }
 }
 
 TEST(Highgui_TEST, dispatch_registration_overrides_api_calls)
@@ -99,13 +93,11 @@ TEST(Highgui_TEST, dispatch_registration_overrides_api_calls)
     detail::register_waitkey_backend(old_waitkey);
 }
 
-TEST(Highgui_TEST, imshow_throws_on_unsupported_depth)
+TEST(Highgui_TEST, lite_mode_keeps_backend_unregistered_by_default)
 {
-    const detail::ImshowFn old_imshow = detail::imshow_dispatch();
-    detail::register_imshow_backend(&detail::imshow_fallback);
-
-    Mat fp32({2, 2}, CV_32FC1);
-    EXPECT_THROW(imshow("bad_depth", fp32), Exception);
-
-    detail::register_imshow_backend(old_imshow);
+    EXPECT_FALSE(detail::is_imshow_backend_registered());
+    EXPECT_FALSE(detail::is_waitkey_backend_registered());
+    detail::ensure_highgui_backends_registered_once();
+    EXPECT_FALSE(detail::is_imshow_backend_registered());
+    EXPECT_FALSE(detail::is_waitkey_backend_registered());
 }

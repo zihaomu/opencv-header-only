@@ -72,6 +72,12 @@ inline Mat ensure_supported_u8_image(const Mat& input)
     return Mat();
 }
 
+inline void throw_imshow_backend_unavailable()
+{
+    CV_Error(Error::StsError,
+             "imshow backend is unavailable at runtime. Use imwrite(\"out.png\", mat) as temporary replacement.");
+}
+
 inline void blit_center(const Mat& src, Mat& dst)
 {
     CV_Assert(src.depth() == dst.depth());
@@ -221,10 +227,11 @@ void imshow_backend(const std::string& winname, const Mat& mat)
         BitmapWindow::show(winname.c_str(), bmp.data());
         return;
     }
-    imshow_fallback(winname, image);
-    return;
+    (void)winname;
+    (void)image;
+    throw_imshow_backend_unavailable();
 #elif defined(__linux__) && !defined(__ANDROID__)
-    static display_fb dpy;
+    display_fb dpy;
     if (dpy.open() == 0)
     {
         const int dpy_w = dpy.get_width();
@@ -251,11 +258,13 @@ void imshow_backend(const std::string& winname, const Mat& mat)
             }
         }
     }
-    imshow_fallback(winname, image);
-    return;
+    (void)winname;
+    (void)image;
+    throw_imshow_backend_unavailable();
 #else
-    imshow_fallback(winname, image);
-    return;
+    (void)winname;
+    (void)image;
+    throw_imshow_backend_unavailable();
 #endif
 }
 
@@ -277,12 +286,8 @@ int waitkey_backend(int delay)
 
 void register_highgui_backends()
 {
-    static bool initialized = []() {
-        detail::register_imshow_backend(&detail::imshow_backend);
-        detail::register_waitkey_backend(&detail::waitkey_backend);
-        return true;
-    }();
-    (void)initialized;
+    detail::register_imshow_backend(&detail::imshow_backend);
+    detail::register_waitkey_backend(&detail::waitkey_backend);
 }
 
 }  // namespace cvh

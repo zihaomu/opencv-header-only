@@ -90,6 +90,7 @@ if(CVH_BUILD_TESTS)
     )
 
     add_executable(cvh_test_imgproc
+        test/imgproc/imgproc_header_layout_test.cpp
         test/imgproc/imgproc_resize_contract_test.cpp
         test/imgproc/imgproc_cvtcolor_contract_test.cpp
         test/imgproc/imgproc_threshold_contract_test.cpp
@@ -118,6 +119,18 @@ if(CVH_BUILD_TESTS)
     )
 
     if(TARGET cvh_legacy_core)
+        add_executable(cvh_test_highgui_full
+            test/highgui/highgui_full_backend_test.cpp
+        )
+        target_link_libraries(cvh_test_highgui_full PRIVATE cvh::legacy_core gtest_main)
+        target_compile_features(cvh_test_highgui_full PRIVATE cxx_std_17)
+        target_compile_definitions(cvh_test_highgui_full PRIVATE M_ROOT_PATH="${CMAKE_CURRENT_SOURCE_DIR}")
+        target_include_directories(cvh_test_highgui_full PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/test
+        )
+
         add_executable(cvh_legacy_core_smoke test/smoke/cvh_legacy_core_smoke.cpp)
         target_link_libraries(cvh_legacy_core_smoke PRIVATE cvh::legacy_core)
 
@@ -139,6 +152,7 @@ if(CVH_BUILD_TESTS)
         add_test(NAME cvh_test_imgcodecs COMMAND cvh_test_imgcodecs)
         add_test(NAME cvh_test_highgui COMMAND cvh_test_highgui)
         if(TARGET cvh_legacy_core)
+            add_test(NAME cvh_test_highgui_full COMMAND cvh_test_highgui_full)
             add_test(NAME cvh_legacy_core_smoke COMMAND cvh_legacy_core_smoke)
             add_test(NAME cvh_mode_full_smoke COMMAND cvh_mode_full_smoke)
             add_test(NAME cvh_resize_dispatch_full_smoke COMMAND cvh_resize_dispatch_full_smoke)
