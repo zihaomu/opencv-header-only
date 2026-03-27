@@ -6,6 +6,8 @@
 #ifndef CVH_SYSTEM_H
 #define CVH_SYSTEM_H
 
+#include "../detail/config.h"
+
 #ifndef __cplusplus
 #  error system.hpp header must be compiled as C++
 #endif
@@ -236,5 +238,9 @@ raise an error (see cvh::error). The macro CV_Assert checks the condition in bot
 #define M_PRINT_DBG_(code, args) cvh::debug(code, cvh::format args, CV_Func, __FILE__, __LINE__)
 
 }
+
+#if defined(CVH_LITE)
+#include "./system.inl.h"
+#endif
 
 #endif //CVH_SYSTEM_H

@@ -5,6 +5,25 @@
 
 namespace cvh {
 
+struct Point
+{
+    int x;
+    int y;
+
+    Point() : x(0), y(0) {}
+    Point(int x_, int y_) : x(x_), y(y_) {}
+};
+
+inline bool operator==(const Point& lhs, const Point& rhs)
+{
+    return lhs.x == rhs.x && lhs.y == rhs.y;
+}
+
+inline bool operator!=(const Point& lhs, const Point& rhs)
+{
+    return !(lhs == rhs);
+}
+
 struct Size
 {
     int width;

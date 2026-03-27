@@ -1,0 +1,63 @@
+{
+  "generated_by": "scripts/sync_opencv_imgcodecs_cases.py",
+  "opencv_extra_root": "/home/moo/work/github/opencv_extra-4.x",
+  "opencv_extra_testdata_root": "/home/moo/work/github/opencv_extra-4.x/testdata",
+  "fixtures": [
+    {
+      "relative_path": "highgui/readwrite/test_1_c3.png",
+      "optional": false,
+      "source_file": "/home/moo/work/github/opencv_extra-4.x/testdata/highgui/readwrite/test_1_c3.png",
+      "snapshot_file": "test/imgcodecs/data/opencv_extra/highgui/readwrite/test_1_c3.png",
+      "size": 11274,
+      "sha256": "8aaef756590fd9b78bbdf0ea86b5b6e453d1f98b379fae2293cc10d5a595b09d"
+    },
+    {
+      "relative_path": "highgui/readwrite/test_1_c3.jpg",
+      "optional": false,
+      "source_file": "/home/moo/work/github/opencv_extra-4.x/testdata/highgui/readwrite/test_1_c3.jpg",
+      "snapshot_file": "test/imgcodecs/data/opencv_extra/highgui/readwrite/test_1_c3.jpg",
+      "size": 11695,
+      "sha256": "2dbe727d419cc8dd84c742ff1c17318dc6caa5aa598dc5d5f3fd3b0fd6c99725"
+    },
+    {
+      "relative_path": "highgui/readwrite/test_rgba_scale.bmp",
+      "optional": false,
+      "source_file": "/home/moo/work/github/opencv_extra-4.x/testdata/highgui/readwrite/test_rgba_scale.bmp",
+      "snapshot_file": "test/imgcodecs/data/opencv_extra/highgui/readwrite/test_rgba_scale.bmp",
+      "size": 1162,
+      "sha256": "304a9ac447cbef95c8a6553e431d9c5ab0cfc3f912ff48eed73861543d1177cb"
+    },
+    {
+      "relative_path": "highgui/readwrite/color_palette_alpha.png",
+      "optional": false,
+      "source_file": "/home/moo/work/github/opencv_extra-4.x/testdata/highgui/readwrite/color_palette_alpha.png",
+      "snapshot_file": "test/imgcodecs/data/opencv_extra/highgui/readwrite/color_palette_alpha.png",
+      "size": 121,
+      "sha256": "5da26170e10ccdc6f56f77099821aeb8d7fe631972a7fc7e431ff088283a16da"
+    },
+    {
+      "relative_path": "highgui/readwrite/color_palette_no_alpha.png",
+      "optional": false,
+      "source_file": "/home/moo/work/github/opencv_extra-4.x/testdata/highgui/readwrite/color_palette_no_alpha.png",
+      "snapshot_file": "test/imgcodecs/data/opencv_extra/highgui/readwrite/color_palette_no_alpha.png",
+      "size": 105,
+      "sha256": "97d4b976a4bb0bb6ad5a1d2da25081cc38ac6bdd87e80aab3b7a504f396277a0"
+    },
+    {
+      "relative_path": "highgui/gifsuite/g04n3p04.gif",
+      "optional": false,
+      "source_file": "/home/moo/work/github/opencv_extra-4.x/testdata/highgui/gifsuite/g04n3p04.gif",
+      "snapshot_file": "test/imgcodecs/data/opencv_extra/highgui/gifsuite/g04n3p04.gif",
+      "size": 1114,
+      "sha256": "4e112f4d0542fce7478d2505a1ab4111d683e024c842758bb4a183fce3d6e8e2"
+    },
+    {
+      "relative_path": "cv/grabcut/image1652.ppm",
+      "optional": false,
+      "source_file": "/home/moo/work/github/opencv_extra-4.x/testdata/cv/grabcut/image1652.ppm",
+      "snapshot_file": "test/imgcodecs/data/opencv_extra/cv/grabcut/image1652.ppm",
+      "size": 67515,
+      "sha256": "23a66767b2920a57eecac01e8ffba8c8f62f0e7b885f0aa5428865705861c799"
+    }
+  ]
+}

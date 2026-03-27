@@ -33,6 +33,7 @@ set(CVH_LEGACY_CORE_SOURCES
     src/core/mat_convert.cpp
     src/core/system.cpp
     src/core/utils.cpp
+    src/imgproc/resize_backend.cpp
 )
 
 if(CVH_ENABLE_FULL_BACKEND)
@@ -63,26 +64,64 @@ if(CVH_BUILD_TESTS)
     add_executable(cvh_mode_lite_smoke test/smoke/cvh_mode_smoke.cpp)
     target_link_libraries(cvh_mode_lite_smoke PRIVATE cvh::headers)
 
+    add_executable(cvh_lite_pipeline_smoke test/smoke/cvh_lite_pipeline_smoke.cpp)
+    target_link_libraries(cvh_lite_pipeline_smoke PRIVATE cvh::headers)
+
+    add_executable(cvh_resize_dispatch_lite_smoke test/smoke/cvh_resize_dispatch_smoke.cpp)
+    target_link_libraries(cvh_resize_dispatch_lite_smoke PRIVATE cvh::headers)
+
+    add_executable(cvh_test_imgcodecs
+        test/imgcodecs/imgcodecs_format_test.cpp
+    )
+    target_link_libraries(cvh_test_imgcodecs PRIVATE cvh::headers gtest_main)
+    target_compile_features(cvh_test_imgcodecs PRIVATE cxx_std_17)
+    target_compile_definitions(cvh_test_imgcodecs PRIVATE M_ROOT_PATH="${CMAKE_CURRENT_SOURCE_DIR}")
+    target_include_directories(cvh_test_imgcodecs PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/test
+    )
+
+    add_executable(cvh_test_imgproc
+        test/imgproc/imgproc_resize_contract_test.cpp
+        test/imgproc/imgproc_cvtcolor_contract_test.cpp
+        test/imgproc/imgproc_threshold_contract_test.cpp
+        test/imgproc/imgproc_pipeline_regression_test.cpp
+        test/imgproc/imgproc_filter_contract_test.cpp
+    )
+    target_link_libraries(cvh_test_imgproc PRIVATE cvh::headers gtest_main)
+    target_compile_features(cvh_test_imgproc PRIVATE cxx_std_17)
+    target_compile_definitions(cvh_test_imgproc PRIVATE M_ROOT_PATH="${CMAKE_CURRENT_SOURCE_DIR}")
+    target_include_directories(cvh_test_imgproc PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/test
+    )
+
     if(TARGET cvh_legacy_core)
         add_executable(cvh_legacy_core_smoke test/smoke/cvh_legacy_core_smoke.cpp)
         target_link_libraries(cvh_legacy_core_smoke PRIVATE cvh::legacy_core)
 
-        add_executable(cvh_lite_pipeline_smoke test/smoke/cvh_lite_pipeline_smoke.cpp)
-        target_link_libraries(cvh_lite_pipeline_smoke PRIVATE cvh::legacy_core)
-
         add_executable(cvh_mode_full_smoke test/smoke/cvh_mode_smoke.cpp)
         target_compile_definitions(cvh_mode_full_smoke PRIVATE CVH_EXPECT_FULL=1)
         target_link_libraries(cvh_mode_full_smoke PRIVATE cvh::full)
+
+        add_executable(cvh_resize_dispatch_full_smoke test/smoke/cvh_resize_dispatch_smoke.cpp)
+        target_compile_definitions(cvh_resize_dispatch_full_smoke PRIVATE CVH_EXPECT_FULL=1)
+        target_link_libraries(cvh_resize_dispatch_full_smoke PRIVATE cvh::full)
     endif()
 
     if(BUILD_TESTING)
         add_test(NAME cvh_header_compile_smoke COMMAND cvh_header_compile_smoke)
         add_test(NAME cvh_include_only_smoke COMMAND cvh_include_only_smoke)
         add_test(NAME cvh_mode_lite_smoke COMMAND cvh_mode_lite_smoke)
+        add_test(NAME cvh_lite_pipeline_smoke COMMAND cvh_lite_pipeline_smoke)
+        add_test(NAME cvh_resize_dispatch_lite_smoke COMMAND cvh_resize_dispatch_lite_smoke)
+        add_test(NAME cvh_test_imgcodecs COMMAND cvh_test_imgcodecs)
         if(TARGET cvh_legacy_core)
             add_test(NAME cvh_legacy_core_smoke COMMAND cvh_legacy_core_smoke)
-            add_test(NAME cvh_lite_pipeline_smoke COMMAND cvh_lite_pipeline_smoke)
             add_test(NAME cvh_mode_full_smoke COMMAND cvh_mode_full_smoke)
+            add_test(NAME cvh_resize_dispatch_full_smoke COMMAND cvh_resize_dispatch_full_smoke)
         endif()
     endif()
 

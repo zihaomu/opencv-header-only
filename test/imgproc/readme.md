@@ -1,33 +1,48 @@
-# `test/imgproc` 目录规划
+# `test/imgproc` 说明
 
-## 目录职责
+## 当前覆盖范围（v1）
 
-验证 `imgproc` 模块算法正确性、边界行为和格式兼容性。
+基于当前 `include/cvh/imgproc/imgproc.h` 能力，单测覆盖：
 
-## 覆盖范围
+- `resize`：`INTER_NEAREST` / `INTER_NEAREST_EXACT` / `INTER_LINEAR`
+- `cvtColor`：`COLOR_BGR2GRAY` / `COLOR_GRAY2BGR`
+- `threshold`：`THRESH_BINARY` / `THRESH_BINARY_INV`
+- `boxFilter/blur`：`CV_8U`、`BORDER_REPLICATE/BORDER_CONSTANT/BORDER_REFLECT_101`
+- `GaussianBlur`：odd `ksize` + `sigma` 基础路径，含 `BORDER_ISOLATED` 位兼容
+- 真实图像 pipeline 回归：`imread -> resize -> cvtColor -> threshold`
 
-- 颜色转换：`BGR<->RGB`、`BGR<->GRAY`。
-- 几何变换：`resize`、`warpAffine`（按阶段推进）。
-- 滤波：`blur`、`GaussianBlur`、`Sobel`（按模块成熟度推进）。
+## 数据来源
 
-## 阶段计划
+样本从本地 `opencv_extra-4.x/testdata` 同步到：
 
-### P1：基础验证
+- `test/imgproc/data/opencv_extra`
+- `test/imgproc/data/manifest.json`
 
-- 先用小尺寸固定矩阵验证像素级 correctness。
-- 固定边界模式和数值容差策略。
+同步命令：
 
-### P2：真实图像回归
+```bash
+python3 scripts/sync_opencv_imgproc_fixtures.py
+```
 
-- 引入典型分辨率图片测试。
-- 覆盖多通道与多数据类型路径（优先 `CV_8U` / `CV_32F`）。
+可选同步大图（如 `lena.png`）：
 
-### P3：稳定性与兼容性
+```bash
+python3 scripts/sync_opencv_imgproc_fixtures.py --with-large
+```
 
-- 增加随机输入与边界输入测试。
-- 增加与参考实现（OpenCV）差分测试。
+## upstream 测试片段追踪
 
-## 完成定义（DoD）
+从 `opencv/modules/imgproc/test` 截取对应 TEST 块快照到：
 
-- 每个已公开 `imgproc` API 都有对应测试文件。
-- 错误行为（不支持类型、非法参数）有明确断言。
+- `test/upstream/opencv/imgproc/<opencv-commit>/`
+- `test/upstream/opencv/imgproc/case_manifest.json`
+
+同步命令：
+
+```bash
+python3 scripts/sync_opencv_imgproc_cases.py
+```
+
+## 当前仍待对齐的 upstream case
+
+当前 `case_manifest` 中已无 pending 项（当前同步集 7/7 为 `PASS_NOW`）。

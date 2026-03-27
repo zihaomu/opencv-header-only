@@ -1,31 +1,30 @@
-# `test/imgcodecs` 目录规划
+# `test/imgcodecs` 说明
 
-## 目录职责
+## 当前覆盖范围
 
-验证 `imgcodecs` 的读写正确性、格式支持边界和异常处理行为。
+基于 `include/cvh/3rdparty/std/stb_image.h` 与当前 `imgcodecs.h` 实现，单测覆盖：
 
-## 阶段计划
+- 读取：`png/jpg/bmp/gif/ppm`
+- 写入：`png/jpg/bmp`
+- 可选读取：`hdr`
 
-### P1：最小链路验证
+## 数据来源
 
-- `imread`/`imwrite` 基础 round-trip 测试。
-- 覆盖 `png/jpg` 主路径。
+样本从本地 `opencv_extra-4.x/testdata` 同步到本仓库：
 
-### P2：异常与边界
+- 目标目录：`test/imgcodecs/data/opencv_extra`
+- 同步脚本：`scripts/sync_opencv_imgcodecs_cases.py`
 
-- 路径不存在、格式不支持、空图像等失败场景。
-- 通道数与类型约束检查。
+## 使用方式
 
-### P3：兼容性回归
+```bash
+python3 scripts/sync_opencv_imgcodecs_cases.py
+```
 
-- 跨平台路径与文件系统行为验证。
-- 与 OpenCV 结果做关键 case 差分。
+如需额外同步可选 HDR 样本：
 
-## 测试数据策略
+```bash
+python3 scripts/sync_opencv_imgcodecs_cases.py --with-hdr
+```
 
-- 小尺寸固定图片入仓库，便于快速回归。
-- 大图片只在可选性能测试中使用，避免拖慢单测。
-
-## 完成定义（DoD）
-
-- `imgcodecs` 已公开 API 都有成功和失败路径测试。
+脚本会生成 `test/imgcodecs/data/manifest.json` 记录来源、大小和哈希。

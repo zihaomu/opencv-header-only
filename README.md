@@ -61,8 +61,10 @@ CVH_WARNING_BUDGET=0 ./scripts/ci_core_basic.sh
 
 - `cvh_header_compile_smoke`
 - `cvh_include_only_smoke`
-- `cvh_lite_pipeline_smoke`（当前依赖 `cvh::legacy_core`，验证链路：`imread -> resize -> cvtColor -> threshold -> imwrite`）
+- `cvh_lite_pipeline_smoke`（纯头文件链路，验证：`imread -> resize -> cvtColor -> threshold -> imwrite`）
+- `cvh_resize_dispatch_lite_smoke`（Lite 下 `resize/cvtColor/threshold` dispatch 入口保持 fallback）
 - `cvh_mode_lite_smoke`
 - `cvh_mode_full_smoke`（仅 Full backend 构建时）
+- `cvh_resize_dispatch_full_smoke`（仅 Full backend 构建时，验证 `resize/cvtColor/threshold` backend 注册生效）
 - `cvh_legacy_core_smoke`（仅 Full backend 构建时）
 - `cvh_test_core`（仅 Full backend 构建时）

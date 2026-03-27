@@ -1,6 +1,6 @@
 # Dual-Mode 落地差距跟踪（CVH_LITE / CVH_FULL）
 
-- 更新时间：2026-03-25
+- 更新时间：2026-03-27
 - 目标来源：`doc/design.md`
 
 ## 本次已落地（PR-0 + PR-1 Lite 最小链路）
@@ -41,22 +41,33 @@
   - `imwrite`
 - 新增 Lite 端到端 smoke：
   - `cvh_lite_pipeline_smoke`（`imread -> resize -> cvtColor -> threshold -> imwrite`）
-  - 现阶段该 smoke 仍链接 `cvh::legacy_core`（根因：`Mat`/`system` 尚未完全 header-only）
+  - 该 smoke 已切为纯头文件目标（仅链接 `cvh::headers`）
+
+6. Lite 基础设施闭环（2026-03-27）
+
+- `Mat` 在 `CVH_LITE` 下提供头文件实现（不依赖 `src/core/mat*.cpp`）
+- `system` 在 `CVH_LITE` 下提供头文件实现（`error/format/Exception` 等）
+- `cvh_include_only_smoke` 新增 `Mat create/setTo/clone/pixelPtr` 运行校验
+
+7. PR-2 dispatch 样板已启动（2026-03-27）
+
+- `resize/cvtColor/threshold` 改为 `fallback + dispatch + backend 注册` 三层结构
+- Full backend 新增 `register_all_backends()`，由 API 首次调用懒加载注册
+- 新增 `cvh_resize_dispatch_lite_smoke / cvh_resize_dispatch_full_smoke` 验证 Lite/Full 语义与注册状态
 
 ## 当前差距（相对 design.md）
 
-1. Lite 真实无链接运行仍未达成
+1. Lite 能力覆盖仍未完成
 
-- `imgproc/imgcodecs` fallback API 已落地，但运行仍依赖 `cvh::legacy_core`（`Mat` 当前仍主要在 `src/core/*.cpp`）。
-- 仍缺少 `GaussianBlur/boxFilter` 的 Lite fallback 落地。
+- `imgproc/imgcodecs` 最小链路已可纯头运行，但仍缺少 `GaussianBlur/boxFilter` 的 Lite fallback。
 
-2. dispatch/registry 机制尚未开始
+2. dispatch/registry 机制已启动但覆盖面不足
 
-- 目前仍是传统直接实现方式，尚未引入算子级 fallback + backend 注册模型。
+- 当前 `resize/cvtColor/threshold` 已完成样板，其他算子仍未切到统一 dispatch 管线。
 
-3. imgproc/imgcodecs 仍是占位
+3. imgproc/imgcodecs 覆盖仍有限
 
-- `include/cvh/imgproc`、`include/cvh/imgcodecs` 只有 readme，无稳定 API。
+- 已有最小稳定 API（`resize/cvtColor/threshold/imread/imwrite`），但缺少更广算子族与行为对齐测试。
 
 4. upstream channel 案例仍全部处于 manifest pending
 

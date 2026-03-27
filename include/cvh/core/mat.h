@@ -5,6 +5,8 @@
 #ifndef CVH_MAT_H
 #define CVH_MAT_H
 
+#include "../detail/config.h"
+
 #include <iostream>
 #include <assert.h>
 #include <string>
@@ -394,5 +396,9 @@ Mat gemm(const Mat& a, const Mat& b, const Mat& b_scales, bool transA = false, b
 }
 
 #include "./mat.inl.h"
+
+#if defined(CVH_LITE)
+#include "./mat_lite_impl.h"
+#endif
 
 #endif //CVH_MAT_H
