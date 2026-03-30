@@ -9,6 +9,14 @@
 - `core` 示例：`Mat` 创建、类型转换、基础算子。
 - `imgproc` 示例：颜色转换、resize、滤波。
 - `imgcodecs` 示例：读图 -> 处理 -> 写图。
+- `highgui` 示例：`imshow + waitKey` 弹窗验证。
+
+## 当前可运行示例
+
+- `highgui_imshow.cpp`：
+  - 传入图片路径：读取并弹窗显示。
+  - 不传参：自动生成测试图并弹窗显示。
+  - 可选第二参数 `wait_ms`：控制 `waitKey(wait_ms)`（`0` 为一直等待）。
 
 ## 阶段计划
 

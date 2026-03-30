@@ -56,6 +56,16 @@ if(CVH_ENABLE_FULL_BACKEND)
             ${CMAKE_CURRENT_SOURCE_DIR}/src/core/kernel
             ${CMAKE_CURRENT_SOURCE_DIR}/include/cvh/3rdparty/xsimd/include
     )
+
+    add_executable(cvh_example_highgui_imshow
+        example/highgui_imshow.cpp
+    )
+    target_link_libraries(cvh_example_highgui_imshow PRIVATE cvh::full)
+    target_compile_features(cvh_example_highgui_imshow PRIVATE cxx_std_17)
+    target_include_directories(cvh_example_highgui_imshow PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
 endif()
 
 if(CVH_BUILD_TESTS)
