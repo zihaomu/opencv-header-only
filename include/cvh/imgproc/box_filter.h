@@ -69,7 +69,7 @@ inline void boxFilter_fallback(const Mat& src, Mat& dst, int ddepth, Size ksize,
             uchar* dst_px = dst_row + static_cast<size_t>(x) * channels;
             for (int c = 0; c < channels; ++c)
             {
-                int64_t sum = 0;
+                int64 sum = 0;
                 for (int ky = 0; ky < ksize.height; ++ky)
                 {
                     const int sy = y + ky - anchor_y;
@@ -88,7 +88,7 @@ inline void boxFilter_fallback(const Mat& src, Mat& dst, int ddepth, Size ksize,
                         {
                             continue;
                         }
-                        sum += static_cast<int64_t>(src_row[static_cast<size_t>(src_x) * channels + c]);
+                        sum += static_cast<int64>(src_row[static_cast<size_t>(src_x) * channels + c]);
                     }
                 }
 

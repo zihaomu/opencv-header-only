@@ -53,8 +53,11 @@ using uchar = unsigned char;
 using schar = signed char;
 using ushort = unsigned short;
 using uint = unsigned int;
-using uint64 = unsigned long int;
-using int64 = long int;
+using uint64 = std::uint64_t;
+using int64 = std::int64_t;
+
+static_assert(sizeof(uint64) == 8, "cvh::uint64 must be 64-bit on all platforms");
+static_assert(sizeof(int64) == 8, "cvh::int64 must be 64-bit on all platforms");
 
 /****************************************************************************************\
 *                                  Matrix type (Mat)                                     *
