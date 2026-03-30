@@ -1,6 +1,7 @@
 #include "cvh/core/basic_op.h"
 #include "cvh/core/saturate.h"
 
+#include <cmath>
 #include <type_traits>
 
 namespace cvh
@@ -549,7 +550,265 @@ void dispatch_mat_mat_compare(const Mat& a, const Mat& b, Mat& dst, int op, cons
     }
 }
 
+template<typename Op>
+void dispatch_mat_mat_integral_binary(const Mat& a, const Mat& b, Mat& dst, Op op, const char* fn_name)
+{
+    ensure_same_type_and_shape(a, b, fn_name);
+    ensure_binary_dst_like_src(a, dst, fn_name);
+
+    switch (a.depth())
+    {
+        case CV_8U:
+            apply_mat_mat_binary_impl<uchar>(a, b, dst, op);
+            break;
+        case CV_8S:
+            apply_mat_mat_binary_impl<schar>(a, b, dst, op);
+            break;
+        case CV_16U:
+            apply_mat_mat_binary_impl<ushort>(a, b, dst, op);
+            break;
+        case CV_16S:
+            apply_mat_mat_binary_impl<short>(a, b, dst, op);
+            break;
+        case CV_32S:
+            apply_mat_mat_binary_impl<int>(a, b, dst, op);
+            break;
+        case CV_32U:
+            apply_mat_mat_binary_impl<uint>(a, b, dst, op);
+            break;
+        default:
+            CV_Error_(Error::StsNotImplemented,
+                      ("%s supports integral depth only, depth=%d", fn_name, a.depth()));
+    }
+}
+
+template<typename T>
+inline T integer_mod_divisor_sign(T lhs, T rhs)
+{
+    if (rhs == 0)
+    {
+        return T(0);
+    }
+
+    T rem = static_cast<T>(lhs % rhs);
+    if (rem != 0 && ((rem > 0) != (rhs > 0)))
+    {
+        rem = static_cast<T>(rem + rhs);
+    }
+    return rem;
+}
+
+template<typename T>
+inline T integer_bitshift_value(T lhs, T rhs)
+{
+    using U = typename std::make_unsigned<T>::type;
+
+    const int bit_count = static_cast<int>(sizeof(T) * 8);
+    const long long s = static_cast<long long>(rhs);
+    if (s >= 0)
+    {
+        if (s >= bit_count)
+        {
+            return T(0);
+        }
+        const U shifted = static_cast<U>(static_cast<U>(lhs) << static_cast<int>(s));
+        return static_cast<T>(shifted);
+    }
+
+    const long long rs = -s;
+    if (rs >= bit_count)
+    {
+        return T(0);
+    }
+    const U shifted = static_cast<U>(static_cast<U>(lhs) >> static_cast<int>(rs));
+    return static_cast<T>(shifted);
+}
+
+template<typename T>
+inline auto floating_mod_dividend_sign(T lhs, T rhs)
+{
+    if constexpr (std::is_integral<T>::value)
+    {
+        if (rhs == 0)
+        {
+            return T(0);
+        }
+        return static_cast<T>(lhs % rhs);
+    }
+    else if constexpr (std::is_same<T, hfloat>::value)
+    {
+        const float r = static_cast<float>(rhs);
+        if (r == 0.0f)
+        {
+            return 0.0f;
+        }
+        return std::fmod(static_cast<float>(lhs), r);
+    }
+    else
+    {
+        if (rhs == static_cast<T>(0))
+        {
+            return static_cast<T>(0);
+        }
+        return static_cast<T>(std::fmod(static_cast<double>(lhs), static_cast<double>(rhs)));
+    }
+}
+
 } // namespace
+
+void binaryFunc(BinaryOp op, const Mat& a, const Mat& b, Mat& c)
+{
+    switch (op)
+    {
+        case BinaryOp::ADD:
+            add(a, b, c);
+            return;
+        case BinaryOp::SUB:
+            subtract(a, b, c);
+            return;
+        case BinaryOp::MUL:
+            multiply(a, b, c);
+            return;
+        case BinaryOp::DIV:
+            divide(a, b, c);
+            return;
+        case BinaryOp::SUM:
+            add(a, b, c);
+            return;
+        case BinaryOp::EQUAL:
+            compare(a, b, c, CV_CMP_EQ);
+            return;
+        case BinaryOp::GREATER:
+            compare(a, b, c, CV_CMP_GT);
+            return;
+        case BinaryOp::GREATER_EQUAL:
+            compare(a, b, c, CV_CMP_GE);
+            return;
+        case BinaryOp::LESS:
+            compare(a, b, c, CV_CMP_LT);
+            return;
+        case BinaryOp::LESS_EQUAL:
+            compare(a, b, c, CV_CMP_LE);
+            return;
+        case BinaryOp::AND:
+            dispatch_mat_mat_integral_binary(
+                a,
+                b,
+                c,
+                [](const auto& lhs, const auto& rhs) { return lhs & rhs; },
+                "binaryFunc(AND)");
+            return;
+        case BinaryOp::OR:
+            dispatch_mat_mat_integral_binary(
+                a,
+                b,
+                c,
+                [](const auto& lhs, const auto& rhs) { return lhs | rhs; },
+                "binaryFunc(OR)");
+            return;
+        case BinaryOp::XOR:
+            dispatch_mat_mat_integral_binary(
+                a,
+                b,
+                c,
+                [](const auto& lhs, const auto& rhs) { return lhs ^ rhs; },
+                "binaryFunc(XOR)");
+            return;
+        case BinaryOp::MOD:
+            dispatch_mat_mat_integral_binary(
+                a,
+                b,
+                c,
+                [](const auto& lhs, const auto& rhs) { return integer_mod_divisor_sign(lhs, rhs); },
+                "binaryFunc(MOD)");
+            return;
+        case BinaryOp::BITSHIFT:
+            dispatch_mat_mat_integral_binary(
+                a,
+                b,
+                c,
+                [](const auto& lhs, const auto& rhs) { return integer_bitshift_value(lhs, rhs); },
+                "binaryFunc(BITSHIFT)");
+            return;
+        case BinaryOp::POW:
+            dispatch_mat_mat_binary(
+                a,
+                b,
+                c,
+                [](const auto& lhs, const auto& rhs) {
+                    return std::pow(static_cast<double>(lhs), static_cast<double>(rhs));
+                },
+                "binaryFunc(POW)");
+            return;
+        case BinaryOp::MAX:
+            dispatch_mat_mat_binary(
+                a,
+                b,
+                c,
+                [](const auto& lhs, const auto& rhs) { return lhs > rhs ? lhs : rhs; },
+                "binaryFunc(MAX)");
+            return;
+        case BinaryOp::MIN:
+            dispatch_mat_mat_binary(
+                a,
+                b,
+                c,
+                [](const auto& lhs, const auto& rhs) { return lhs < rhs ? lhs : rhs; },
+                "binaryFunc(MIN)");
+            return;
+        case BinaryOp::ATAN2:
+            dispatch_mat_mat_binary(
+                a,
+                b,
+                c,
+                [](const auto& lhs, const auto& rhs) {
+                    return std::atan2(static_cast<double>(lhs), static_cast<double>(rhs));
+                },
+                "binaryFunc(ATAN2)");
+            return;
+        case BinaryOp::HYPOT:
+            dispatch_mat_mat_binary(
+                a,
+                b,
+                c,
+                [](const auto& lhs, const auto& rhs) {
+                    return std::hypot(static_cast<double>(lhs), static_cast<double>(rhs));
+                },
+                "binaryFunc(HYPOT)");
+            return;
+        case BinaryOp::NOT:
+            dispatch_mat_mat_integral_binary(
+                a,
+                b,
+                c,
+                [](const auto& lhs, const auto& rhs) {
+                    using T = std::decay_t<decltype(lhs)>;
+                    return static_cast<T>(static_cast<T>(lhs) & static_cast<T>(~rhs));
+                },
+                "binaryFunc(NOT)");
+            return;
+        case BinaryOp::FMOD:
+            dispatch_mat_mat_binary(
+                a,
+                b,
+                c,
+                [](const auto& lhs, const auto& rhs) { return floating_mod_dividend_sign(lhs, rhs); },
+                "binaryFunc(FMOD)");
+            return;
+        case BinaryOp::MEAN:
+            dispatch_mat_mat_binary(
+                a,
+                b,
+                c,
+                [](const auto& lhs, const auto& rhs) {
+                    return (static_cast<double>(lhs) + static_cast<double>(rhs)) * 0.5;
+                },
+                "binaryFunc(MEAN)");
+            return;
+        default:
+            CV_Error_(Error::StsNotImplemented, ("binaryFunc: unsupported BinaryOp=%d", static_cast<int>(op)));
+    }
+}
 
 void add(const Mat& a, const Mat& b, Mat& c)
 {

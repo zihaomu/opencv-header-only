@@ -32,13 +32,14 @@ enum BinaryOp
     SUB,
     ADD,
     DIV,
-
-// TODO support the following op.
-//        SUM,
-//        FMOD, // Floating-point Mod. Reminder's sign = Dividend's sign.
-//        MAX,
-//        MEAN,
-//        MIN,
+    MAX,
+    MIN,
+    ATAN2,
+    HYPOT,
+    NOT,  // Bitwise and-not: a & (~b), integral depth only.
+    SUM,  // Alias of ADD.
+    FMOD, // Floating-point mod. Remainder keeps dividend sign.
+    MEAN, // Element-wise arithmetic mean: (a + b) / 2.
 };
 
 void binaryFunc(BinaryOp op, const Mat& a, const Mat& b, Mat& c);

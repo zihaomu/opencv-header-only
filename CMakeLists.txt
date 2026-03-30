@@ -198,6 +198,7 @@ if(CVH_BUILD_TESTS)
     if(TARGET cvh_legacy_core)
         add_executable(cvh_test_core
             test/core/core_ops_test.cpp
+            test/core/binary_op_contract_test.cpp
             test/core/mat_channel_contract_test.cpp
             test/core/mat_layout_semantics_test.cpp
             test/core/mat_shape_display_test.cpp
