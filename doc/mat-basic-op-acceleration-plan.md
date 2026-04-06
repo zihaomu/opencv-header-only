@@ -89,27 +89,33 @@
 - `CV_16F` 的核心 hot path benchmark 有可观提升。
 - `x86` 和非特化平台的现有行为不回退。
 
-### Step 4：扩大“容器语义”的真实覆盖
+### Step 4：明确“容器语义”的边界与基础支持
 
-- `Mat-Scalar` 不再卡死 `channels <= 4`。
-- 给连续内存和常见 interleaved channel 布局做专门快路径。
+- 保持 `channels <= 4` 为主要优化合同。
+- `channels > 4` 如果不影响现有实现，可复用现有逻辑；如果需要单独处理，只提供基础正确实现或稳定 fallback。
+- 给连续内存和常见 interleaved channel 布局做边界梳理。
 - 对 `ROI / submat` 至少做到“明确快慢边界”，别让性能随机。
 
 #### 目的
 
 - 让 `Mat` 作为多 `shape/type/channel` 容器时，性能行为更像“合同”，而不是“碰运气”。
-- 避免通道数、子视图、布局变化导致性能不可预期。
+- 明确 `channels <= 4` 和 `channels > 4` 的不同支持级别，避免边界含混。
+- 避免子视图、布局变化导致性能不可预期。
 
 #### 执行顺序
 
 1. 明确哪些路径保证快，哪些路径允许退回标量。
-2. 对最常见连续布局和 interleaved 布局给专门快路径。
-3. 对 `ROI / submat` 建立最小明确规则，至少让 benchmark 和文档能说明白。
+2. 对 `channels > 4` 明确基础实现/fallback 规则，不把它升级成当前阶段主优化目标。
+3. 对最常见连续布局和 interleaved 布局给专门快路径或明确回退边界。
+4. 对 `ROI / submat` 建立最小明确规则，至少让 benchmark 和文档能说明白。
 
 #### 完成定义
 
-- `Mat-Scalar` 的 SIMD 路径不再只服务 `channels <= 4`。
-- 常见连续多通道 case 有稳定快路径。
+- `channels <= 4` 的主路径保持为优化重点。
+- `channels > 4` 的行为有明确规则：
+  - 能直接复用现有实现的 case 继续支持
+  - 需要单独处理的 case 只要求基础正确实现或稳定 fallback
+- 常见连续多通道 case 有稳定快路径或明确回退边界。
 - `ROI / submat` 的快慢边界有文档、有 benchmark、有测试。
 
 ### Step 5：最后才考虑手写 NEON
@@ -146,7 +152,7 @@
 - `u8/s16/s32 add-sub-mul xsimd`
 - `integer compare xsimd`
 - `arm64 fp16 load/store fast path`
-- `Mat-Scalar channels > 4 coverage`
+- `Mat-Scalar channels > 4 boundary`
 
 每轮固定分为 6 个阶段。
 
@@ -269,7 +275,7 @@
 - `EQ/NE/GT/GE/LT/LE`
 - 先 uniform scalar
 - 再 non-uniform scalar
-- 再 `channels > 4` 扩张前的现有通道模型
+- 再 `channels <= 4` 的现有通道模型
 
 #### P3：ARM fp16 快路径
 
@@ -277,9 +283,10 @@
 - `Mat-Mat` hot path
 - `Mat-Scalar` hot path
 
-#### P4：容器语义扩张
+#### P4：容器语义边界
 
-- `channels > 4`
+- `channels <= 4` 的优化合同固化
+- `channels > 4` 的基础实现/fallback 规则
 - interleaved 常见布局
 - ROI / submat 快慢边界
 
@@ -294,7 +301,7 @@
 | 维度 | 必跑集合 |
 |---|---|
 | `type` | 当前主题相关 type + 相邻 type 1 组 |
-| `channels` | `1`、`3`、`4`，涉及扩张时加 `8` 或更高 |
+| `channels` | `1`、`3`、`4`，做边界验证时加 `8` 或更高 |
 | `shape` | 大 2D、瘦长、带 outer 维的 ND |
 | `layout` | continuous，必要时加 submat / ROI |
 | API 形态 | `Mat-Mat`、`Mat-Scalar`、`Scalar-Mat` |
@@ -596,7 +603,7 @@
 #### 已知残留
 
 - `Mat-Scalar compare` 的 benchmark 仍只暴露 `CMP_GT_MS_*` 指标；如果后续要做 compare 分项调优，建议把 `EQ/NE/GE/LT/LE` 也加进 benchmark 输出。
-- `channels > 4` 仍不在当前 compare SIMD 覆盖范围内，这属于 Step 4 / P4 的容器语义扩张问题。
+- `channels > 4` 仍不在当前 compare SIMD 覆盖范围内；按当前设定，这属于 Step 4 / P4 的边界说明和基础支持问题，不是主优化缺口。
 
 #### 下一步
 
@@ -668,11 +675,78 @@
 
 #### 下一步
 
-- 进入 P4：容器语义扩张
+- 进入 P4：容器语义边界
 - 优先顺序：
-  1. `Mat-Scalar channels > 4`
-  2. 常见 interleaved 多通道连续布局
-  3. `ROI / submat` 的快慢边界说明和验证
+  1. 固化 `channels <= 4` 为主优化合同
+  2. 梳理 `channels > 4` 的基础实现/fallback 规则
+  3. 常见 interleaved 多通道连续布局的边界说明
+  4. `ROI / submat` 的快慢边界说明和验证
+
+### P4：容器语义边界
+
+- 状态：进行中
+- 最近更新时间：2026-04-06
+- 当前目标：
+  - 固化 `channels <= 4` 为主优化合同
+  - 梳理 `channels > 4` 的基础实现/fallback 规则
+  - 明确 layout / ROI 的边界
+
+#### 当前边界结论
+
+- `channels <= 4`
+  - `Mat-Scalar` / `Scalar-Mat`：当前主优化范围
+  - 允许继续做 `xsimd` / `arm64` 专项优化
+- `channels > 4`
+  - `Mat-Mat`：不受这条边界限制，继续按现有实现支持
+  - `Mat-Scalar` / `Scalar-Mat`：当前继续保持拒绝，不扩成主优化目标
+  - `Mat::setTo(Scalar)`：当前继续保持拒绝
+- layout / ROI
+  - continuous interleaved layout：`channels <= 4` 是当前主要优化合同
+  - non-continuous `ROI / submat`：当前首先保证结果正确和边界稳定，不承诺统一命中 SIMD
+  - `channels > 4` 的 `ROI / submat`：当前只要求 `Mat-Mat` 基础可用，不扩到 `Mat-Scalar`
+
+#### 支持矩阵
+
+| API | `channels <= 4` continuous | `channels <= 4` ROI/submat | `channels > 4` continuous | `channels > 4` ROI/submat |
+|---|---|---|---|---|
+| `Mat-Mat` binary / compare | 主路径，已做优化覆盖 | 基础正确，部分 case 已有合同测试 | 基础支持 | 基础支持 |
+| `Mat-Scalar` / `Scalar-Mat` binary / compare | 主路径，已做优化覆盖 | 基础正确，不承诺统一命中 SIMD | 当前拒绝 | 当前拒绝 |
+| `Mat::setTo(Scalar)` | 基础支持 | 基础支持 | 当前拒绝 | 当前拒绝 |
+
+补充说明：
+
+- “主路径”表示这是当前优先优化和持续观测的合同范围。
+- “基础支持”表示要求结果正确、行为稳定，但不承诺优化路径。
+- “当前拒绝”表示按现有设定明确报错，不把它视为当前缺陷。
+
+#### 本轮已完成
+
+- 固化了当前通道边界，不再把 `channels > 4` 作为默认优化扩张方向。
+- 现有测试已经覆盖：
+  - `Mat::setTo(Scalar)` 在 `channels > 4` 时拒绝
+  - `Mat-Scalar` / `Scalar-Mat` 的 binary 和 compare 在 `channels > 4` 时拒绝
+- 新增 `Mat-Mat` 合同测试，验证 `channels > 4` 时：
+  - `add(Mat,Mat)` 继续可用
+  - `compare(Mat,Mat)` 继续可用
+- 新增 `Mat-Mat` 的 non-continuous ROI 合同测试，验证 `channels > 4` 时：
+  - `add(Mat,Mat)` 在 ROI 上继续可用
+  - `compare(Mat,Mat)` 在 ROI 上继续可用
+
+#### 验证结果
+
+- correctness：
+  - `MatScalarOps_TEST.setto_scalar_rejects_more_than_four_channels`
+  - `MatScalarOps_TEST.scalar_binary_and_compare_reject_more_than_four_channels`
+  - `MatScalarOps_TEST.mat_mat_binary_and_compare_still_support_more_than_four_channels`
+  - `MatScalarOps_TEST.mat_mat_non_continuous_roi_still_supports_more_than_four_channels`
+
+#### 下一步
+
+- 继续补 P4 的边界说明，而不是扩张 `channels > 4` 的优化覆盖。
+- 优先顺序：
+  1. 如有必要，为 `channels <= 4` 的 continuous interleaved 主路径补 dispatch 级别观测
+  2. 继续补 `ROI / submat` 的边界合同测试
+  3. 如有必要，再为 `channels > 4` 增加“基础 fallback 明确可用”的补充测试
 
 ## 6. 当前缺口摘要
 
@@ -681,7 +755,14 @@
   - `Mat-Scalar` / `Scalar-Mat`：`CV_8/16/32` 的整数 `ADD/SUB/MUL + compare`
 - `fp16` 在 ARM 上的 half load/store 快路径已补齐，并在 `CV_16F ADD` 热点上验证到明显提升。
 - `fp16 compare` 的 benchmark 观测粒度还不够细，后续如果要继续调优，需要补单独对照。
-- `Mat-Scalar` 对通道数和布局的覆盖还不够像通用容器。
+- 当前通道边界需要按设定明确：
+  - `channels <= 4` 是主要优化范围
+  - `channels > 4` 只要求基础正确实现或稳定 fallback，不作为当前主优化目标
+- 当前通道边界的已知现状：
+  - `Mat-Mat` 在 `channels > 4` 下仍可继续使用现有实现
+  - `Mat-Mat` 在 `channels > 4` 的 non-continuous `ROI / submat` 下也应继续保持基础可用
+  - `Mat-Scalar` / `Scalar-Mat` / `Mat::setTo(Scalar)` 在 `channels > 4` 下继续拒绝
+- `Mat-Scalar` 的布局边界仍需要进一步说明，尤其是 interleaved 连续布局与 `ROI / submat`。
 
 ## 7. 非目标
 

@@ -387,3 +387,89 @@ TEST(MatScalarOps_TEST, scalar_binary_and_compare_reject_more_than_four_channels
     EXPECT_THROW(compare(src, Scalar::all(1.0), dst, CV_CMP_EQ), Exception);
     EXPECT_THROW(compare(Scalar::all(1.0), src, dst, CV_CMP_EQ), Exception);
 }
+
+TEST(MatScalarOps_TEST, mat_mat_binary_and_compare_still_support_more_than_four_channels)
+{
+    Mat a({1, 2}, CV_32SC(5));
+    Mat b({1, 2}, CV_32SC(5));
+
+    int seed = 1;
+    for (int x = 0; x < 2; ++x)
+    {
+        for (int ch = 0; ch < 5; ++ch)
+        {
+            a.at<int>(0, x, ch) = seed + ch;
+            b.at<int>(0, x, ch) = (seed * 2) + ch;
+        }
+        seed += 10;
+    }
+
+    Mat add_out;
+    add(a, b, add_out);
+    ASSERT_EQ(add_out.type(), CV_32SC(5));
+    ASSERT_EQ(add_out.shape(), a.shape());
+
+    Mat cmp_out;
+    compare(a, b, cmp_out, CV_CMP_LT);
+    ASSERT_EQ(cmp_out.type(), CV_8UC(5));
+    ASSERT_EQ(cmp_out.shape(), a.shape());
+
+    for (int x = 0; x < 2; ++x)
+    {
+        for (int ch = 0; ch < 5; ++ch)
+        {
+            const int av = a.at<int>(0, x, ch);
+            const int bv = b.at<int>(0, x, ch);
+            EXPECT_EQ(add_out.at<int>(0, x, ch), av + bv);
+            EXPECT_EQ(cmp_out.at<uchar>(0, x, ch), av < bv ? static_cast<uchar>(255) : static_cast<uchar>(0));
+        }
+    }
+}
+
+TEST(MatScalarOps_TEST, mat_mat_non_continuous_roi_still_supports_more_than_four_channels)
+{
+    Mat a_base({2, 4}, CV_32SC(5));
+    Mat b_base({2, 4}, CV_32SC(5));
+
+    for (int y = 0; y < 2; ++y)
+    {
+        for (int x = 0; x < 4; ++x)
+        {
+            for (int ch = 0; ch < 5; ++ch)
+            {
+                a_base.at<int>(y, x, ch) = 100 * y + 10 * x + ch;
+                b_base.at<int>(y, x, ch) = 1 + y + x + ch;
+            }
+        }
+    }
+
+    Mat a = a_base.colRange(1, 3);
+    Mat b = b_base.colRange(1, 3);
+    ASSERT_FALSE(a.isContinuous());
+    ASSERT_FALSE(b.isContinuous());
+
+    Mat add_out;
+    add(a, b, add_out);
+    ASSERT_EQ(add_out.type(), CV_32SC(5));
+    ASSERT_EQ(add_out.shape(), a.shape());
+
+    Mat cmp_out;
+    compare(a, b, cmp_out, CV_CMP_GE);
+    ASSERT_EQ(cmp_out.type(), CV_8UC(5));
+    ASSERT_EQ(cmp_out.shape(), a.shape());
+
+    for (int y = 0; y < 2; ++y)
+    {
+        for (int x = 0; x < 2; ++x)
+        {
+            const int src_x = x + 1;
+            for (int ch = 0; ch < 5; ++ch)
+            {
+                const int av = 100 * y + 10 * src_x + ch;
+                const int bv = 1 + y + src_x + ch;
+                EXPECT_EQ(add_out.at<int>(y, x, ch), av + bv);
+                EXPECT_EQ(cmp_out.at<uchar>(y, x, ch), av >= bv ? static_cast<uchar>(255) : static_cast<uchar>(0));
+            }
+        }
+    }
+}
