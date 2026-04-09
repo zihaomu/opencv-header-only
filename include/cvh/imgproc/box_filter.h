@@ -4,6 +4,7 @@
 #include "detail/common.h"
 
 #include <cstdint>
+#include <type_traits>
 #include <vector>
 
 namespace cvh {
@@ -11,15 +12,106 @@ namespace detail {
 
 using BoxFilterFn = void (*)(const Mat&, Mat&, int, Size, Point, bool, int);
 
+template <typename T>
+inline void boxFilter_fallback_impl_typed(const Mat& src, Mat& dst, Size ksize, Point anchor, bool normalize, int border_type)
+{
+    Mat src_local;
+    const Mat* src_ref = &src;
+    if (src.data == dst.data)
+    {
+        src_local = src.clone();
+        src_ref = &src_local;
+    }
+
+    const int rows = src_ref->size[0];
+    const int cols = src_ref->size[1];
+    const int channels = src_ref->channels();
+    const size_t src_step = src_ref->step(0);
+
+    dst.create(std::vector<int>{rows, cols}, src_ref->type());
+    const size_t dst_step = dst.step(0);
+
+    const int kernel_area = ksize.width * ksize.height;
+    const double inv_kernel_area = kernel_area > 0 ? (1.0 / static_cast<double>(kernel_area)) : 0.0;
+
+    using AccumT = typename std::conditional<std::is_same<T, uchar>::value, int64, double>::type;
+
+    for (int y = 0; y < rows; ++y)
+    {
+        T* dst_row = reinterpret_cast<T*>(dst.data + static_cast<size_t>(y) * dst_step);
+        for (int x = 0; x < cols; ++x)
+        {
+            T* dst_px = dst_row + static_cast<size_t>(x) * channels;
+            for (int c = 0; c < channels; ++c)
+            {
+                AccumT sum = static_cast<AccumT>(0);
+                for (int ky = 0; ky < ksize.height; ++ky)
+                {
+                    const int sy = y + ky - anchor.y;
+                    const int src_y = border_interpolate(sy, rows, border_type);
+                    if (src_y < 0)
+                    {
+                        continue;
+                    }
+
+                    const T* src_row = reinterpret_cast<const T*>(src_ref->data + static_cast<size_t>(src_y) * src_step);
+                    for (int kx = 0; kx < ksize.width; ++kx)
+                    {
+                        const int sx = x + kx - anchor.x;
+                        const int src_x = border_interpolate(sx, cols, border_type);
+                        if (src_x < 0)
+                        {
+                            continue;
+                        }
+                        sum += static_cast<AccumT>(src_row[static_cast<size_t>(src_x) * channels + c]);
+                    }
+                }
+
+                if constexpr (std::is_same<T, uchar>::value)
+                {
+                    if (normalize)
+                    {
+                        dst_px[c] = saturate_cast<uchar>(static_cast<float>(sum) * static_cast<float>(inv_kernel_area));
+                    }
+                    else
+                    {
+                        dst_px[c] = saturate_cast<uchar>(sum);
+                    }
+                }
+                else
+                {
+                    if (normalize)
+                    {
+                        dst_px[c] = static_cast<float>(sum * inv_kernel_area);
+                    }
+                    else
+                    {
+                        dst_px[c] = static_cast<float>(sum);
+                    }
+                }
+            }
+        }
+    }
+}
+
 inline void boxFilter_fallback(const Mat& src, Mat& dst, int ddepth, Size ksize, Point anchor, bool normalize, int borderType)
 {
     CV_Assert(!src.empty() && "boxFilter: source image can not be empty");
     CV_Assert(src.dims == 2 && "boxFilter: only 2D Mat is supported");
-    CV_Assert(src.depth() == CV_8U && "boxFilter: v1 supports CV_8U only");
 
-    if (ddepth != -1 && ddepth != CV_8U)
+    const int src_depth = src.depth();
+    if (src_depth != CV_8U && src_depth != CV_32F)
     {
-        CV_Error_(Error::StsBadArg, ("boxFilter: unsupported ddepth=%d (only -1/CV_8U)", ddepth));
+        CV_Error_(Error::StsBadArg, ("boxFilter: unsupported src depth=%d", src_depth));
+    }
+
+    const int allowed_ddepth = src_depth == CV_8U ? CV_8U : CV_32F;
+    if (ddepth != -1 && ddepth != allowed_ddepth)
+    {
+        CV_Error_(Error::StsBadArg,
+                  ("boxFilter: unsupported ddepth=%d (only -1/%s)",
+                   ddepth,
+                   src_depth == CV_8U ? "CV_8U" : "CV_32F"));
     }
 
     if (ksize.width <= 0 || ksize.height <= 0)
@@ -42,67 +134,13 @@ inline void boxFilter_fallback(const Mat& src, Mat& dst, int ddepth, Size ksize,
         CV_Error_(Error::StsBadArg, ("boxFilter: unsupported borderType=%d", borderType));
     }
 
-    Mat src_local;
-    const Mat* src_ref = &src;
-    if (src.data == dst.data)
+    if (src_depth == CV_8U)
     {
-        src_local = src.clone();
-        src_ref = &src_local;
+        boxFilter_fallback_impl_typed<uchar>(src, dst, ksize, Point(anchor_x, anchor_y), normalize, border_type);
+        return;
     }
 
-    const int rows = src_ref->size[0];
-    const int cols = src_ref->size[1];
-    const int channels = src_ref->channels();
-    const size_t src_step = src_ref->step(0);
-
-    dst.create(std::vector<int>{rows, cols}, src_ref->type());
-    const size_t dst_step = dst.step(0);
-
-    const int kernel_area = ksize.width * ksize.height;
-    const float inv_kernel_area = kernel_area > 0 ? (1.0f / static_cast<float>(kernel_area)) : 0.0f;
-
-    for (int y = 0; y < rows; ++y)
-    {
-        uchar* dst_row = dst.data + static_cast<size_t>(y) * dst_step;
-        for (int x = 0; x < cols; ++x)
-        {
-            uchar* dst_px = dst_row + static_cast<size_t>(x) * channels;
-            for (int c = 0; c < channels; ++c)
-            {
-                int64 sum = 0;
-                for (int ky = 0; ky < ksize.height; ++ky)
-                {
-                    const int sy = y + ky - anchor_y;
-                    const int src_y = border_interpolate(sy, rows, border_type);
-                    if (src_y < 0)
-                    {
-                        continue;
-                    }
-
-                    const uchar* src_row = src_ref->data + static_cast<size_t>(src_y) * src_step;
-                    for (int kx = 0; kx < ksize.width; ++kx)
-                    {
-                        const int sx = x + kx - anchor_x;
-                        const int src_x = border_interpolate(sx, cols, border_type);
-                        if (src_x < 0)
-                        {
-                            continue;
-                        }
-                        sum += static_cast<int64>(src_row[static_cast<size_t>(src_x) * channels + c]);
-                    }
-                }
-
-                if (normalize)
-                {
-                    dst_px[c] = saturate_cast<uchar>(static_cast<float>(sum) * inv_kernel_area);
-                }
-                else
-                {
-                    dst_px[c] = saturate_cast<uchar>(sum);
-                }
-            }
-        }
-    }
+    boxFilter_fallback_impl_typed<float>(src, dst, ksize, Point(anchor_x, anchor_y), normalize, border_type);
 }
 
 inline BoxFilterFn& boxfilter_dispatch()

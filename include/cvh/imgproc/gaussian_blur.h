@@ -3,12 +3,103 @@
 
 #include "detail/common.h"
 
+#include <type_traits>
 #include <vector>
 
 namespace cvh {
 namespace detail {
 
 using GaussianBlurFn = void (*)(const Mat&, Mat&, Size, double, double, int);
+
+template <typename T>
+inline void gaussian_blur_fallback_impl_typed(const Mat& src,
+                                              Mat& dst,
+                                              int kx,
+                                              int ky,
+                                              double sigmaX,
+                                              double sigmaY,
+                                              int border_type)
+{
+    Mat src_local;
+    const Mat* src_ref = &src;
+    if (src.data == dst.data)
+    {
+        src_local = src.clone();
+        src_ref = &src_local;
+    }
+
+    const int rows = src_ref->size[0];
+    const int cols = src_ref->size[1];
+    const int channels = src_ref->channels();
+    const size_t src_step = src_ref->step(0);
+
+    dst.create(std::vector<int>{rows, cols}, src_ref->type());
+    const size_t dst_step = dst.step(0);
+
+    const std::vector<float> kernel_x = build_gaussian_kernel_1d(kx, sigmaX);
+    const std::vector<float> kernel_y = build_gaussian_kernel_1d(ky, sigmaY);
+    const int rx = kx / 2;
+    const int ry = ky / 2;
+
+    std::vector<float> tmp(static_cast<size_t>(rows) * cols * channels, 0.0f);
+
+    for (int y = 0; y < rows; ++y)
+    {
+        const T* src_row = reinterpret_cast<const T*>(src_ref->data + static_cast<size_t>(y) * src_step);
+        for (int x = 0; x < cols; ++x)
+        {
+            const size_t tmp_base = (static_cast<size_t>(y) * cols + x) * channels;
+            for (int c = 0; c < channels; ++c)
+            {
+                double acc = 0.0;
+                for (int k = 0; k < kx; ++k)
+                {
+                    const int sx = x + k - rx;
+                    const int src_x = border_interpolate(sx, cols, border_type);
+                    if (src_x < 0)
+                    {
+                        continue;
+                    }
+                    acc += static_cast<double>(kernel_x[static_cast<size_t>(k)]) *
+                           static_cast<double>(src_row[static_cast<size_t>(src_x) * channels + c]);
+                }
+                tmp[tmp_base + c] = static_cast<float>(acc);
+            }
+        }
+    }
+
+    for (int y = 0; y < rows; ++y)
+    {
+        T* dst_row = reinterpret_cast<T*>(dst.data + static_cast<size_t>(y) * dst_step);
+        for (int x = 0; x < cols; ++x)
+        {
+            T* out_px = dst_row + static_cast<size_t>(x) * channels;
+            for (int c = 0; c < channels; ++c)
+            {
+                double acc = 0.0;
+                for (int k = 0; k < ky; ++k)
+                {
+                    const int sy = y + k - ry;
+                    const int src_y = border_interpolate(sy, rows, border_type);
+                    if (src_y < 0)
+                    {
+                        continue;
+                    }
+                    const size_t tmp_idx = (static_cast<size_t>(src_y) * cols + x) * channels + c;
+                    acc += static_cast<double>(kernel_y[static_cast<size_t>(k)]) * static_cast<double>(tmp[tmp_idx]);
+                }
+                if constexpr (std::is_same<T, uchar>::value)
+                {
+                    out_px[c] = saturate_cast<uchar>(acc);
+                }
+                else
+                {
+                    out_px[c] = static_cast<float>(acc);
+                }
+            }
+        }
+    }
+}
 
 inline void gaussian_blur_fallback(const Mat& src,
                                    Mat& dst,
@@ -19,7 +110,12 @@ inline void gaussian_blur_fallback(const Mat& src,
 {
     CV_Assert(!src.empty() && "GaussianBlur: source image can not be empty");
     CV_Assert(src.dims == 2 && "GaussianBlur: only 2D Mat is supported");
-    CV_Assert(src.depth() == CV_8U && "GaussianBlur: v1 supports CV_8U only");
+
+    const int src_depth = src.depth();
+    if (src_depth != CV_8U && src_depth != CV_32F)
+    {
+        CV_Error_(Error::StsBadArg, ("GaussianBlur: unsupported src depth=%d", src_depth));
+    }
 
     int kx = ksize.width;
     int ky = ksize.height;
@@ -78,78 +174,13 @@ inline void gaussian_blur_fallback(const Mat& src,
         CV_Error_(Error::StsBadArg, ("GaussianBlur: unsupported borderType=%d", borderType));
     }
 
-    Mat src_local;
-    const Mat* src_ref = &src;
-    if (src.data == dst.data)
+    if (src_depth == CV_8U)
     {
-        src_local = src.clone();
-        src_ref = &src_local;
+        gaussian_blur_fallback_impl_typed<uchar>(src, dst, kx, ky, sigmaX, sigmaY, border_type);
+        return;
     }
 
-    const int rows = src_ref->size[0];
-    const int cols = src_ref->size[1];
-    const int channels = src_ref->channels();
-    const size_t src_step = src_ref->step(0);
-
-    dst.create(std::vector<int>{rows, cols}, src_ref->type());
-    const size_t dst_step = dst.step(0);
-
-    const std::vector<float> kernel_x = build_gaussian_kernel_1d(kx, sigmaX);
-    const std::vector<float> kernel_y = build_gaussian_kernel_1d(ky, sigmaY);
-    const int rx = kx / 2;
-    const int ry = ky / 2;
-
-    std::vector<float> tmp(static_cast<size_t>(rows) * cols * channels, 0.0f);
-
-    for (int y = 0; y < rows; ++y)
-    {
-        const uchar* src_row = src_ref->data + static_cast<size_t>(y) * src_step;
-        for (int x = 0; x < cols; ++x)
-        {
-            const size_t tmp_base = (static_cast<size_t>(y) * cols + x) * channels;
-            for (int c = 0; c < channels; ++c)
-            {
-                double acc = 0.0;
-                for (int k = 0; k < kx; ++k)
-                {
-                    const int sx = x + k - rx;
-                    const int src_x = border_interpolate(sx, cols, border_type);
-                    if (src_x < 0)
-                    {
-                        continue;
-                    }
-                    acc += static_cast<double>(kernel_x[static_cast<size_t>(k)]) *
-                           static_cast<double>(src_row[static_cast<size_t>(src_x) * channels + c]);
-                }
-                tmp[tmp_base + c] = static_cast<float>(acc);
-            }
-        }
-    }
-
-    for (int y = 0; y < rows; ++y)
-    {
-        uchar* dst_row = dst.data + static_cast<size_t>(y) * dst_step;
-        for (int x = 0; x < cols; ++x)
-        {
-            uchar* out_px = dst_row + static_cast<size_t>(x) * channels;
-            for (int c = 0; c < channels; ++c)
-            {
-                double acc = 0.0;
-                for (int k = 0; k < ky; ++k)
-                {
-                    const int sy = y + k - ry;
-                    const int src_y = border_interpolate(sy, rows, border_type);
-                    if (src_y < 0)
-                    {
-                        continue;
-                    }
-                    const size_t tmp_idx = (static_cast<size_t>(src_y) * cols + x) * channels + c;
-                    acc += static_cast<double>(kernel_y[static_cast<size_t>(k)]) * static_cast<double>(tmp[tmp_idx]);
-                }
-                out_px[c] = saturate_cast<uchar>(acc);
-            }
-        }
-    }
+    gaussian_blur_fallback_impl_typed<float>(src, dst, kx, ky, sigmaX, sigmaY, border_type);
 }
 
 inline GaussianBlurFn& gaussianblur_dispatch()

@@ -174,7 +174,6 @@ inline double threshold_triangle_u8(const Mat& src)
 inline double threshold_fallback(const Mat& src, Mat& dst, double thresh, double maxval, int type)
 {
     CV_Assert(!src.empty() && "threshold: source image can not be empty");
-    CV_Assert(src.depth() == CV_8U && "threshold: v1 supports CV_8U only");
 
     const bool is_dryrun = (type & THRESH_DRYRUN) != 0;
     type &= ~THRESH_DRYRUN;
@@ -200,14 +199,27 @@ inline double threshold_fallback(const Mat& src, Mat& dst, double thresh, double
 
     if (automatic_thresh == THRESH_OTSU)
     {
+        CV_Assert(src.depth() == CV_8U && "threshold: OTSU requires CV_8U source");
         thresh = threshold_otsu_u8(src);
     }
     else if (automatic_thresh == THRESH_TRIANGLE)
     {
+        CV_Assert(src.depth() == CV_8U && "threshold: TRIANGLE requires CV_8U source");
         thresh = threshold_triangle_u8(src);
     }
 
-    const double effective_thresh = std::floor(thresh);
+    const int src_depth = src.depth();
+    if (src_depth != CV_8U && src_depth != CV_32F)
+    {
+        CV_Error_(Error::StsBadArg, ("threshold: unsupported src depth=%d", src_depth));
+    }
+
+    if (src_depth == CV_32F && automatic_thresh != 0)
+    {
+        CV_Error(Error::StsBadArg, "threshold: OTSU/TRIANGLE requires CV_8UC1 source");
+    }
+
+    const double effective_thresh = src_depth == CV_8U ? std::floor(thresh) : thresh;
     if (is_dryrun)
     {
         return effective_thresh;
@@ -215,34 +227,109 @@ inline double threshold_fallback(const Mat& src, Mat& dst, double thresh, double
 
     dst.create(src.dims, src.size.p, src.type());
 
-    const uchar max_u8 = saturate_cast<uchar>(maxval);
-    const uchar trunc_u8 = saturate_cast<uchar>(effective_thresh);
     const size_t scalar_count = src.total() * static_cast<size_t>(src.channels());
-    const uchar* src_ptr = src.data;
-    uchar* dst_ptr = dst.data;
+    if (src_depth == CV_8U)
+    {
+        const uchar max_u8 = saturate_cast<uchar>(maxval);
+        const uchar trunc_u8 = saturate_cast<uchar>(effective_thresh);
+        const uchar* src_ptr = src.data;
+        uchar* dst_ptr = dst.data;
+
+        if (src.isContinuous() && dst.isContinuous())
+        {
+            for (size_t i = 0; i < scalar_count; ++i)
+            {
+                const uchar s = src_ptr[i];
+                const bool cond = static_cast<double>(s) > effective_thresh;
+                switch (thresh_type)
+                {
+                case THRESH_BINARY:
+                    dst_ptr[i] = cond ? max_u8 : 0;
+                    break;
+                case THRESH_BINARY_INV:
+                    dst_ptr[i] = cond ? 0 : max_u8;
+                    break;
+                case THRESH_TRUNC:
+                    dst_ptr[i] = cond ? trunc_u8 : s;
+                    break;
+                case THRESH_TOZERO:
+                    dst_ptr[i] = cond ? s : 0;
+                    break;
+                case THRESH_TOZERO_INV:
+                    dst_ptr[i] = cond ? 0 : s;
+                    break;
+                default:
+                    CV_Error_(Error::StsBadArg, ("threshold: unsupported threshold type=%d", thresh_type));
+                }
+            }
+            return effective_thresh;
+        }
+
+        CV_Assert(src.dims == 2 && "threshold: non-contiguous path supports 2D Mat only");
+        const int rows = src.size[0];
+        const int cols_scalar = src.size[1] * src.channels();
+        const size_t src_step = src.step(0);
+        const size_t dst_step = dst.step(0);
+        for (int y = 0; y < rows; ++y)
+        {
+            const uchar* src_row = src_ptr + static_cast<size_t>(y) * src_step;
+            uchar* dst_row = dst_ptr + static_cast<size_t>(y) * dst_step;
+            for (int x = 0; x < cols_scalar; ++x)
+            {
+                const uchar s = src_row[x];
+                const bool cond = static_cast<double>(s) > effective_thresh;
+                switch (thresh_type)
+                {
+                case THRESH_BINARY:
+                    dst_row[x] = cond ? max_u8 : 0;
+                    break;
+                case THRESH_BINARY_INV:
+                    dst_row[x] = cond ? 0 : max_u8;
+                    break;
+                case THRESH_TRUNC:
+                    dst_row[x] = cond ? trunc_u8 : s;
+                    break;
+                case THRESH_TOZERO:
+                    dst_row[x] = cond ? s : 0;
+                    break;
+                case THRESH_TOZERO_INV:
+                    dst_row[x] = cond ? 0 : s;
+                    break;
+                default:
+                    CV_Error_(Error::StsBadArg, ("threshold: unsupported threshold type=%d", thresh_type));
+                }
+            }
+        }
+        return effective_thresh;
+    }
+
+    const float max_f32 = static_cast<float>(maxval);
+    const float thresh_f32 = static_cast<float>(effective_thresh);
+    const float* src_ptr = reinterpret_cast<const float*>(src.data);
+    float* dst_ptr = reinterpret_cast<float*>(dst.data);
 
     if (src.isContinuous() && dst.isContinuous())
     {
         for (size_t i = 0; i < scalar_count; ++i)
         {
-            const uchar s = src_ptr[i];
+            const float s = src_ptr[i];
             const bool cond = static_cast<double>(s) > effective_thresh;
             switch (thresh_type)
             {
             case THRESH_BINARY:
-                dst_ptr[i] = cond ? max_u8 : 0;
+                dst_ptr[i] = cond ? max_f32 : 0.0f;
                 break;
             case THRESH_BINARY_INV:
-                dst_ptr[i] = cond ? 0 : max_u8;
+                dst_ptr[i] = cond ? 0.0f : max_f32;
                 break;
             case THRESH_TRUNC:
-                dst_ptr[i] = cond ? trunc_u8 : s;
+                dst_ptr[i] = cond ? thresh_f32 : s;
                 break;
             case THRESH_TOZERO:
-                dst_ptr[i] = cond ? s : 0;
+                dst_ptr[i] = cond ? s : 0.0f;
                 break;
             case THRESH_TOZERO_INV:
-                dst_ptr[i] = cond ? 0 : s;
+                dst_ptr[i] = cond ? 0.0f : s;
                 break;
             default:
                 CV_Error_(Error::StsBadArg, ("threshold: unsupported threshold type=%d", thresh_type));
@@ -258,28 +345,28 @@ inline double threshold_fallback(const Mat& src, Mat& dst, double thresh, double
     const size_t dst_step = dst.step(0);
     for (int y = 0; y < rows; ++y)
     {
-        const uchar* src_row = src_ptr + static_cast<size_t>(y) * src_step;
-        uchar* dst_row = dst_ptr + static_cast<size_t>(y) * dst_step;
+        const float* src_row = reinterpret_cast<const float*>(src.data + static_cast<size_t>(y) * src_step);
+        float* dst_row = reinterpret_cast<float*>(dst.data + static_cast<size_t>(y) * dst_step);
         for (int x = 0; x < cols_scalar; ++x)
         {
-            const uchar s = src_row[x];
+            const float s = src_row[x];
             const bool cond = static_cast<double>(s) > effective_thresh;
             switch (thresh_type)
             {
             case THRESH_BINARY:
-                dst_row[x] = cond ? max_u8 : 0;
+                dst_row[x] = cond ? max_f32 : 0.0f;
                 break;
             case THRESH_BINARY_INV:
-                dst_row[x] = cond ? 0 : max_u8;
+                dst_row[x] = cond ? 0.0f : max_f32;
                 break;
             case THRESH_TRUNC:
-                dst_row[x] = cond ? trunc_u8 : s;
+                dst_row[x] = cond ? thresh_f32 : s;
                 break;
             case THRESH_TOZERO:
-                dst_row[x] = cond ? s : 0;
+                dst_row[x] = cond ? s : 0.0f;
                 break;
             case THRESH_TOZERO_INV:
-                dst_row[x] = cond ? 0 : s;
+                dst_row[x] = cond ? 0.0f : s;
                 break;
             default:
                 CV_Error_(Error::StsBadArg, ("threshold: unsupported threshold type=%d", thresh_type));

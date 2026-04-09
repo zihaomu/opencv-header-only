@@ -107,6 +107,16 @@ if(CVH_ENABLE_FULL_BACKEND)
             ${CMAKE_CURRENT_SOURCE_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}/include
         )
+
+        add_executable(cvh_benchmark_imgproc_ops
+            benchmark/imgproc_ops_benchmark.cpp
+        )
+        target_link_libraries(cvh_benchmark_imgproc_ops PRIVATE cvh::legacy_core)
+        target_compile_features(cvh_benchmark_imgproc_ops PRIVATE cxx_std_17)
+        target_include_directories(cvh_benchmark_imgproc_ops PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+        )
     endif()
 
     add_executable(cvh_example_highgui_imshow

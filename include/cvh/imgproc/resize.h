@@ -4,6 +4,7 @@
 #include "detail/common.h"
 
 #include <cstdint>
+#include <type_traits>
 #include <vector>
 
 namespace cvh {
@@ -11,19 +12,26 @@ namespace detail {
 
 using ResizeFn = void (*)(const Mat&, Mat&, Size, double, double, int);
 
-inline void resize_fallback(const Mat& src, Mat& dst, Size dsize, double fx, double fy, int interpolation)
+template <typename T>
+inline T resize_interpolate_cast(float v)
 {
-    CV_Assert(!src.empty() && "resize: source image can not be empty");
-    CV_Assert(src.dims == 2 && "resize: only 2D Mat is supported");
-    CV_Assert(src.depth() == CV_8U && "resize: v1 supports CV_8U only");
+    if constexpr (std::is_same<T, uchar>::value)
+    {
+        return saturate_cast<uchar>(v);
+    }
+    else
+    {
+        return static_cast<T>(v);
+    }
+}
 
+template <typename T>
+inline void resize_fallback_impl_typed(const Mat& src, Mat& dst, int interpolation)
+{
     const int src_rows = src.size[0];
     const int src_cols = src.size[1];
-    const int dst_cols = detail::resolve_resize_dim(src_cols, dsize.width, fx);
-    const int dst_rows = detail::resolve_resize_dim(src_rows, dsize.height, fy);
-    CV_Assert(dst_cols > 0 && dst_rows > 0 && "resize: invalid output size");
-
-    dst.create(std::vector<int>{dst_rows, dst_cols}, src.type());
+    const int dst_rows = dst.size[0];
+    const int dst_cols = dst.size[1];
 
     const int channels = src.channels();
     const size_t src_step = src.step(0);
@@ -50,13 +58,13 @@ inline void resize_fallback(const Mat& src, Mat& dst, Size dsize, double fx, dou
             const int sy = static_cast<int>((ify * y + ify0) >> 16);
             const int clamped_sy = std::clamp(sy, 0, src_rows - 1);
 
-            const uchar* src_row = src_data + static_cast<size_t>(clamped_sy) * src_step;
-            uchar* dst_row = dst_data + static_cast<size_t>(y) * dst_step;
+            const T* src_row = reinterpret_cast<const T*>(src_data + static_cast<size_t>(clamped_sy) * src_step);
+            T* dst_row = reinterpret_cast<T*>(dst_data + static_cast<size_t>(y) * dst_step);
             for (int x = 0; x < dst_cols; ++x)
             {
                 const int sx = x_ofs[static_cast<size_t>(x)];
-                const uchar* src_px = src_row + static_cast<size_t>(sx) * channels;
-                uchar* dst_px = dst_row + static_cast<size_t>(x) * channels;
+                const T* src_px = src_row + static_cast<size_t>(sx) * channels;
+                T* dst_px = dst_row + static_cast<size_t>(x) * channels;
                 for (int c = 0; c < channels; ++c)
                 {
                     dst_px[c] = src_px[c];
@@ -71,13 +79,13 @@ inline void resize_fallback(const Mat& src, Mat& dst, Size dsize, double fx, dou
         for (int y = 0; y < dst_rows; ++y)
         {
             const int sy = std::min(src_rows - 1, (y * src_rows) / dst_rows);
-            const uchar* src_row = src_data + static_cast<size_t>(sy) * src_step;
-            uchar* dst_row = dst_data + static_cast<size_t>(y) * dst_step;
+            const T* src_row = reinterpret_cast<const T*>(src_data + static_cast<size_t>(sy) * src_step);
+            T* dst_row = reinterpret_cast<T*>(dst_data + static_cast<size_t>(y) * dst_step);
             for (int x = 0; x < dst_cols; ++x)
             {
                 const int sx = std::min(src_cols - 1, (x * src_cols) / dst_cols);
-                const uchar* src_px = src_row + static_cast<size_t>(sx) * channels;
-                uchar* dst_px = dst_row + static_cast<size_t>(x) * channels;
+                const T* src_px = src_row + static_cast<size_t>(sx) * channels;
+                T* dst_px = dst_row + static_cast<size_t>(x) * channels;
                 for (int c = 0; c < channels; ++c)
                 {
                     dst_px[c] = src_px[c];
@@ -85,11 +93,6 @@ inline void resize_fallback(const Mat& src, Mat& dst, Size dsize, double fx, dou
             }
         }
         return;
-    }
-
-    if (interpolation != INTER_LINEAR)
-    {
-        CV_Error_(Error::StsBadArg, ("resize: unsupported interpolation=%d", interpolation));
     }
 
     const float scale_x = static_cast<float>(src_cols) / static_cast<float>(dst_cols);
@@ -102,9 +105,9 @@ inline void resize_fallback(const Mat& src, Mat& dst, Size dsize, double fx, dou
         const int y1 = std::min(y0 + 1, src_rows - 1);
         const float wy = fy_src - static_cast<float>(y0);
 
-        const uchar* src_row0 = src_data + static_cast<size_t>(y0) * src_step;
-        const uchar* src_row1 = src_data + static_cast<size_t>(y1) * src_step;
-        uchar* dst_row = dst_data + static_cast<size_t>(y) * dst_step;
+        const T* src_row0 = reinterpret_cast<const T*>(src_data + static_cast<size_t>(y0) * src_step);
+        const T* src_row1 = reinterpret_cast<const T*>(src_data + static_cast<size_t>(y1) * src_step);
+        T* dst_row = reinterpret_cast<T*>(dst_data + static_cast<size_t>(y) * dst_step);
 
         for (int x = 0; x < dst_cols; ++x)
         {
@@ -113,20 +116,55 @@ inline void resize_fallback(const Mat& src, Mat& dst, Size dsize, double fx, dou
             const int x1 = std::min(x0 + 1, src_cols - 1);
             const float wx = fx_src - static_cast<float>(x0);
 
-            const uchar* p00 = src_row0 + static_cast<size_t>(x0) * channels;
-            const uchar* p01 = src_row0 + static_cast<size_t>(x1) * channels;
-            const uchar* p10 = src_row1 + static_cast<size_t>(x0) * channels;
-            const uchar* p11 = src_row1 + static_cast<size_t>(x1) * channels;
-            uchar* dst_px = dst_row + static_cast<size_t>(x) * channels;
+            const T* p00 = src_row0 + static_cast<size_t>(x0) * channels;
+            const T* p01 = src_row0 + static_cast<size_t>(x1) * channels;
+            const T* p10 = src_row1 + static_cast<size_t>(x0) * channels;
+            const T* p11 = src_row1 + static_cast<size_t>(x1) * channels;
+            T* dst_px = dst_row + static_cast<size_t>(x) * channels;
 
             for (int c = 0; c < channels; ++c)
             {
                 const float top = detail::lerp(static_cast<float>(p00[c]), static_cast<float>(p01[c]), wx);
                 const float bot = detail::lerp(static_cast<float>(p10[c]), static_cast<float>(p11[c]), wx);
-                dst_px[c] = saturate_cast<uchar>(detail::lerp(top, bot, wy));
+                dst_px[c] = resize_interpolate_cast<T>(detail::lerp(top, bot, wy));
             }
         }
     }
+}
+
+inline void resize_fallback(const Mat& src, Mat& dst, Size dsize, double fx, double fy, int interpolation)
+{
+    CV_Assert(!src.empty() && "resize: source image can not be empty");
+    CV_Assert(src.dims == 2 && "resize: only 2D Mat is supported");
+
+    const int src_rows = src.size[0];
+    const int src_cols = src.size[1];
+    const int dst_cols = detail::resolve_resize_dim(src_cols, dsize.width, fx);
+    const int dst_rows = detail::resolve_resize_dim(src_rows, dsize.height, fy);
+    CV_Assert(dst_cols > 0 && dst_rows > 0 && "resize: invalid output size");
+
+    if (interpolation != INTER_NEAREST &&
+        interpolation != INTER_NEAREST_EXACT &&
+        interpolation != INTER_LINEAR)
+    {
+        CV_Error_(Error::StsBadArg, ("resize: unsupported interpolation=%d", interpolation));
+    }
+
+    const int src_depth = src.depth();
+    if (src_depth != CV_8U && src_depth != CV_32F)
+    {
+        CV_Error_(Error::StsBadArg, ("resize: unsupported src depth=%d", src_depth));
+    }
+
+    dst.create(std::vector<int>{dst_rows, dst_cols}, src.type());
+
+    if (src_depth == CV_8U)
+    {
+        resize_fallback_impl_typed<uchar>(src, dst, interpolation);
+        return;
+    }
+
+    resize_fallback_impl_typed<float>(src, dst, interpolation);
 }
 
 inline ResizeFn& resize_dispatch()

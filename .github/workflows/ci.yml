@@ -10,6 +10,16 @@ on:
         required: false
         default: false
         type: boolean
+      run_imgproc_quick_gate:
+        description: "Run optional imgproc quick benchmark regression gate"
+        required: false
+        default: false
+        type: boolean
+      run_imgproc_full_gate:
+        description: "Run optional imgproc full benchmark regression gate"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   smoke:
@@ -30,3 +40,40 @@ jobs:
 
       - name: Configure Build Test (Core Basic)
         run: ./scripts/ci_core_basic.sh
+
+  imgproc_quick_gate:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_imgproc_quick_gate }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Imgproc Quick Benchmark Gate
+        env:
+          CVH_IMGPROC_BENCH_THREADS: "1"
+          CVH_IMGPROC_BENCH_OMP_DYNAMIC: "false"
+          CVH_IMGPROC_BENCH_OMP_PROC_BIND: "close"
+          CVH_IMGPROC_BENCH_CPU_LIST: "auto"
+        run: ./scripts/ci_imgproc_quick_gate.sh
+
+  imgproc_full_gate:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_imgproc_full_gate }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Imgproc Full Benchmark Gate
+        env:
+          CVH_IMGPROC_BENCH_PROFILE: full
+          CVH_IMGPROC_BENCH_BASELINE: benchmark/baseline_imgproc_full.csv
+          CVH_IMGPROC_BENCH_CURRENT: benchmark/current_imgproc_full_ci.csv
+          CVH_IMGPROC_BENCH_WARMUP: "1"
+          CVH_IMGPROC_BENCH_ITERS: "10"
+          CVH_IMGPROC_BENCH_REPEATS: "3"
+          CVH_IMGPROC_BENCH_MAX_SLOWDOWN: "0.15"
+          CVH_IMGPROC_BENCH_THREADS: "1"
+          CVH_IMGPROC_BENCH_OMP_DYNAMIC: "false"
+          CVH_IMGPROC_BENCH_OMP_PROC_BIND: "close"
+          CVH_IMGPROC_BENCH_CPU_LIST: "auto"
+        run: ./scripts/ci_imgproc_quick_gate.sh

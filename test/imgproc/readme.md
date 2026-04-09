@@ -4,11 +4,11 @@
 
 基于当前 `include/cvh/imgproc/imgproc.h` 能力，单测覆盖：
 
-- `resize`：`INTER_NEAREST` / `INTER_NEAREST_EXACT` / `INTER_LINEAR`
+- `resize`：`CV_8U/CV_32F` + `INTER_NEAREST` / `INTER_NEAREST_EXACT` / `INTER_LINEAR`
 - `cvtColor`：`COLOR_BGR2GRAY` / `COLOR_GRAY2BGR`
-- `threshold`：`THRESH_BINARY` / `THRESH_BINARY_INV`
-- `boxFilter/blur`：`CV_8U`、`BORDER_REPLICATE/BORDER_CONSTANT/BORDER_REFLECT_101`
-- `GaussianBlur`：odd `ksize` + `sigma` 基础路径，含 `BORDER_ISOLATED` 位兼容
+- `threshold`：`CV_8U` 全基础阈值 + `CV_32F` 固定阈值（自动阈值仍限定 `CV_8UC1`）
+- `boxFilter/blur`：`CV_8U/CV_32F`、`BORDER_REPLICATE/BORDER_CONSTANT/BORDER_REFLECT_101`
+- `GaussianBlur`：`CV_8U/CV_32F` odd `ksize` + `sigma` 基础路径，含 `BORDER_ISOLATED` 位兼容
 - 真实图像 pipeline 回归：`imread -> resize -> cvtColor -> threshold`
 
 ## 数据来源
