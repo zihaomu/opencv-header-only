@@ -29,7 +29,7 @@ namespace {
 
 inline bool is_supported_depth(int depth)
 {
-    return depth >= CV_8U && depth <= CV_64F;
+    return depth >= CV_8U && depth <= CV_16F;
 }
 
 inline bool is_supported_type(int type)
@@ -456,6 +456,37 @@ Mat& Mat::operator=(const Scalar& s)
 Mat Mat::reshape(const std::vector<int> newSizes) const
 {
     return this->reshape(newSizes.size(), newSizes.data());
+}
+
+Mat Mat::reinterpret(int rtype) const
+{
+    if (empty())
+    {
+        CV_Error(Error::Code::StsBadArg, "reinterpret expects a non-empty Mat");
+    }
+
+    if (rtype < 0)
+    {
+        CV_Error_(Error::StsBadArg, ("reinterpret expects non-negative type, got=%d", rtype));
+    }
+
+    const int dtype = CV_MAKETYPE(CV_MAT_DEPTH(rtype), CV_MAT_CN(rtype));
+    if (!is_supported_type(dtype))
+    {
+        CV_Error_(Error::StsNotImplemented, ("reinterpret target type=%d is unsupported in v1", dtype));
+    }
+
+    if (CV_ELEM_SIZE(dtype) != elemSize())
+    {
+        CV_Error_(Error::StsBadArg,
+                  ("reinterpret requires identical element byte-size, src=%zu dst=%d",
+                   elemSize(),
+                   CV_ELEM_SIZE(dtype)));
+    }
+
+    Mat out = *this;
+    out.matType = dtype;
+    return out;
 }
 
 Mat Mat::rowRange(int startrow, int endrow) const

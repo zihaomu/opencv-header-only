@@ -15,6 +15,8 @@ A lightweight OpenCV-like subset library with dual mode:
 
 - 对外承诺：`API/行为兼容`（优先覆盖高频 OpenCV 用法）
 - 不承诺：`ABI/内存布局兼容`（例如 `cvh::Mat` 与 `cv::Mat` 对象内部实现可不同）
+- 当前 v1 路线：`Mat-only` 接口优先，不引入 `OutputArray/InputArray` 兼容层
+- 因此凡依赖 `OutputArray` 的 upstream 用例，按“设计性不对齐”台账跟踪，而非实现缺陷
 
 ## Build (current temporary layout)
 

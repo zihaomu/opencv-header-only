@@ -59,6 +59,8 @@ void subtract(const Mat& a, Mat& c);
 void subtract(const Mat& a, const Mat& b, Mat& c);
 void subtract(const Mat& a, const Scalar& b, Mat& c);
 void subtract(const Scalar& a, const Mat& b, Mat& c);
+void subtract(const Mat& a, double b, Mat& c);
+void subtract(double a, const Mat& b, Mat& c);
 
 // a * b = c
 void multiply(const Mat& a, const Mat& b, Mat& c);
@@ -73,6 +75,14 @@ void divide(const Scalar& a, const Mat& b, Mat& c);
 void compare(const Mat& a, const Mat& b, Mat& c, int op);
 void compare(const Mat& a, const Scalar& b, Mat& c, int op);
 void compare(const Scalar& a, const Mat& b, Mat& c, int op);
+
+// Merge multiple source Mats into a multi-channel destination Mat.
+void merge(const Mat* src, size_t nsrc, Mat& dst);
+void merge(const std::vector<Mat>& src, Mat& dst);
+
+// Split multi-channel source Mat into single-channel destination Mats.
+void split(const Mat& src, Mat* dst);
+void split(const Mat& src, std::vector<Mat>& dst);
 
 // Apply softmax along the last dimension.
 void softmax(const Mat& input, Mat& output);

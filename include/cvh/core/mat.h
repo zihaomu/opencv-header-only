@@ -152,6 +152,10 @@ public:
 
     Mat reshape(const std::vector<int> newSizes) const;
 
+    // Reinterpret Mat element type without data conversion/copy.
+    // v1 only supports byte-size-preserving reinterpret.
+    Mat reinterpret(int rtype) const;
+
     Mat rowRange(int startrow, int endrow) const;
     Mat colRange(int startcol, int endcol) const;
     Mat operator()(const Range& rowRange, const Range& colRange) const;

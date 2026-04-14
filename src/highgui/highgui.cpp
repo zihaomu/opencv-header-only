@@ -6,6 +6,7 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <thread>
 #include <vector>
@@ -93,6 +94,12 @@ inline void throw_imshow_backend_unavailable()
     CV_Error(Error::StsError,
              "imshow backend is unavailable at runtime. Use imwrite(\"out.png\", mat) as temporary replacement.");
 #endif
+}
+
+inline bool fb_test_mode_active()
+{
+    const char* mode = std::getenv("CVH_FB_TEST_MODE");
+    return mode && mode[0] != '\0';
 }
 
 inline void blit_center(const Mat& src, Mat& dst)
@@ -267,19 +274,23 @@ void imshow_backend(const std::string& winname, const Mat& mat)
     (void)image;
     throw_imshow_backend_unavailable();
 #elif defined(__linux__) && !defined(__ANDROID__)
+    const bool force_fb_path = fb_test_mode_active();
 #if defined(CVH_HAVE_X11)
-    if (image.channels() == 1)
+    if (!force_fb_path)
     {
-        if (display_x11::show_gray(winname.c_str(), image.data, image.size[1], image.size[0]) == 0)
+        if (image.channels() == 1)
         {
-            return;
+            if (display_x11::show_gray(winname.c_str(), image.data, image.size[1], image.size[0]) == 0)
+            {
+                return;
+            }
         }
-    }
-    else if (image.channels() == 3)
-    {
-        if (display_x11::show_bgr(winname.c_str(), image.data, image.size[1], image.size[0]) == 0)
+        else if (image.channels() == 3)
         {
-            return;
+            if (display_x11::show_bgr(winname.c_str(), image.data, image.size[1], image.size[0]) == 0)
+            {
+                return;
+            }
         }
     }
 #endif

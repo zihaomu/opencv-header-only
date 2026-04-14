@@ -454,6 +454,37 @@ inline Mat Mat::reshape(const std::vector<int> newSizes) const
     return reshape(static_cast<int>(newSizes.size()), newSizes.data());
 }
 
+inline Mat Mat::reinterpret(int rtype) const
+{
+    if (empty())
+    {
+        CV_Error(Error::StsBadArg, "reinterpret expects a non-empty Mat");
+    }
+
+    if (rtype < 0)
+    {
+        CV_Error_(Error::StsBadArg, ("reinterpret expects non-negative type, got=%d", rtype));
+    }
+
+    const int dtype = CV_MAKETYPE(CV_MAT_DEPTH(rtype), CV_MAT_CN(rtype));
+    if (!lite_mat_detail::is_supported_type(dtype))
+    {
+        CV_Error_(Error::StsNotImplemented, ("reinterpret target type=%d is unsupported in v1", dtype));
+    }
+
+    if (CV_ELEM_SIZE(dtype) != elemSize())
+    {
+        CV_Error_(Error::StsBadArg,
+                  ("reinterpret requires identical element byte-size, src=%zu dst=%d",
+                   elemSize(),
+                   CV_ELEM_SIZE(dtype)));
+    }
+
+    Mat out = *this;
+    out.matType = dtype;
+    return out;
+}
+
 inline Mat Mat::rowRange(int startrow, int endrow) const
 {
     if (dims < 1)

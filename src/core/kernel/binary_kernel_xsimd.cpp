@@ -709,13 +709,13 @@ inline void binary_broadcast_xsimd_int_impl(BinaryKernelOp op,
             switch (op)
             {
                 case BinaryKernelOp::Add:
-                    result = saturate_cast<T>(static_cast<long long>(lhs_val) + static_cast<long long>(rhs_val));
+                    result = saturate_cast<T>(static_cast<int64>(lhs_val) + static_cast<int64>(rhs_val));
                     break;
                 case BinaryKernelOp::Sub:
-                    result = saturate_cast<T>(static_cast<long long>(lhs_val) - static_cast<long long>(rhs_val));
+                    result = saturate_cast<T>(static_cast<int64>(lhs_val) - static_cast<int64>(rhs_val));
                     break;
                 case BinaryKernelOp::Mul:
-                    result = saturate_cast<T>(static_cast<long long>(lhs_val) * static_cast<long long>(rhs_val));
+                    result = saturate_cast<T>(static_cast<int64>(lhs_val) * static_cast<int64>(rhs_val));
                     break;
                 case BinaryKernelOp::Div:
                     result = rhs_val != 0 ? lhs_val / rhs_val : 0;
@@ -1375,9 +1375,9 @@ inline T apply_scalar_smallint(BinaryKernelOp op, T lhs, T rhs)
     switch (op)
     {
         case BinaryKernelOp::Add:
-            return saturate_cast<T>(static_cast<long long>(lhs) + static_cast<long long>(rhs));
+            return saturate_cast<T>(static_cast<int64>(lhs) + static_cast<int64>(rhs));
         case BinaryKernelOp::Sub:
-            return saturate_cast<T>(static_cast<long long>(lhs) - static_cast<long long>(rhs));
+            return saturate_cast<T>(static_cast<int64>(lhs) - static_cast<int64>(rhs));
         case BinaryKernelOp::Mul:
             return lhs * rhs;
         case BinaryKernelOp::Div:

@@ -8,6 +8,7 @@ BUILD_DIR="${ROOT_DIR}/build-smoke"
 "${ROOT_DIR}/scripts/check_public_headers.sh"
 
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
+  -DCVH_BUILD_FULL_BACKEND=OFF \
   -DCVH_BUILD_LEGACY_CORE=OFF \
   -DCVH_BUILD_BACKEND_KERNEL_SOURCES=OFF \
   -DCVH_BUILD_TESTS=ON

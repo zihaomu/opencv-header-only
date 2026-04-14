@@ -2176,6 +2176,201 @@ inline auto floating_mod_dividend_sign(T lhs, T rhs)
     }
 }
 
+void validate_merge_sources(const Mat* src,
+                            size_t nsrc,
+                            int& depth,
+                            int& dims,
+                            MatShape& shape,
+                            int& total_channels,
+                            const char* fn_name)
+{
+    if (src == nullptr)
+    {
+        CV_Error_(Error::StsBadArg, ("%s expects non-null src array", fn_name));
+    }
+    if (nsrc == 0)
+    {
+        CV_Error_(Error::StsBadArg, ("%s expects at least one source Mat", fn_name));
+    }
+
+    const Mat& ref = src[0];
+    if (ref.empty())
+    {
+        CV_Error_(Error::StsBadArg, ("%s src[0] must be non-empty", fn_name));
+    }
+
+    depth = ref.depth();
+    dims = ref.dims;
+    shape = ref.shape();
+    total_channels = 0;
+
+    for (size_t i = 0; i < nsrc; ++i)
+    {
+        const Mat& plane = src[i];
+        if (plane.empty())
+        {
+            CV_Error_(Error::StsBadArg, ("%s src[%zu] must be non-empty", fn_name, i));
+        }
+        if (plane.depth() != depth)
+        {
+            CV_Error_(Error::StsBadType,
+                      ("%s depth mismatch at src[%zu], expected=%d actual=%d",
+                       fn_name,
+                       i,
+                       depth,
+                       plane.depth()));
+        }
+        if (plane.dims != dims || plane.shape() != shape)
+        {
+            CV_Error_(Error::StsUnmatchedSizes, ("%s shape mismatch at src[%zu]", fn_name, i));
+        }
+
+        const int cn = plane.channels();
+        if (cn <= 0)
+        {
+            CV_Error_(Error::StsBadArg, ("%s src[%zu] has invalid channels=%d", fn_name, i, cn));
+        }
+        if (total_channels > CV_CN_MAX - cn)
+        {
+            CV_Error_(Error::StsOutOfRange, ("%s total channels exceed CV_CN_MAX", fn_name));
+        }
+        total_channels += cn;
+    }
+}
+
+void ensure_merge_dst(const Mat& ref,
+                      int depth,
+                      int dims,
+                      const MatShape& shape,
+                      int total_channels,
+                      Mat& dst,
+                      const char* fn_name)
+{
+    const int dst_type = CV_MAKETYPE(depth, total_channels);
+    if (dst.empty())
+    {
+        dst.create(dims, ref.size.p, dst_type);
+        return;
+    }
+
+    if (dst.type() != dst_type || dst.shape() != shape)
+    {
+        CV_Error_(Error::StsBadType,
+                  ("%s dst mismatch, expected_type=%d actual_type=%d",
+                   fn_name,
+                   dst_type,
+                   dst.type()));
+    }
+}
+
+void copy_merge_channels(const Mat* src, size_t nsrc, Mat& dst)
+{
+    const Mat& ref = src[0];
+    const size_t outer = ref.dims > 1 ? static_cast<size_t>(ref.size.p[0]) : 1;
+    const size_t pixel_per_outer = ref.dims > 1 ? ref.total(1, ref.dims) : ref.total();
+    const size_t dst_pixel_bytes = dst.elemSize();
+    const size_t dst_step0 = dst.dims > 1 ? dst.step(0) : pixel_per_outer * dst_pixel_bytes;
+
+    std::vector<size_t> src_step0(nsrc, 0);
+    std::vector<size_t> src_pixel_bytes(nsrc, 0);
+    std::vector<const uchar*> src_rows(nsrc, nullptr);
+    for (size_t i = 0; i < nsrc; ++i)
+    {
+        src_pixel_bytes[i] = src[i].elemSize();
+        src_step0[i] = src[i].dims > 1 ? src[i].step(0) : pixel_per_outer * src_pixel_bytes[i];
+    }
+
+    for (size_t row = 0; row < outer; ++row)
+    {
+        uchar* dst_row = dst.data + row * dst_step0;
+        for (size_t i = 0; i < nsrc; ++i)
+        {
+            src_rows[i] = src[i].data + row * src_step0[i];
+        }
+
+        for (size_t p = 0; p < pixel_per_outer; ++p)
+        {
+            uchar* dst_px = dst_row + p * dst_pixel_bytes;
+            size_t dst_off = 0;
+            for (size_t i = 0; i < nsrc; ++i)
+            {
+                const size_t bytes = src_pixel_bytes[i];
+                const uchar* src_px = src_rows[i] + p * bytes;
+                std::memcpy(dst_px + dst_off, src_px, bytes);
+                dst_off += bytes;
+            }
+        }
+    }
+}
+
+void ensure_split_dst(const Mat& src, Mat* dst, const char* fn_name)
+{
+    if (dst == nullptr)
+    {
+        CV_Error_(Error::StsBadArg, ("%s expects non-null dst array", fn_name));
+    }
+
+    const int cn = src.channels();
+    const int dst_type = CV_MAKETYPE(src.depth(), 1);
+    const MatShape src_shape = src.shape();
+    for (int ch = 0; ch < cn; ++ch)
+    {
+        Mat& out = dst[ch];
+        if (out.empty())
+        {
+            out.create(src.dims, src.size.p, dst_type);
+            continue;
+        }
+
+        if (out.type() != dst_type || out.shape() != src_shape)
+        {
+            CV_Error_(Error::StsBadType,
+                      ("%s dst[%d] mismatch, expected_type=%d actual_type=%d",
+                       fn_name,
+                       ch,
+                       dst_type,
+                       out.type()));
+        }
+    }
+}
+
+void copy_split_channels(const Mat& src, Mat* dst)
+{
+    const int cn = src.channels();
+    const size_t src_elem_size1 = src.elemSize1();
+    const size_t src_pixel_bytes = src.elemSize();
+    const size_t outer = src.dims > 1 ? static_cast<size_t>(src.size.p[0]) : 1;
+    const size_t pixel_per_outer = src.dims > 1 ? src.total(1, src.dims) : src.total();
+    const size_t src_step0 = src.dims > 1 ? src.step(0) : pixel_per_outer * src_pixel_bytes;
+
+    std::vector<size_t> dst_step0(static_cast<size_t>(cn), 0);
+    std::vector<uchar*> dst_rows(static_cast<size_t>(cn), nullptr);
+    for (int ch = 0; ch < cn; ++ch)
+    {
+        dst_step0[static_cast<size_t>(ch)] =
+            dst[ch].dims > 1 ? dst[ch].step(0) : pixel_per_outer * src_elem_size1;
+    }
+
+    for (size_t row = 0; row < outer; ++row)
+    {
+        const uchar* src_row = src.data + row * src_step0;
+        for (int ch = 0; ch < cn; ++ch)
+        {
+            dst_rows[static_cast<size_t>(ch)] = dst[ch].data + row * dst_step0[static_cast<size_t>(ch)];
+        }
+
+        for (size_t p = 0; p < pixel_per_outer; ++p)
+        {
+            const uchar* src_px = src_row + p * src_pixel_bytes;
+            for (int ch = 0; ch < cn; ++ch)
+            {
+                uchar* dst_px = dst_rows[static_cast<size_t>(ch)] + p * src_elem_size1;
+                std::memcpy(dst_px, src_px + static_cast<size_t>(ch) * src_elem_size1, src_elem_size1);
+            }
+        }
+    }
+}
+
 } // namespace
 
 void binaryFunc(BinaryOp op, const Mat& a, const Mat& b, Mat& c)
@@ -2409,6 +2604,16 @@ void subtract(const Scalar& a, const Mat& b, Mat& c)
                                      "subtract(Scalar,Mat)");
 }
 
+void subtract(const Mat& a, double b, Mat& c)
+{
+    subtract(a, Scalar::all(b), c);
+}
+
+void subtract(double a, const Mat& b, Mat& c)
+{
+    subtract(Scalar::all(a), b, c);
+}
+
 void multiply(const Mat& a, const Mat& b, Mat& c)
 {
     dispatch_mat_mat_binary_arith(a,
@@ -2475,6 +2680,21 @@ void divide(const Scalar& a, const Mat& b, Mat& c)
 
 void compare(const Mat& a, const Mat& b, Mat& c, int op)
 {
+    if (a.empty() && b.empty())
+    {
+        c.release();
+        return;
+    }
+    if (a.empty() || b.empty())
+    {
+        CV_Error_(Error::StsBadArg, ("compare(Mat,Mat) expects both inputs non-empty or both empty"));
+    }
+    if (a.depth() == CV_16F)
+    {
+        CV_Error_(Error::StsNotImplemented,
+                  ("compare(Mat,Mat) does not support CV_16F in v1 compatibility mode"));
+    }
+
     dispatch_mat_mat_compare(a, b, c, op, "compare(Mat,Mat)");
 }
 
@@ -2486,6 +2706,46 @@ void compare(const Mat& a, const Scalar& b, Mat& c, int op)
 void compare(const Scalar& a, const Mat& b, Mat& c, int op)
 {
     dispatch_mat_scalar_compare(b, a, c, op, true, "compare(Scalar,Mat)");
+}
+
+void merge(const Mat* src, size_t nsrc, Mat& dst)
+{
+    int depth = 0;
+    int dims = 0;
+    int total_channels = 0;
+    MatShape shape;
+    validate_merge_sources(src, nsrc, depth, dims, shape, total_channels, "merge");
+    ensure_merge_dst(src[0], depth, dims, shape, total_channels, dst, "merge");
+    copy_merge_channels(src, nsrc, dst);
+}
+
+void merge(const std::vector<Mat>& src, Mat& dst)
+{
+    if (src.empty())
+    {
+        CV_Error_(Error::StsBadArg, ("merge expects at least one source Mat"));
+    }
+    merge(src.data(), src.size(), dst);
+}
+
+void split(const Mat& src, Mat* dst)
+{
+    if (src.empty())
+    {
+        CV_Error_(Error::StsBadArg, ("split expects non-empty src Mat"));
+    }
+    ensure_split_dst(src, dst, "split");
+    copy_split_channels(src, dst);
+}
+
+void split(const Mat& src, std::vector<Mat>& dst)
+{
+    if (src.empty())
+    {
+        CV_Error_(Error::StsBadArg, ("split expects non-empty src Mat"));
+    }
+    dst.resize(static_cast<size_t>(src.channels()));
+    split(src, dst.data());
 }
 
 Mat transpose(const Mat& input)

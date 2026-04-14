@@ -10,6 +10,7 @@ BUILD_LOG="${BUILD_DIR}/build.log"
 python3 "${ROOT_DIR}/scripts/verify_opencv_core_channel_cases.py" --repo-root "${ROOT_DIR}"
 
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
+  -DCVH_BUILD_FULL_BACKEND=OFF \
   -DCVH_BUILD_LEGACY_CORE=OFF \
   -DCVH_BUILD_BACKEND_KERNEL_SOURCES=OFF \
   -DCVH_BUILD_TESTS=ON
