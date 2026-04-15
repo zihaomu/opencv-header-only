@@ -1,4 +1,5 @@
 #include "transpose_kernel.h"
+#include "cvh/core/parallel.h"
 #include "cvh/core/detail/dispatch_control.h"
 #include "cvh/core/detail/openmp_utils.h"
 #include "cvh/core/system.h"
@@ -8,14 +9,42 @@
 #include <cstdint>
 #include <cstring>
 
-#ifdef _OPENMP
-#include <omp.h>
-#endif
-
 namespace cvh {
 namespace cpu {
 
 namespace {
+
+template <class RowBlockFn>
+void for_each_row_block(int rows, int cols, int tile, RowBlockFn&& fn)
+{
+    const int row_blocks = (rows + tile - 1) / tile;
+    const bool do_parallel = should_parallelize_1d_loop(
+        static_cast<size_t>(row_blocks),
+        static_cast<size_t>(tile) * static_cast<size_t>(cols),
+        1LL << 14,
+        2);
+
+    if (!do_parallel)
+    {
+        for (int block_idx = 0; block_idx < row_blocks; ++block_idx)
+        {
+            const int row0 = block_idx * tile;
+            fn(row0);
+        }
+        return;
+    }
+
+    cvh::parallel_for_(
+        cvh::Range(0, row_blocks),
+        [&](const cvh::Range& range) {
+            for (int block_idx = range.start; block_idx < range.end; ++block_idx)
+            {
+                const int row0 = block_idx * tile;
+                fn(row0);
+            }
+        },
+        static_cast<double>(row_blocks));
+}
 
 template<typename T>
 void transpose2d_tiled(const unsigned char* src_raw, unsigned char* dst_raw, int rows, int cols)
@@ -24,11 +53,7 @@ void transpose2d_tiled(const unsigned char* src_raw, unsigned char* dst_raw, int
     T* dst = reinterpret_cast<T*>(dst_raw);
 
     constexpr int TILE = 32;
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(static_cast<size_t>((rows + TILE - 1) / TILE), static_cast<size_t>(TILE) * static_cast<size_t>(cols), 1LL << 14, 2))
-#endif
-    for (int row0 = 0; row0 < rows; row0 += TILE)
-    {
+    for_each_row_block(rows, cols, TILE, [&](int row0) {
         const int row1 = std::min(row0 + TILE, rows);
         for (int col0 = 0; col0 < cols; col0 += TILE)
         {
@@ -41,7 +66,7 @@ void transpose2d_tiled(const unsigned char* src_raw, unsigned char* dst_raw, int
                 }
             }
         }
-    }
+    });
 }
 
 
@@ -55,11 +80,7 @@ void transpose2d_xsimd(const unsigned char* src_raw, unsigned char* dst_raw, int
     constexpr int N = batch_type::size;
     constexpr int TILE = 64; // Tile should be a multiple of N (which is usually 4, 8, 16)
 
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(static_cast<size_t>((rows + TILE - 1) / TILE), static_cast<size_t>(TILE) * static_cast<size_t>(cols), 1LL << 14, 2))
-#endif
-    for (int row0 = 0; row0 < rows; row0 += TILE)
-    {
+    for_each_row_block(rows, cols, TILE, [&](int row0) {
         const int row1 = std::min(row0 + TILE, rows);
         for (int col0 = 0; col0 < cols; col0 += TILE)
         {
@@ -102,7 +123,7 @@ void transpose2d_xsimd(const unsigned char* src_raw, unsigned char* dst_raw, int
                 }
             }
         }
-    }
+    });
 }
 
 template<size_t Bytes>
@@ -143,11 +164,7 @@ inline void transpose2d_memcpy_fallback(const unsigned char* src,
                                         size_t elem_size)
 {
     constexpr int TILE = 32;
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(static_cast<size_t>((rows + TILE - 1) / TILE), static_cast<size_t>(TILE) * static_cast<size_t>(cols), 1LL << 14, 2))
-#endif
-    for (int row0 = 0; row0 < rows; row0 += TILE)
-    {
+    for_each_row_block(rows, cols, TILE, [&](int row0) {
         const int row1 = std::min(row0 + TILE, rows);
         for (int col0 = 0; col0 < cols; col0 += TILE)
         {
@@ -162,7 +179,7 @@ inline void transpose2d_memcpy_fallback(const unsigned char* src,
                 }
             }
         }
-    }
+    });
 }
 
 }  // namespace

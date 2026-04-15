@@ -1,5 +1,5 @@
 #include "binary_kernel_xsimd.h"
-#include "cvh/core/detail/openmp_utils.h"
+#include "cvh/core/parallel.h"
 #include "cvh/core/saturate.h"
 #include "cvh/core/detail/xsimd_kernel_utils.h"
 #include "cvh/core/define.h"
@@ -8,10 +8,7 @@
 
 #include <array>
 #include <cstdint>
-
-#ifdef _OPENMP
-#include <omp.h>
-#endif
+#include <limits>
 
 namespace cvh {
 namespace cpu {
@@ -170,6 +167,31 @@ inline typename BatchType::batch_bool_type apply_compare_batch_typed(CompareKern
     return lhs != rhs;
 }
 
+template <class Fn>
+inline void for_each_outer(size_t outer, size_t inner, Fn&& fn)
+{
+    const bool do_parallel = should_parallelize_1d_loop(outer, inner, 1LL << 15, 2);
+    const size_t max_parallel_range = static_cast<size_t>(std::numeric_limits<int>::max());
+    if (!do_parallel || outer > max_parallel_range)
+    {
+        for (size_t outer_i = 0; outer_i < outer; ++outer_i)
+        {
+            fn(outer_i);
+        }
+        return;
+    }
+
+    cvh::parallel_for_(
+        cvh::Range(0, static_cast<int>(outer)),
+        [&](const cvh::Range& range) {
+            for (int outer_idx = range.start; outer_idx < range.end; ++outer_idx)
+            {
+                fn(static_cast<size_t>(outer_idx));
+            }
+        },
+        static_cast<double>(outer));
+}
+
 // CV_16F (hfloat) variant - converts to float internally
 inline void binary_broadcast_xsimd_hfloat_impl(BinaryKernelOp op,
                             const void* lhs,
@@ -183,13 +205,7 @@ inline void binary_broadcast_xsimd_hfloat_impl(BinaryKernelOp op,
                             size_t inner)
 {
     // For hfloat (CV_16F), process in float batch and convert back in batch.
-    const long long outer_ll = static_cast<long long>(outer);
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, inner, 1LL << 15, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, inner, [&](size_t outer_i) {
         const hfloat* lhs_row = reinterpret_cast<const hfloat*>(lhs) + outer_i * lhs_outer_stride;
         const hfloat* rhs_row = reinterpret_cast<const hfloat*>(rhs) + outer_i * rhs_outer_stride;
         hfloat* out_row = reinterpret_cast<hfloat*>(out) + outer_i * inner;
@@ -216,7 +232,7 @@ inline void binary_broadcast_xsimd_hfloat_impl(BinaryKernelOp op,
                                                         : static_cast<float>(rhs_row[inner_idx * rhs_inner_stride]);
             out_row[inner_idx] = hfloat(apply_scalar(op, lhs_val, rhs_val));
         }
-    }
+    });
 }
 
 }  // namespace
@@ -232,13 +248,7 @@ void binary_broadcast_xsimd(BinaryKernelOp op,
                             size_t outer,
                             size_t inner)
 {
-    const long long outer_ll = static_cast<long long>(outer);
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, inner, 1LL << 15, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, inner, [&](size_t outer_i) {
         const float* lhs_row = lhs + outer_i * lhs_outer_stride;
         const float* rhs_row = rhs + outer_i * rhs_outer_stride;
         float* out_row = out + outer_i * inner;
@@ -265,7 +275,7 @@ void binary_broadcast_xsimd(BinaryKernelOp op,
             const float rhs_val = rhs_row[inner_idx * rhs_inner_stride];
             out_row[inner_idx] = apply_scalar(op, lhs_val, rhs_val);
         }
-    }
+    });
 }
 
 void binary_broadcast_xsimd_hfloat(BinaryKernelOp op,
@@ -341,13 +351,7 @@ inline void binary_broadcast_xsimd_double_impl(BinaryKernelOp op,
                             size_t outer,
                             size_t inner)
 {
-    const long long outer_ll = static_cast<long long>(outer);
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, inner, 1LL << 15, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, inner, [&](size_t outer_i) {
         const double* lhs_row = reinterpret_cast<const double*>(lhs) + outer_i * lhs_outer_stride;
         const double* rhs_row = reinterpret_cast<const double*>(rhs) + outer_i * rhs_outer_stride;
         double* out_row = reinterpret_cast<double*>(out) + outer_i * inner;
@@ -374,7 +378,7 @@ inline void binary_broadcast_xsimd_double_impl(BinaryKernelOp op,
             const double rhs_val = rhs_row[inner_idx * rhs_inner_stride];
             out_row[inner_idx] = apply_scalar64(op, lhs_val, rhs_val);
         }
-    }
+    });
 }
 
 void binary_broadcast_xsimd_double(BinaryKernelOp op,
@@ -451,13 +455,7 @@ inline void binary_broadcast_xsimd_int32_impl(BinaryKernelOp op,
                             size_t outer,
                             size_t inner)
 {
-    const long long outer_ll = static_cast<long long>(outer);
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, inner, 1LL << 15, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, inner, [&](size_t outer_i) {
         const std::int32_t* lhs_row = reinterpret_cast<const std::int32_t*>(lhs) + outer_i * lhs_outer_stride;
         const std::int32_t* rhs_row = reinterpret_cast<const std::int32_t*>(rhs) + outer_i * rhs_outer_stride;
         std::int32_t* out_row = reinterpret_cast<std::int32_t*>(out) + outer_i * inner;
@@ -484,7 +482,7 @@ inline void binary_broadcast_xsimd_int32_impl(BinaryKernelOp op,
             const std::int32_t rhs_val = rhs_row[inner_idx * rhs_inner_stride];
             out_row[inner_idx] = apply_scalar_i32(op, lhs_val, rhs_val);
         }
-    }
+    });
 }
 
 void binary_broadcast_xsimd_int32(BinaryKernelOp op,
@@ -560,13 +558,7 @@ inline void binary_broadcast_xsimd_uint32_impl(BinaryKernelOp op,
                             size_t outer,
                             size_t inner)
 {
-    const long long outer_ll = static_cast<long long>(outer);
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, inner, 1LL << 15, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, inner, [&](size_t outer_i) {
         const std::uint32_t* lhs_row = reinterpret_cast<const std::uint32_t*>(lhs) + outer_i * lhs_outer_stride;
         const std::uint32_t* rhs_row = reinterpret_cast<const std::uint32_t*>(rhs) + outer_i * rhs_outer_stride;
         std::uint32_t* out_row = reinterpret_cast<std::uint32_t*>(out) + outer_i * inner;
@@ -593,7 +585,7 @@ inline void binary_broadcast_xsimd_uint32_impl(BinaryKernelOp op,
             const std::uint32_t rhs_val = rhs_row[inner_idx * rhs_inner_stride];
             out_row[inner_idx] = apply_scalar_u32(op, lhs_val, rhs_val);
         }
-    }
+    });
 }
 
 void binary_broadcast_xsimd_uint32(BinaryKernelOp op,
@@ -641,13 +633,7 @@ inline void binary_broadcast_xsimd_int_impl(BinaryKernelOp op,
         }
     };
 
-    const long long outer_ll = static_cast<long long>(outer);
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, inner, 1LL << 15, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, inner, [&](size_t outer_i) {
         const T* lhs_row = reinterpret_cast<const T*>(lhs) + outer_i * lhs_outer_stride;
         const T* rhs_row = reinterpret_cast<const T*>(rhs) + outer_i * rhs_outer_stride;
         T* out_row = reinterpret_cast<T*>(out) + outer_i * inner;
@@ -734,7 +720,7 @@ inline void binary_broadcast_xsimd_int_impl(BinaryKernelOp op,
             }
             out_row[inner_idx] = result;
         }
-    }
+    });
 }
 
 void binary_broadcast_xsimd_int16(BinaryKernelOp op,
@@ -821,13 +807,7 @@ void compare_broadcast_xsimd(CompareKernelOp op,
                              size_t outer,
                              size_t inner)
 {
-    const long long outer_ll = static_cast<long long>(outer);
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, inner, 1LL << 15, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, inner, [&](size_t outer_i) {
         const float* lhs_row = lhs + outer_i * lhs_outer_stride;
         const float* rhs_row = rhs + outer_i * rhs_outer_stride;
         std::uint8_t* out_row = out + outer_i * out_outer_stride;
@@ -861,7 +841,7 @@ void compare_broadcast_xsimd(CompareKernelOp op,
             const float rhs_val = rhs_row[inner_idx * rhs_inner_stride];
             out_row[inner_idx] = apply_compare_scalar(op, lhs_val, rhs_val) ? 255 : 0;
         }
-    }
+    });
 }
 
 void compare_broadcast_xsimd_hfloat(CompareKernelOp op,
@@ -878,13 +858,7 @@ void compare_broadcast_xsimd_hfloat(CompareKernelOp op,
 {
     const hfloat* lhs_ptr = reinterpret_cast<const hfloat*>(lhs);
     const hfloat* rhs_ptr = reinterpret_cast<const hfloat*>(rhs);
-    const long long outer_ll = static_cast<long long>(outer);
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, inner, 1LL << 15, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, inner, [&](size_t outer_i) {
         const hfloat* lhs_row = lhs_ptr + outer_i * lhs_outer_stride;
         const hfloat* rhs_row = rhs_ptr + outer_i * rhs_outer_stride;
         std::uint8_t* out_row = out + outer_i * out_outer_stride;
@@ -918,7 +892,7 @@ void compare_broadcast_xsimd_hfloat(CompareKernelOp op,
                                                         : static_cast<float>(rhs_row[inner_idx * rhs_inner_stride]);
             out_row[inner_idx] = apply_compare_scalar(op, lhs_val, rhs_val) ? 255 : 0;
         }
-    }
+    });
 }
 
 template<typename T, typename BatchType, size_t kLanesInt>
@@ -934,13 +908,7 @@ inline void compare_broadcast_xsimd_int_impl(CompareKernelOp op,
                                              size_t outer,
                                              size_t inner)
 {
-    const long long outer_ll = static_cast<long long>(outer);
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, inner, 1LL << 15, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, inner, [&](size_t outer_i) {
         const T* lhs_row = reinterpret_cast<const T*>(lhs) + outer_i * lhs_outer_stride;
         const T* rhs_row = reinterpret_cast<const T*>(rhs) + outer_i * rhs_outer_stride;
         std::uint8_t* out_row = out + outer_i * out_outer_stride;
@@ -973,7 +941,7 @@ inline void compare_broadcast_xsimd_int_impl(CompareKernelOp op,
             const T rhs_val = rhs_row[inner_idx * rhs_inner_stride];
             out_row[inner_idx] = apply_compare_scalar_typed(op, lhs_val, rhs_val) ? 255 : 0;
         }
-    }
+    });
 }
 
 void compare_broadcast_xsimd_int32(CompareKernelOp op,
@@ -1125,14 +1093,7 @@ void binary_scalar_channels_xsimd(BinaryKernelOp op,
     build_phase_batches(scalar_lanes, channels, phase_batches);
     const size_t phase_count = static_cast<size_t>(channels);
     const size_t vec_phase_step = kLanes % phase_count;
-    const long long outer_ll = static_cast<long long>(outer);
-
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, inner, 1LL << 15, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, inner, [&](size_t outer_i) {
         const float* src_row = src + outer_i * src_outer_stride;
         float* out_row = out + outer_i * out_outer_stride;
 
@@ -1166,7 +1127,7 @@ void binary_scalar_channels_xsimd(BinaryKernelOp op,
                 phase = 0;
             }
         }
-    }
+    });
 }
 
 void binary_scalar_channels_xsimd_hfloat(BinaryKernelOp op,
@@ -1191,14 +1152,7 @@ void binary_scalar_channels_xsimd_hfloat(BinaryKernelOp op,
     build_phase_batches(scalar_lanes, channels, phase_batches);
     const size_t phase_count = static_cast<size_t>(channels);
     const size_t vec_phase_step = kLanes % phase_count;
-    const long long outer_ll = static_cast<long long>(outer);
-
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, inner, 1LL << 15, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, inner, [&](size_t outer_i) {
         const hfloat* src_row = src_ptr + outer_i * src_outer_stride;
         hfloat* out_row = out_ptr + outer_i * out_outer_stride;
 
@@ -1234,7 +1188,7 @@ void binary_scalar_channels_xsimd_hfloat(BinaryKernelOp op,
                 phase = 0;
             }
         }
-    }
+    });
 }
 
 void binary_scalar_channels_xsimd_int32(BinaryKernelOp op,
@@ -1259,14 +1213,7 @@ void binary_scalar_channels_xsimd_int32(BinaryKernelOp op,
     build_phase_batches_typed<std::int32_t, Batch32>(scalar_lanes, channels, phase_batches);
     const size_t phase_count = static_cast<size_t>(channels);
     const size_t vec_phase_step = kLanes32 % phase_count;
-    const long long outer_ll = static_cast<long long>(outer);
-
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, inner, 1LL << 15, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, inner, [&](size_t outer_i) {
         const std::int32_t* src_row = src_ptr + outer_i * src_outer_stride;
         std::int32_t* out_row = out_ptr + outer_i * out_outer_stride;
 
@@ -1300,7 +1247,7 @@ void binary_scalar_channels_xsimd_int32(BinaryKernelOp op,
                 phase = 0;
             }
         }
-    }
+    });
 }
 
 void binary_scalar_channels_xsimd_uint32(BinaryKernelOp op,
@@ -1325,14 +1272,7 @@ void binary_scalar_channels_xsimd_uint32(BinaryKernelOp op,
     build_phase_batches_typed<std::uint32_t, BatchU32>(scalar_lanes, channels, phase_batches);
     const size_t phase_count = static_cast<size_t>(channels);
     const size_t vec_phase_step = kLanesU32 % phase_count;
-    const long long outer_ll = static_cast<long long>(outer);
-
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, inner, 1LL << 15, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, inner, [&](size_t outer_i) {
         const std::uint32_t* src_row = src_ptr + outer_i * src_outer_stride;
         std::uint32_t* out_row = out_ptr + outer_i * out_outer_stride;
 
@@ -1366,7 +1306,7 @@ void binary_scalar_channels_xsimd_uint32(BinaryKernelOp op,
                 phase = 0;
             }
         }
-    }
+    });
 }
 
 template<typename T, typename BatchType>
@@ -1457,14 +1397,7 @@ inline void binary_scalar_channels_xsimd_smallint_impl(BinaryKernelOp op,
     build_phase_batches_typed<T, BatchType>(scalar_lanes, channels, phase_batches);
     const size_t phase_count = static_cast<size_t>(channels);
     const size_t vec_phase_step = kLanesInt % phase_count;
-    const long long outer_ll = static_cast<long long>(outer);
-
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, inner, 1LL << 15, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, inner, [&](size_t outer_i) {
         const T* src_row = src_ptr + outer_i * src_outer_stride;
         T* out_row = out_ptr + outer_i * out_outer_stride;
 
@@ -1512,7 +1445,7 @@ inline void binary_scalar_channels_xsimd_smallint_impl(BinaryKernelOp op,
                 phase = 0;
             }
         }
-    }
+    });
 }
 
 void binary_scalar_channels_xsimd_int16(BinaryKernelOp op,
@@ -1599,14 +1532,7 @@ void compare_scalar_channels_xsimd(CompareKernelOp op,
     build_phase_batches(scalar_lanes, channels, phase_batches);
     const size_t phase_count = static_cast<size_t>(channels);
     const size_t vec_phase_step = kLanes % phase_count;
-    const long long outer_ll = static_cast<long long>(outer);
-
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, inner, 1LL << 15, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, inner, [&](size_t outer_i) {
         const float* src_row = src + outer_i * src_outer_stride;
         std::uint8_t* out_row = out + outer_i * out_outer_stride;
 
@@ -1646,7 +1572,7 @@ void compare_scalar_channels_xsimd(CompareKernelOp op,
                 phase = 0;
             }
         }
-    }
+    });
 }
 
 void compare_scalar_channels_xsimd_hfloat(CompareKernelOp op,
@@ -1670,14 +1596,7 @@ void compare_scalar_channels_xsimd_hfloat(CompareKernelOp op,
     build_phase_batches(scalar_lanes, channels, phase_batches);
     const size_t phase_count = static_cast<size_t>(channels);
     const size_t vec_phase_step = kLanes % phase_count;
-    const long long outer_ll = static_cast<long long>(outer);
-
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, inner, 1LL << 15, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, inner, [&](size_t outer_i) {
         const hfloat* src_row = src_ptr + outer_i * src_outer_stride;
         std::uint8_t* out_row = out + outer_i * out_outer_stride;
 
@@ -1718,7 +1637,7 @@ void compare_scalar_channels_xsimd_hfloat(CompareKernelOp op,
                 phase = 0;
             }
         }
-    }
+    });
 }
 
 template<typename T, typename BatchType, size_t kLanesInt>
@@ -1743,14 +1662,7 @@ inline void compare_scalar_channels_xsimd_int_impl(CompareKernelOp op,
     build_phase_batches_typed<T, BatchType>(scalar_lanes, channels, phase_batches);
     const size_t phase_count = static_cast<size_t>(channels);
     const size_t vec_phase_step = kLanesInt % phase_count;
-    const long long outer_ll = static_cast<long long>(outer);
-
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, inner, 1LL << 15, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, inner, [&](size_t outer_i) {
         const T* src_row = src_ptr + outer_i * src_outer_stride;
         std::uint8_t* out_row = out + outer_i * out_outer_stride;
 
@@ -1792,7 +1704,7 @@ inline void compare_scalar_channels_xsimd_int_impl(CompareKernelOp op,
                 phase = 0;
             }
         }
-    }
+    });
 }
 
 void compare_scalar_channels_xsimd_int32(CompareKernelOp op,

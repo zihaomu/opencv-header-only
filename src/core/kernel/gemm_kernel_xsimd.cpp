@@ -1,15 +1,11 @@
 #include "gemm_kernel_xsimd.h"
-#include "cvh/core/detail/openmp_utils.h"
+#include "cvh/core/parallel.h"
 #include "cvh/core/detail/xsimd_kernel_utils.h"
 
 #include "xsimd/xsimd.hpp"
 
 #include <algorithm>
 #include <vector>
-
-#ifdef _OPENMP
-#include <omp.h>
-#endif
 
 namespace cvh {
 namespace cpu {
@@ -42,6 +38,43 @@ inline bool should_use_blocked_kernel(int m, int n, int k)
                         static_cast<size_t>(std::max(n, 0)) *
                         static_cast<size_t>(std::max(k, 0));
     return work >= kBlockedMinWork;
+}
+
+template <class Fn>
+inline void for_each_row_range(int rows,
+                               std::size_t inner_work_units,
+                               long long min_total_work,
+                               int min_threads,
+                               Fn&& fn)
+{
+    if (rows <= 0)
+    {
+        return;
+    }
+
+    const bool do_parallel = should_parallelize_1d_loop(
+        static_cast<std::size_t>(rows),
+        inner_work_units,
+        min_total_work,
+        min_threads);
+    if (!do_parallel)
+    {
+        for (int row = 0; row < rows; ++row)
+        {
+            fn(row);
+        }
+        return;
+    }
+
+    cvh::parallel_for_(
+        cvh::Range(0, rows),
+        [&](const cvh::Range& range) {
+            for (int row = range.start; row < range.end; ++row)
+            {
+                fn(row);
+            }
+        },
+        static_cast<double>(rows));
 }
 
 inline float dot_fp32_xsimd(const float* a_row, const float* b_row, int k)
@@ -238,60 +271,55 @@ void gemm_kernel_blocked_impl(const float* a,
     std::fill_n(c, static_cast<size_t>(m) * static_cast<size_t>(n), 0.0f);
 
     const int jc_blocks = ceil_div(n, kBlockNC);
-    const bool parallel_jc = should_parallelize_1d_loop(
-        static_cast<size_t>(jc_blocks),
+    for_each_row_range(
+        jc_blocks,
         static_cast<size_t>(std::max(m, 1)) * static_cast<size_t>(std::max(k, 1)) * static_cast<size_t>(kBlockNC),
         1LL << 16,
-        1);
+        1,
+        [&](int jb) {
+            std::vector<float> packed_b;
+            std::vector<float> packed_a;
+            packed_b.reserve(static_cast<size_t>(kBlockKC) * kBlockNC);
+            packed_a.reserve(static_cast<size_t>(kBlockKC) * kBlockMC);
 
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static) if(parallel_jc)
-#endif
-    for (int jb = 0; jb < jc_blocks; ++jb)
-    {
-        std::vector<float> packed_b;
-        std::vector<float> packed_a;
-        packed_b.reserve(static_cast<size_t>(kBlockKC) * kBlockNC);
-        packed_a.reserve(static_cast<size_t>(kBlockKC) * kBlockMC);
+            const int jc = jb * kBlockNC;
+            const int nc = std::min(kBlockNC, n - jc);
 
-        const int jc = jb * kBlockNC;
-        const int nc = std::min(kBlockNC, n - jc);
-
-        for (int pc = 0; pc < k; pc += kBlockKC)
-        {
-            const int kc = std::min(kBlockKC, k - pc);
-            pack_b_panel(kc, nc,
-                         [&](int p, int local_col) {
-                             return load_b_scalar(pc + p, jc + local_col);
-                         },
-                         packed_b);
-
-            const int col_blocks = ceil_div(nc, kKernelNR);
-
-            for (int ic = 0; ic < m; ic += kBlockMC)
+            for (int pc = 0; pc < k; pc += kBlockKC)
             {
-                const int mc = std::min(kBlockMC, m - ic);
-                pack_a_panel(a, k, ic, pc, mc, kc, packed_a);
+                const int kc = std::min(kBlockKC, k - pc);
+                pack_b_panel(kc, nc,
+                             [&](int p, int local_col) {
+                                 return load_b_scalar(pc + p, jc + local_col);
+                             },
+                             packed_b);
 
-                const int row_blocks = ceil_div(mc, kKernelMR);
-                for (int block_col = 0; block_col < col_blocks; ++block_col)
+                const int col_blocks = ceil_div(nc, kKernelNR);
+
+                for (int ic = 0; ic < m; ic += kBlockMC)
                 {
-                    const int nr = std::min(kKernelNR, nc - block_col * kKernelNR);
-                    const float* packed_b_block = packed_b.data() + static_cast<size_t>(block_col) * kc * kKernelNR;
+                    const int mc = std::min(kBlockMC, m - ic);
+                    pack_a_panel(a, k, ic, pc, mc, kc, packed_a);
 
-                    for (int block_row = 0; block_row < row_blocks; ++block_row)
+                    const int row_blocks = ceil_div(mc, kKernelMR);
+                    for (int block_col = 0; block_col < col_blocks; ++block_col)
                     {
-                        const int mr = std::min(kKernelMR, mc - block_row * kKernelMR);
-                        const float* packed_a_block = packed_a.data() + static_cast<size_t>(block_row) * kc * kKernelMR;
-                        float* c_block = c + static_cast<size_t>(ic + block_row * kKernelMR) * n +
-                                         (jc + block_col * kKernelNR);
+                        const int nr = std::min(kKernelNR, nc - block_col * kKernelNR);
+                        const float* packed_b_block = packed_b.data() + static_cast<size_t>(block_col) * kc * kKernelNR;
 
-                        microkernel_4x2v(packed_a_block, packed_b_block, c_block, n, kc, mr, nr);
+                        for (int block_row = 0; block_row < row_blocks; ++block_row)
+                        {
+                            const int mr = std::min(kKernelMR, mc - block_row * kKernelMR);
+                            const float* packed_a_block = packed_a.data() + static_cast<size_t>(block_row) * kc * kKernelMR;
+                            float* c_block = c + static_cast<size_t>(ic + block_row * kKernelMR) * n +
+                                             (jc + block_col * kKernelNR);
+
+                            microkernel_4x2v(packed_a_block, packed_b_block, c_block, n, kc, mr, nr);
+                        }
                     }
                 }
             }
-        }
-    }
+        });
 }
 
 template <class PackedT>
@@ -427,56 +455,58 @@ void gemm_kernel_xsimd_nn_simple_fp32(const float* a, const float* b, float* c,
 {
     const int lanes = static_cast<int>(kXSimdBatchSize);
 
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(m, static_cast<size_t>(n) * static_cast<size_t>(k), 1LL << 16, 1))
-#endif
-    for (int mi = 0; mi < m; ++mi)
-    {
-        const float* a_row = a + static_cast<size_t>(mi) * k;
-        float* c_row = c + static_cast<size_t>(mi) * n;
+    for_each_row_range(
+        m,
+        static_cast<size_t>(n) * static_cast<size_t>(k),
+        1LL << 16,
+        1,
+        [&](int mi) {
+            const float* a_row = a + static_cast<size_t>(mi) * k;
+            float* c_row = c + static_cast<size_t>(mi) * n;
 
-        int ni = 0;
-        for (; ni + lanes <= n; ni += lanes)
-        {
-            XSimdBatch sum_vec(0.0f);
-            for (int ki = 0; ki < k; ++ki)
+            int ni = 0;
+            for (; ni + lanes <= n; ni += lanes)
             {
-                const XSimdBatch a_vec(a_row[ki]);
-                const XSimdBatch b_vec = XSimdBatch::load_unaligned(b + static_cast<size_t>(ki) * n + ni);
-                sum_vec = xsimd::fma(a_vec, b_vec, sum_vec);
+                XSimdBatch sum_vec(0.0f);
+                for (int ki = 0; ki < k; ++ki)
+                {
+                    const XSimdBatch a_vec(a_row[ki]);
+                    const XSimdBatch b_vec = XSimdBatch::load_unaligned(b + static_cast<size_t>(ki) * n + ni);
+                    sum_vec = xsimd::fma(a_vec, b_vec, sum_vec);
+                }
+                sum_vec.store_unaligned(c_row + ni);
             }
-            sum_vec.store_unaligned(c_row + ni);
-        }
 
-        for (; ni < n; ++ni)
-        {
-            float sum = 0.0f;
-            for (int ki = 0; ki < k; ++ki)
+            for (; ni < n; ++ni)
             {
-                sum += a_row[ki] * b[static_cast<size_t>(ki) * n + ni];
+                float sum = 0.0f;
+                for (int ki = 0; ki < k; ++ki)
+                {
+                    sum += a_row[ki] * b[static_cast<size_t>(ki) * n + ni];
+                }
+                c_row[ni] = sum;
             }
-            c_row[ni] = sum;
-        }
-    }
+        });
 }
 
 void gemm_kernel_xsimd_nt_simple_fp32(const float* a, const float* b, float* c,
                                       int m, int n, int k)
 {
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(m, static_cast<size_t>(n) * static_cast<size_t>(k), 1LL << 16, 1))
-#endif
-    for (int mi = 0; mi < m; ++mi)
-    {
-        const float* a_row = a + static_cast<size_t>(mi) * k;
-        float* c_row = c + static_cast<size_t>(mi) * n;
+    for_each_row_range(
+        m,
+        static_cast<size_t>(n) * static_cast<size_t>(k),
+        1LL << 16,
+        1,
+        [&](int mi) {
+            const float* a_row = a + static_cast<size_t>(mi) * k;
+            float* c_row = c + static_cast<size_t>(mi) * n;
 
-        for (int ni = 0; ni < n; ++ni)
-        {
-            const float* b_row = b + static_cast<size_t>(ni) * k;
-            c_row[ni] = dot_fp32_xsimd(a_row, b_row, k);
-        }
-    }
+            for (int ni = 0; ni < n; ++ni)
+            {
+                const float* b_row = b + static_cast<size_t>(ni) * k;
+                c_row[ni] = dot_fp32_xsimd(a_row, b_row, k);
+            }
+        });
 }
 
 void gemm_kernel_xsimd_nn_simple_fp16(const float* a, const hfloat* b, float* c,
@@ -484,56 +514,58 @@ void gemm_kernel_xsimd_nn_simple_fp16(const float* a, const hfloat* b, float* c,
 {
     const int lanes = static_cast<int>(kXSimdBatchSize);
 
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(m, static_cast<size_t>(n) * static_cast<size_t>(k), 1LL << 16, 1))
-#endif
-    for (int mi = 0; mi < m; ++mi)
-    {
-        const float* a_row = a + static_cast<size_t>(mi) * k;
-        float* c_row = c + static_cast<size_t>(mi) * n;
+    for_each_row_range(
+        m,
+        static_cast<size_t>(n) * static_cast<size_t>(k),
+        1LL << 16,
+        1,
+        [&](int mi) {
+            const float* a_row = a + static_cast<size_t>(mi) * k;
+            float* c_row = c + static_cast<size_t>(mi) * n;
 
-        int ni = 0;
-        for (; ni + lanes <= n; ni += lanes)
-        {
-            XSimdBatch sum_vec(0.0f);
-            for (int ki = 0; ki < k; ++ki)
+            int ni = 0;
+            for (; ni + lanes <= n; ni += lanes)
             {
-                const XSimdBatch a_vec(a_row[ki]);
-                const XSimdBatch b_vec = load_hfloat_batch(b + static_cast<size_t>(ki) * n + ni);
-                sum_vec = xsimd::fma(a_vec, b_vec, sum_vec);
+                XSimdBatch sum_vec(0.0f);
+                for (int ki = 0; ki < k; ++ki)
+                {
+                    const XSimdBatch a_vec(a_row[ki]);
+                    const XSimdBatch b_vec = load_hfloat_batch(b + static_cast<size_t>(ki) * n + ni);
+                    sum_vec = xsimd::fma(a_vec, b_vec, sum_vec);
+                }
+                sum_vec.store_unaligned(c_row + ni);
             }
-            sum_vec.store_unaligned(c_row + ni);
-        }
 
-        for (; ni < n; ++ni)
-        {
-            float sum = 0.0f;
-            for (int ki = 0; ki < k; ++ki)
+            for (; ni < n; ++ni)
             {
-                sum += a_row[ki] * static_cast<float>(b[static_cast<size_t>(ki) * n + ni]);
+                float sum = 0.0f;
+                for (int ki = 0; ki < k; ++ki)
+                {
+                    sum += a_row[ki] * static_cast<float>(b[static_cast<size_t>(ki) * n + ni]);
+                }
+                c_row[ni] = sum;
             }
-            c_row[ni] = sum;
-        }
-    }
+        });
 }
 
 void gemm_kernel_xsimd_nt_simple_fp16(const float* a, const hfloat* b, float* c,
                                       int m, int n, int k)
 {
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(m, static_cast<size_t>(n) * static_cast<size_t>(k), 1LL << 16, 1))
-#endif
-    for (int mi = 0; mi < m; ++mi)
-    {
-        const float* a_row = a + static_cast<size_t>(mi) * k;
-        float* c_row = c + static_cast<size_t>(mi) * n;
+    for_each_row_range(
+        m,
+        static_cast<size_t>(n) * static_cast<size_t>(k),
+        1LL << 16,
+        1,
+        [&](int mi) {
+            const float* a_row = a + static_cast<size_t>(mi) * k;
+            float* c_row = c + static_cast<size_t>(mi) * n;
 
-        for (int ni = 0; ni < n; ++ni)
-        {
-            const hfloat* b_row = b + static_cast<size_t>(ni) * k;
-            c_row[ni] = dot_fp16_xsimd(a_row, b_row, k);
-        }
-    }
+            for (int ni = 0; ni < n; ++ni)
+            {
+                const hfloat* b_row = b + static_cast<size_t>(ni) * k;
+                c_row[ni] = dot_fp16_xsimd(a_row, b_row, k);
+            }
+        });
 }
 
 void gemm_kernel_xsimd_nn_simple_i8_rowwise(const float* a, const int8_t* b, const float* scales, float* c,
@@ -541,57 +573,59 @@ void gemm_kernel_xsimd_nn_simple_i8_rowwise(const float* a, const int8_t* b, con
 {
     const int lanes = static_cast<int>(kXSimdBatchSize);
 
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(m, static_cast<size_t>(n) * static_cast<size_t>(k), 1LL << 16, 1))
-#endif
-    for (int mi = 0; mi < m; ++mi)
-    {
-        const float* a_row = a + static_cast<size_t>(mi) * k;
-        float* c_row = c + static_cast<size_t>(mi) * n;
+    for_each_row_range(
+        m,
+        static_cast<size_t>(n) * static_cast<size_t>(k),
+        1LL << 16,
+        1,
+        [&](int mi) {
+            const float* a_row = a + static_cast<size_t>(mi) * k;
+            float* c_row = c + static_cast<size_t>(mi) * n;
 
-        int ni = 0;
-        for (; ni + lanes <= n; ni += lanes)
-        {
-            XSimdBatch sum_vec(0.0f);
-            const XSimdBatch scale_vec = XSimdBatch::load_unaligned(scales + ni);
-            for (int ki = 0; ki < k; ++ki)
+            int ni = 0;
+            for (; ni + lanes <= n; ni += lanes)
             {
-                const XSimdBatch a_vec(a_row[ki]);
-                const XSimdBatch b_vec = load_int8_batch(b + static_cast<size_t>(ki) * n + ni);
-                sum_vec = xsimd::fma(a_vec, b_vec, sum_vec);
+                XSimdBatch sum_vec(0.0f);
+                const XSimdBatch scale_vec = XSimdBatch::load_unaligned(scales + ni);
+                for (int ki = 0; ki < k; ++ki)
+                {
+                    const XSimdBatch a_vec(a_row[ki]);
+                    const XSimdBatch b_vec = load_int8_batch(b + static_cast<size_t>(ki) * n + ni);
+                    sum_vec = xsimd::fma(a_vec, b_vec, sum_vec);
+                }
+                (sum_vec * scale_vec).store_unaligned(c_row + ni);
             }
-            (sum_vec * scale_vec).store_unaligned(c_row + ni);
-        }
 
-        for (; ni < n; ++ni)
-        {
-            float sum = 0.0f;
-            for (int ki = 0; ki < k; ++ki)
+            for (; ni < n; ++ni)
             {
-                sum += a_row[ki] * static_cast<float>(b[static_cast<size_t>(ki) * n + ni]);
+                float sum = 0.0f;
+                for (int ki = 0; ki < k; ++ki)
+                {
+                    sum += a_row[ki] * static_cast<float>(b[static_cast<size_t>(ki) * n + ni]);
+                }
+                c_row[ni] = sum * scales[ni];
             }
-            c_row[ni] = sum * scales[ni];
-        }
-    }
+        });
 }
 
 void gemm_kernel_xsimd_nt_simple_i8_rowwise(const float* a, const int8_t* b, const float* scales, float* c,
                                             int m, int n, int k)
 {
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(m, static_cast<size_t>(n) * static_cast<size_t>(k), 1LL << 16, 1))
-#endif
-    for (int mi = 0; mi < m; ++mi)
-    {
-        const float* a_row = a + static_cast<size_t>(mi) * k;
-        float* c_row = c + static_cast<size_t>(mi) * n;
+    for_each_row_range(
+        m,
+        static_cast<size_t>(n) * static_cast<size_t>(k),
+        1LL << 16,
+        1,
+        [&](int mi) {
+            const float* a_row = a + static_cast<size_t>(mi) * k;
+            float* c_row = c + static_cast<size_t>(mi) * n;
 
-        for (int ni = 0; ni < n; ++ni)
-        {
-            const int8_t* b_row = b + static_cast<size_t>(ni) * k;
-            c_row[ni] = dot_i8_rowwise_xsimd(a_row, b_row, scales[ni], k);
-        }
-    }
+            for (int ni = 0; ni < n; ++ni)
+            {
+                const int8_t* b_row = b + static_cast<size_t>(ni) * k;
+                c_row[ni] = dot_i8_rowwise_xsimd(a_row, b_row, scales[ni], k);
+            }
+        });
 }
 
 }  // namespace

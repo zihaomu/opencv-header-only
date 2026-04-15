@@ -1,10 +1,11 @@
 #include "cvh/imgproc/imgproc.h"
-#include "cvh/core/detail/openmp_utils.h"
+#include "cvh/core/parallel.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <cmath>
+#include <limits>
 #include <type_traits>
 #include <vector>
 
@@ -41,6 +42,81 @@ inline bool should_parallelize_resize(int rows, int cols, int channels)
         static_cast<std::size_t>(cols) * static_cast<std::size_t>(channels),
         1LL << 16,
         2);
+}
+
+template <class Fn>
+inline void parallel_for_index_if(bool do_parallel, int end, Fn&& fn)
+{
+    if (end <= 0)
+    {
+        return;
+    }
+
+    if (!do_parallel)
+    {
+        for (int i = 0; i < end; ++i)
+        {
+            fn(i);
+        }
+        return;
+    }
+
+    cvh::parallel_for_(
+        cvh::Range(0, end),
+        [&](const cvh::Range& range) {
+            for (int i = range.start; i < range.end; ++i)
+            {
+                fn(i);
+            }
+        },
+        static_cast<double>(end));
+}
+
+template <class Fn>
+inline void parallel_for_index_if_step(bool do_parallel, int begin, int end, int step, Fn&& fn)
+{
+    CV_Assert(step > 0);
+    if (begin >= end)
+    {
+        return;
+    }
+
+    const int count = (end - begin + step - 1) / step;
+    parallel_for_index_if(
+        do_parallel,
+        count,
+        [&](int idx) {
+            fn(begin + idx * step);
+        });
+}
+
+template <class Fn>
+inline void parallel_for_count_if(bool do_parallel, std::size_t count, Fn&& fn)
+{
+    if (count == 0)
+    {
+        return;
+    }
+
+    const std::size_t max_parallel_range = static_cast<std::size_t>(std::numeric_limits<int>::max());
+    if (!do_parallel || count > max_parallel_range)
+    {
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            fn(i);
+        }
+        return;
+    }
+
+    cvh::parallel_for_(
+        cvh::Range(0, static_cast<int>(count)),
+        [&](const cvh::Range& range) {
+            for (int i = range.start; i < range.end; ++i)
+            {
+                fn(static_cast<std::size_t>(i));
+            }
+        },
+        static_cast<double>(count));
 }
 
 inline bool is_boxfilter_3x3_candidate(Size ksize, Point anchor, bool normalize)
@@ -137,11 +213,7 @@ void resize_nearest_u8(const uchar* src_data,
     const std::vector<int> y_ofs = build_y_ofs_nearest(src_rows, dst_rows, exact);
     const bool do_parallel = should_parallelize_resize(dst_rows, dst_cols, channels);
 
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < dst_rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, dst_rows, [&](int y) {
         const int sy = y_ofs[static_cast<std::size_t>(y)];
         const uchar* src_row = src_data + static_cast<std::size_t>(sy) * src_step;
         uchar* dst_row = dst_data + static_cast<std::size_t>(y) * dst_step;
@@ -152,7 +224,7 @@ void resize_nearest_u8(const uchar* src_data,
             {
                 dst_row[x] = src_row[x_ofs[static_cast<std::size_t>(x)]];
             }
-            continue;
+            return;
         }
 
         if (channels == 3)
@@ -165,7 +237,7 @@ void resize_nearest_u8(const uchar* src_data,
                 dst_row[dx3 + 1] = src_row[sx3 + 1];
                 dst_row[dx3 + 2] = src_row[sx3 + 2];
             }
-            continue;
+            return;
         }
 
         if (channels == 4)
@@ -179,7 +251,7 @@ void resize_nearest_u8(const uchar* src_data,
                 dst_row[dx4 + 2] = src_row[sx4 + 2];
                 dst_row[dx4 + 3] = src_row[sx4 + 3];
             }
-            continue;
+            return;
         }
 
         for (int x = 0; x < dst_cols; ++x)
@@ -189,7 +261,7 @@ void resize_nearest_u8(const uchar* src_data,
             uchar* dst_px = dst_row + static_cast<std::size_t>(x) * channels;
             std::memcpy(dst_px, src_px, static_cast<std::size_t>(channels));
         }
-    }
+    });
 }
 
 void resize_linear_u8(const uchar* src_data,
@@ -233,11 +305,7 @@ void resize_linear_u8(const uchar* src_data,
 
     const bool do_parallel = should_parallelize_resize(dst_rows, dst_cols, channels);
 
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < dst_rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, dst_rows, [&](int y) {
         const int iy0 = y0[static_cast<std::size_t>(y)];
         const int iy1 = y1[static_cast<std::size_t>(y)];
         const float wyv = wy[static_cast<std::size_t>(y)];
@@ -257,7 +325,7 @@ void resize_linear_u8(const uchar* src_data,
                 const float bot = lerp(static_cast<float>(src_row1[ix0]), static_cast<float>(src_row1[ix1]), wxv);
                 dst_row[x] = saturate_cast<uchar>(lerp(top, bot, wyv));
             }
-            continue;
+            return;
         }
 
         if (channels == 3)
@@ -280,7 +348,7 @@ void resize_linear_u8(const uchar* src_data,
                 dst_row[dx3 + 1] = saturate_cast<uchar>(lerp(top1, bot1, wyv));
                 dst_row[dx3 + 2] = saturate_cast<uchar>(lerp(top2, bot2, wyv));
             }
-            continue;
+            return;
         }
 
         if (channels == 4)
@@ -306,7 +374,7 @@ void resize_linear_u8(const uchar* src_data,
                 dst_row[dx4 + 2] = saturate_cast<uchar>(lerp(top2, bot2, wyv));
                 dst_row[dx4 + 3] = saturate_cast<uchar>(lerp(top3, bot3, wyv));
             }
-            continue;
+            return;
         }
 
         for (int x = 0; x < dst_cols; ++x)
@@ -322,7 +390,7 @@ void resize_linear_u8(const uchar* src_data,
                 dst_px[c] = saturate_cast<uchar>(lerp(top, bot, wyv));
             }
         }
-    }
+    });
 }
 
 bool try_resize_fastpath_u8(const Mat& src, Mat& dst, Size dsize, double fx, double fy, int interpolation)
@@ -439,11 +507,7 @@ void cvtcolor_bgr2gray_u8(const uchar* src_data,
     constexpr int kRound = 1 << 15;
 
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 3);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const uchar* src_row = src_data + static_cast<std::size_t>(y) * src_step;
         uchar* dst_row = dst_data + static_cast<std::size_t>(y) * dst_step;
 
@@ -465,7 +529,7 @@ void cvtcolor_bgr2gray_u8(const uchar* src_data,
             const int sx = x * 3;
             dst_row[x] = static_cast<uchar>((kB * src_row[sx + 0] + kG * src_row[sx + 1] + kR * src_row[sx + 2] + kRound) >> 16);
         }
-    }
+    });
 }
 
 void cvtcolor_gray2bgr_u8(const uchar* src_data,
@@ -476,11 +540,7 @@ void cvtcolor_gray2bgr_u8(const uchar* src_data,
                           int cols)
 {
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 1);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const uchar* src_row = src_data + static_cast<std::size_t>(y) * src_step;
         uchar* dst_row = dst_data + static_cast<std::size_t>(y) * dst_step;
 
@@ -514,7 +574,7 @@ void cvtcolor_gray2bgr_u8(const uchar* src_data,
             dst_row[dx + 1] = g;
             dst_row[dx + 2] = g;
         }
-    }
+    });
 }
 
 template <typename T>
@@ -527,11 +587,7 @@ void cvtcolor_gray_to_4ch_alpha(const uchar* src_data,
                                 T alpha)
 {
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 1);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const T* src_row = reinterpret_cast<const T*>(src_data + static_cast<std::size_t>(y) * src_step);
         T* dst_row = reinterpret_cast<T*>(dst_data + static_cast<std::size_t>(y) * dst_step);
 
@@ -544,7 +600,7 @@ void cvtcolor_gray_to_4ch_alpha(const uchar* src_data,
             dst_row[dx + 2] = g;
             dst_row[dx + 3] = alpha;
         }
-    }
+    });
 }
 
 void cvtcolor_4ch_to_gray_u8(const uchar* src_data,
@@ -561,11 +617,7 @@ void cvtcolor_4ch_to_gray_u8(const uchar* src_data,
     constexpr int kRound = 1 << 15;
 
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 4);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const uchar* src_row = src_data + static_cast<std::size_t>(y) * src_step;
         uchar* dst_row = dst_data + static_cast<std::size_t>(y) * dst_step;
 
@@ -587,7 +639,7 @@ void cvtcolor_4ch_to_gray_u8(const uchar* src_data,
             const int sx = x * 4;
             dst_row[x] = static_cast<uchar>((kB * src_row[sx + (rgba_order ? 2 : 0)] + kG * src_row[sx + 1] + kR * src_row[sx + (rgba_order ? 0 : 2)] + kRound) >> 16);
         }
-    }
+    });
 }
 
 void cvtcolor_4ch_to_gray_f32(const uchar* src_data,
@@ -599,11 +651,7 @@ void cvtcolor_4ch_to_gray_f32(const uchar* src_data,
                               bool rgba_order)
 {
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 4);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const float* src_row = reinterpret_cast<const float*>(src_data + static_cast<std::size_t>(y) * src_step);
         float* dst_row = reinterpret_cast<float*>(dst_data + static_cast<std::size_t>(y) * dst_step);
 
@@ -625,7 +673,7 @@ void cvtcolor_4ch_to_gray_f32(const uchar* src_data,
             const int sx = x * 4;
             dst_row[x] = 0.114f * src_row[sx + (rgba_order ? 2 : 0)] + 0.587f * src_row[sx + 1] + 0.299f * src_row[sx + (rgba_order ? 0 : 2)];
         }
-    }
+    });
 }
 
 template <typename T>
@@ -637,11 +685,7 @@ void cvtcolor_swap_rb_3ch(const uchar* src_data,
                           int cols)
 {
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 3);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const T* src_row = reinterpret_cast<const T*>(src_data + static_cast<std::size_t>(y) * src_step);
         T* dst_row = reinterpret_cast<T*>(dst_data + static_cast<std::size_t>(y) * dst_step);
 
@@ -676,7 +720,7 @@ void cvtcolor_swap_rb_3ch(const uchar* src_data,
             dst_row[sx + 1] = src_row[sx + 1];
             dst_row[sx + 2] = src_row[sx + 0];
         }
-    }
+    });
 }
 
 template <typename T>
@@ -690,11 +734,7 @@ void cvtcolor_3ch_to_4ch_alpha(const uchar* src_data,
                                bool swap_rb)
 {
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 3);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const T* src_row = reinterpret_cast<const T*>(src_data + static_cast<std::size_t>(y) * src_step);
         T* dst_row = reinterpret_cast<T*>(dst_data + static_cast<std::size_t>(y) * dst_step);
 
@@ -720,7 +760,7 @@ void cvtcolor_3ch_to_4ch_alpha(const uchar* src_data,
             dst_row[dx + 2] = src_row[sx + (swap_rb ? 0 : 2)];
             dst_row[dx + 3] = alpha;
         }
-    }
+    });
 }
 
 template <typename T>
@@ -733,11 +773,7 @@ void cvtcolor_4ch_to_3ch_drop_alpha(const uchar* src_data,
                                     bool swap_rb)
 {
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 4);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const T* src_row = reinterpret_cast<const T*>(src_data + static_cast<std::size_t>(y) * src_step);
         T* dst_row = reinterpret_cast<T*>(dst_data + static_cast<std::size_t>(y) * dst_step);
 
@@ -761,7 +797,7 @@ void cvtcolor_4ch_to_3ch_drop_alpha(const uchar* src_data,
             dst_row[dx + 1] = src_row[sx + 1];
             dst_row[dx + 2] = src_row[sx + (swap_rb ? 0 : 2)];
         }
-    }
+    });
 }
 
 template <typename T>
@@ -773,11 +809,7 @@ void cvtcolor_swap_rb_4ch(const uchar* src_data,
                           int cols)
 {
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 4);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const T* src_row = reinterpret_cast<const T*>(src_data + static_cast<std::size_t>(y) * src_step);
         T* dst_row = reinterpret_cast<T*>(dst_data + static_cast<std::size_t>(y) * dst_step);
 
@@ -801,7 +833,7 @@ void cvtcolor_swap_rb_4ch(const uchar* src_data,
             dst_row[sx + 2] = src_row[sx + 0];
             dst_row[sx + 3] = src_row[sx + 3];
         }
-    }
+    });
 }
 
 template <typename T>
@@ -815,11 +847,7 @@ void cvtcolor_3ch_to_yuv(const uchar* src_data,
 {
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 3);
     const float delta = std::is_same_v<T, uchar> ? 128.0f : 0.5f;
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const T* src_row = reinterpret_cast<const T*>(src_data + static_cast<std::size_t>(y) * src_step);
         T* dst_row = reinterpret_cast<T*>(dst_data + static_cast<std::size_t>(y) * dst_step);
 
@@ -873,7 +901,7 @@ void cvtcolor_3ch_to_yuv(const uchar* src_data,
                 dst_row[sx + 2] = vv;
             }
         }
-    }
+    });
 }
 
 template <typename T>
@@ -887,11 +915,7 @@ void cvtcolor_yuv_to_3ch(const uchar* src_data,
 {
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 3);
     const float delta = std::is_same_v<T, uchar> ? 128.0f : 0.5f;
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const T* src_row = reinterpret_cast<const T*>(src_data + static_cast<std::size_t>(y) * src_step);
         T* dst_row = reinterpret_cast<T*>(dst_data + static_cast<std::size_t>(y) * dst_step);
 
@@ -945,7 +969,7 @@ void cvtcolor_yuv_to_3ch(const uchar* src_data,
                 dst_row[sx + (rgb_order ? 2 : 0)] = b;
             }
         }
-    }
+    });
 }
 
 void cvtcolor_yuv420sp_to_3ch_u8(const uchar* src_data,
@@ -958,11 +982,7 @@ void cvtcolor_yuv420sp_to_3ch_u8(const uchar* src_data,
                                  bool rgb_order)
 {
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 1);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const uchar* y_row = src_data + static_cast<std::size_t>(y) * src_step;
         const uchar* uv_row = src_data + static_cast<std::size_t>(rows + y / 2) * src_step;
         uchar* dst_row = dst_data + static_cast<std::size_t>(y) * dst_step;
@@ -987,7 +1007,7 @@ void cvtcolor_yuv420sp_to_3ch_u8(const uchar* src_data,
                 dst_row[dx + (rgb_order ? 2 : 0)] = b;
             }
         }
-    }
+    });
 }
 
 void cvtcolor_3ch_to_yuv420sp_u8(const uchar* src_data,
@@ -1003,11 +1023,7 @@ void cvtcolor_3ch_to_yuv420sp_u8(const uchar* src_data,
     CV_Assert((cols % 2) == 0 && "cvtColor(BGR/RGB2YUV420sp): source width must be even");
 
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 3);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; y += 2)
-    {
+    parallel_for_index_if_step(do_parallel, 0, rows, 2, [&](int y) {
         const uchar* src_row0 = src_data + static_cast<std::size_t>(y + 0) * src_step;
         const uchar* src_row1 = src_data + static_cast<std::size_t>(y + 1) * src_step;
         uchar* dst_y_row0 = dst_data + static_cast<std::size_t>(y + 0) * dst_step;
@@ -1049,7 +1065,7 @@ void cvtcolor_3ch_to_yuv420sp_u8(const uchar* src_data,
             dst_uv_row[x + 0] = nv21_layout ? vv : uu;
             dst_uv_row[x + 1] = nv21_layout ? uu : vv;
         }
-    }
+    });
 }
 
 void cvtcolor_3ch_to_yuv420p_u8(const uchar* src_data,
@@ -1068,11 +1084,7 @@ void cvtcolor_3ch_to_yuv420p_u8(const uchar* src_data,
     const int u_plane_offset = yv12_layout ? uv_size : 0;
     const int v_plane_offset = yv12_layout ? 0 : uv_size;
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 3);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; y += 2)
-    {
+    parallel_for_index_if_step(do_parallel, 0, rows, 2, [&](int y) {
         const uchar* src_row0 = src_data + static_cast<std::size_t>(y + 0) * src_step;
         const uchar* src_row1 = src_data + static_cast<std::size_t>(y + 1) * src_step;
         uchar* dst_y_row0 = dst_data + static_cast<std::size_t>(y + 0) * dst_step;
@@ -1118,7 +1130,7 @@ void cvtcolor_3ch_to_yuv420p_u8(const uchar* src_data,
               static_cast<std::size_t>(rows + (v_plane_offset + chroma_index) / cols) * dst_step +
               static_cast<std::size_t>((v_plane_offset + chroma_index) % cols)) = vv;
         }
-    }
+    });
 }
 
 void cvtcolor_yuv422sp_to_3ch_u8(const uchar* src_data,
@@ -1131,11 +1143,7 @@ void cvtcolor_yuv422sp_to_3ch_u8(const uchar* src_data,
                                  bool rgb_order)
 {
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 1);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const uchar* y_row = src_data + static_cast<std::size_t>(y) * src_step;
         const uchar* uv_row = src_data + static_cast<std::size_t>(rows + y) * src_step;
         uchar* dst_row = dst_data + static_cast<std::size_t>(y) * dst_step;
@@ -1160,7 +1168,7 @@ void cvtcolor_yuv422sp_to_3ch_u8(const uchar* src_data,
                 dst_row[dx + (rgb_order ? 2 : 0)] = b;
             }
         }
-    }
+    });
 }
 
 void cvtcolor_3ch_to_yuv422sp_u8(const uchar* src_data,
@@ -1175,11 +1183,7 @@ void cvtcolor_3ch_to_yuv422sp_u8(const uchar* src_data,
     CV_Assert((cols % 2) == 0 && "cvtColor(BGR/RGB2YUV422sp): source width must be even");
 
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 3);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const uchar* src_row = src_data + static_cast<std::size_t>(y) * src_step;
         uchar* dst_y_row = dst_data + static_cast<std::size_t>(y) * dst_step;
         uchar* dst_uv_row = dst_data + static_cast<std::size_t>(rows + y) * dst_step;
@@ -1213,7 +1217,7 @@ void cvtcolor_3ch_to_yuv422sp_u8(const uchar* src_data,
             dst_uv_row[x + 0] = nv61_layout ? vv : uu;
             dst_uv_row[x + 1] = nv61_layout ? uu : vv;
         }
-    }
+    });
 }
 
 void cvtcolor_3ch_to_yuv422packed_u8(const uchar* src_data,
@@ -1228,11 +1232,7 @@ void cvtcolor_3ch_to_yuv422packed_u8(const uchar* src_data,
     CV_Assert((cols % 2) == 0 && "cvtColor(BGR/RGB2YUV422packed): source width must be even");
 
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 3);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const uchar* src_row = src_data + static_cast<std::size_t>(y) * src_step;
         uchar* dst_row = dst_data + static_cast<std::size_t>(y) * dst_step;
 
@@ -1278,7 +1278,7 @@ void cvtcolor_3ch_to_yuv422packed_u8(const uchar* src_data,
                 dst_row[base + 3] = vv;
             }
         }
-    }
+    });
 }
 
 inline uchar cvtcolor_yuv444sp_plane_byte_u8(const uchar* src_data,
@@ -1302,11 +1302,7 @@ void cvtcolor_yuv444sp_to_3ch_u8(const uchar* src_data,
                                  bool rgb_order)
 {
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 1);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const uchar* y_row = src_data + static_cast<std::size_t>(y) * src_step;
         uchar* dst_row = dst_data + static_cast<std::size_t>(y) * dst_step;
 
@@ -1325,7 +1321,7 @@ void cvtcolor_yuv444sp_to_3ch_u8(const uchar* src_data,
             dst_row[dx + 1] = g;
             dst_row[dx + (rgb_order ? 2 : 0)] = b;
         }
-    }
+    });
 }
 
 void cvtcolor_3ch_to_yuv444sp_u8(const uchar* src_data,
@@ -1338,11 +1334,7 @@ void cvtcolor_3ch_to_yuv444sp_u8(const uchar* src_data,
                                  bool nv42_layout)
 {
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 3);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const uchar* src_row = src_data + static_cast<std::size_t>(y) * src_step;
         uchar* dst_y_row = dst_data + static_cast<std::size_t>(y) * dst_step;
 
@@ -1365,7 +1357,7 @@ void cvtcolor_3ch_to_yuv444sp_u8(const uchar* src_data,
               static_cast<std::size_t>(rows + (base + 1) / cols) * dst_step +
               static_cast<std::size_t>((base + 1) % cols)) = nv42_layout ? uu : vv;
         }
-    }
+    });
 }
 
 void cvtcolor_3ch_to_yuv444p_u8(const uchar* src_data,
@@ -1381,11 +1373,7 @@ void cvtcolor_3ch_to_yuv444p_u8(const uchar* src_data,
     const int u_plane_offset = yv24_layout ? plane_size : 0;
     const int v_plane_offset = yv24_layout ? 0 : plane_size;
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 3);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const uchar* src_row = src_data + static_cast<std::size_t>(y) * src_step;
         uchar* dst_y_row = dst_data + static_cast<std::size_t>(y) * dst_step;
 
@@ -1408,7 +1396,7 @@ void cvtcolor_3ch_to_yuv444p_u8(const uchar* src_data,
               static_cast<std::size_t>(rows + (v_plane_offset + chroma_index) / cols) * dst_step +
               static_cast<std::size_t>((v_plane_offset + chroma_index) % cols)) = vv;
         }
-    }
+    });
 }
 
 inline uchar cvtcolor_yuv420p_plane_byte_u8(const uchar* src_data,
@@ -1450,11 +1438,7 @@ void cvtcolor_yuv420p_to_3ch_u8(const uchar* src_data,
     const int u_plane_offset = yv12_layout ? uv_size : 0;
     const int v_plane_offset = yv12_layout ? 0 : uv_size;
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 1);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const uchar* y_row = src_data + static_cast<std::size_t>(y) * src_step;
         uchar* dst_row = dst_data + static_cast<std::size_t>(y) * dst_step;
 
@@ -1473,7 +1457,7 @@ void cvtcolor_yuv420p_to_3ch_u8(const uchar* src_data,
             dst_row[dx + 1] = g;
             dst_row[dx + (rgb_order ? 2 : 0)] = b;
         }
-    }
+    });
 }
 
 void cvtcolor_yuv444p_to_3ch_u8(const uchar* src_data,
@@ -1489,11 +1473,7 @@ void cvtcolor_yuv444p_to_3ch_u8(const uchar* src_data,
     const int u_plane_offset = yv24_layout ? plane_size : 0;
     const int v_plane_offset = yv24_layout ? 0 : plane_size;
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 1);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const uchar* y_row = src_data + static_cast<std::size_t>(y) * src_step;
         uchar* dst_row = dst_data + static_cast<std::size_t>(y) * dst_step;
 
@@ -1512,7 +1492,7 @@ void cvtcolor_yuv444p_to_3ch_u8(const uchar* src_data,
             dst_row[dx + 1] = g;
             dst_row[dx + (rgb_order ? 2 : 0)] = b;
         }
-    }
+    });
 }
 
 void cvtcolor_yuv422packed_to_3ch_u8(const uchar* src_data,
@@ -1525,11 +1505,7 @@ void cvtcolor_yuv422packed_to_3ch_u8(const uchar* src_data,
                                      bool rgb_order)
 {
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 2);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const uchar* src_row = src_data + static_cast<std::size_t>(y) * src_step;
         uchar* dst_row = dst_data + static_cast<std::size_t>(y) * dst_step;
 
@@ -1559,7 +1535,7 @@ void cvtcolor_yuv422packed_to_3ch_u8(const uchar* src_data,
                 dst_row[dx + (rgb_order ? 2 : 0)] = b;
             }
         }
-    }
+    });
 }
 
 void cvtcolor_bgr2gray_f32(const uchar* src_data,
@@ -1570,11 +1546,7 @@ void cvtcolor_bgr2gray_f32(const uchar* src_data,
                            int cols)
 {
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 3);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const float* src_row = reinterpret_cast<const float*>(src_data + static_cast<std::size_t>(y) * src_step);
         float* dst_row = reinterpret_cast<float*>(dst_data + static_cast<std::size_t>(y) * dst_step);
 
@@ -1596,7 +1568,7 @@ void cvtcolor_bgr2gray_f32(const uchar* src_data,
             const int sx = x * 3;
             dst_row[x] = 0.114f * src_row[sx + 0] + 0.587f * src_row[sx + 1] + 0.299f * src_row[sx + 2];
         }
-    }
+    });
 }
 
 void cvtcolor_gray2bgr_f32(const uchar* src_data,
@@ -1607,11 +1579,7 @@ void cvtcolor_gray2bgr_f32(const uchar* src_data,
                            int cols)
 {
     const bool do_parallel = should_parallelize_cvtcolor(rows, cols, 1);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const float* src_row = reinterpret_cast<const float*>(src_data + static_cast<std::size_t>(y) * src_step);
         float* dst_row = reinterpret_cast<float*>(dst_data + static_cast<std::size_t>(y) * dst_step);
 
@@ -1637,7 +1605,7 @@ void cvtcolor_gray2bgr_f32(const uchar* src_data,
             dst_row[dx + 1] = g;
             dst_row[dx + 2] = g;
         }
-    }
+    });
 }
 
 bool try_cvtcolor_fastpath_u8(const Mat& src, Mat& dst, int code)
@@ -2261,34 +2229,30 @@ bool try_threshold_fastpath_f32(const Mat& src, Mat& dst, double thresh, double 
     if (src.isContinuous() && dst.isContinuous())
     {
         const bool do_parallel = should_parallelize_threshold_contiguous(scalar_count);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-        for (long long i = 0; i < static_cast<long long>(scalar_count); ++i)
-        {
-            const float s = src_ptr[static_cast<std::size_t>(i)];
+        parallel_for_count_if(do_parallel, scalar_count, [&](std::size_t i) {
+            const float s = src_ptr[i];
             const bool cond = s > thresh_f;
             switch (thresh_type)
             {
             case THRESH_BINARY:
-                dst_ptr[static_cast<std::size_t>(i)] = cond ? max_f : 0.0f;
+                dst_ptr[i] = cond ? max_f : 0.0f;
                 break;
             case THRESH_BINARY_INV:
-                dst_ptr[static_cast<std::size_t>(i)] = cond ? 0.0f : max_f;
+                dst_ptr[i] = cond ? 0.0f : max_f;
                 break;
             case THRESH_TRUNC:
-                dst_ptr[static_cast<std::size_t>(i)] = cond ? thresh_f : s;
+                dst_ptr[i] = cond ? thresh_f : s;
                 break;
             case THRESH_TOZERO:
-                dst_ptr[static_cast<std::size_t>(i)] = cond ? s : 0.0f;
+                dst_ptr[i] = cond ? s : 0.0f;
                 break;
             case THRESH_TOZERO_INV:
-                dst_ptr[static_cast<std::size_t>(i)] = cond ? 0.0f : s;
+                dst_ptr[i] = cond ? 0.0f : s;
                 break;
             default:
                 CV_Error_(Error::StsBadArg, ("threshold: unsupported threshold type=%d", thresh_type));
             }
-        }
+        });
         return true;
     }
 
@@ -2298,11 +2262,7 @@ bool try_threshold_fastpath_f32(const Mat& src, Mat& dst, double thresh, double 
     const std::size_t src_step = src.step(0);
     const std::size_t dst_step = dst.step(0);
     const bool do_parallel = should_parallelize_threshold_rows(rows, cols_scalar);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
         const float* src_row = reinterpret_cast<const float*>(src.data + static_cast<std::size_t>(y) * src_step);
         float* dst_row = reinterpret_cast<float*>(dst.data + static_cast<std::size_t>(y) * dst_step);
         for (int x = 0; x < cols_scalar; ++x)
@@ -2330,7 +2290,7 @@ bool try_threshold_fastpath_f32(const Mat& src, Mat& dst, double thresh, double 
                 CV_Error_(Error::StsBadArg, ("threshold: unsupported threshold type=%d", thresh_type));
             }
         }
-    }
+    });
 
     return true;
 }
@@ -2406,11 +2366,7 @@ bool try_boxfilter_fastpath_u8(const Mat& src,
 
     std::vector<std::int32_t> row_sums(static_cast<std::size_t>(rows) * static_cast<std::size_t>(row_stride), 0);
     const bool do_parallel_h = should_parallelize_filter_rows(rows, cols, channels, kx);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel_h)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel_h, rows, [&](int y) {
         const uchar* src_row = src_ref->data + static_cast<std::size_t>(y) * src_step;
         std::int32_t* sum_row = row_sums.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(row_stride);
 
@@ -2443,7 +2399,7 @@ bool try_boxfilter_fastpath_u8(const Mat& src,
 
                 sum_row[x] = static_cast<std::int32_t>(s0);
             }
-            continue;
+            return;
         }
 
         if (channels == 3)
@@ -2492,7 +2448,7 @@ bool try_boxfilter_fastpath_u8(const Mat& src,
                 sum_row[dx + 1] = static_cast<std::int32_t>(s1);
                 sum_row[dx + 2] = static_cast<std::int32_t>(s2);
             }
-            continue;
+            return;
         }
 
         if (channels == 4)
@@ -2547,7 +2503,7 @@ bool try_boxfilter_fastpath_u8(const Mat& src,
                 sum_row[dx + 2] = static_cast<std::int32_t>(s2);
                 sum_row[dx + 3] = static_cast<std::int32_t>(s3);
             }
-            continue;
+            return;
         }
 
         std::vector<std::int64_t> sums(static_cast<std::size_t>(channels), 0);
@@ -2597,7 +2553,7 @@ bool try_boxfilter_fastpath_u8(const Mat& src,
                 out_px[c] = static_cast<std::int32_t>(sums[static_cast<std::size_t>(c)]);
             }
         }
-    }
+    });
 
     std::vector<std::int64_t> accum(dst_row_stride, 0);
     for (int i = 0; i < ky; ++i)
@@ -2765,11 +2721,7 @@ bool try_gaussian_blur_fastpath_u8(const Mat& src, Mat& dst, Size ksize, double 
     std::vector<float> tmp(static_cast<std::size_t>(rows) * static_cast<std::size_t>(row_stride), 0.0f);
 
     const bool do_parallel_h = should_parallelize_filter_rows(rows, cols, channels, kx);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel_h)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel_h, rows, [&](int y) {
         const uchar* src_row = src_ref->data + static_cast<std::size_t>(y) * src_step;
         float* tmp_row = tmp.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(row_stride);
 
@@ -2801,7 +2753,7 @@ bool try_gaussian_blur_fastpath_u8(const Mat& src, Mat& dst, Size ksize, double 
                 }
                 tmp_row[x] = acc0;
             }
-            continue;
+            return;
         }
 
         if (channels == 3)
@@ -2845,7 +2797,7 @@ bool try_gaussian_blur_fastpath_u8(const Mat& src, Mat& dst, Size ksize, double 
                 tmp_row[dx + 1] = acc1;
                 tmp_row[dx + 2] = acc2;
             }
-            continue;
+            return;
         }
 
         if (channels == 4)
@@ -2894,14 +2846,10 @@ bool try_gaussian_blur_fastpath_u8(const Mat& src, Mat& dst, Size ksize, double 
                 tmp_row[dx + 3] = acc3;
             }
         }
-    }
+    });
 
     const bool do_parallel_v = should_parallelize_filter_rows(rows, cols, channels, ky);
-#ifdef _OPENMP
-#pragma omp parallel for if(do_parallel_v)
-#endif
-    for (int y = 0; y < rows; ++y)
-    {
+    parallel_for_index_if(do_parallel_v, rows, [&](int y) {
         uchar* dst_row = dst.data + static_cast<std::size_t>(y) * dst_step;
         const int* y_ofs = y_offsets.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(ky);
 
@@ -2934,7 +2882,7 @@ bool try_gaussian_blur_fastpath_u8(const Mat& src, Mat& dst, Size ksize, double 
                 }
                 dst_row[x] = saturate_cast<uchar>(acc0);
             }
-            continue;
+            return;
         }
 
         if (channels == 3)
@@ -2977,7 +2925,7 @@ bool try_gaussian_blur_fastpath_u8(const Mat& src, Mat& dst, Size ksize, double 
                 dst_row[dx + 1] = saturate_cast<uchar>(acc1);
                 dst_row[dx + 2] = saturate_cast<uchar>(acc2);
             }
-            continue;
+            return;
         }
 
         if (channels == 4)
@@ -3025,7 +2973,7 @@ bool try_gaussian_blur_fastpath_u8(const Mat& src, Mat& dst, Size ksize, double 
                 dst_row[dx + 3] = saturate_cast<uchar>(acc3);
             }
         }
-    }
+    });
 
     return true;
 }

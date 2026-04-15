@@ -30,6 +30,8 @@ struct Args
 {
     std::string profile = "quick";
     std::string dispatch_mode = "auto";
+    std::string parallel_backend = "auto";
+    int threads = 0;
     int warmup = 2;
     int iters = 8;
     int repeats = 3;
@@ -69,6 +71,8 @@ struct ResultRow
     std::string layout;
     std::string border;
     std::string dispatch_path;
+    std::string parallel_backend;
+    int parallel_chunks = 1;
     double ms_per_iter = 0.0;
 };
 
@@ -110,6 +114,30 @@ DispatchMode parse_dispatch_mode(const std::string& mode)
 
     std::cerr << "Unsupported dispatch mode: " << mode
               << " (expected auto/optimized-only/fallback-only)\n";
+    std::exit(2);
+}
+
+cvh::ParallelBackend parse_parallel_backend(const std::string& mode)
+{
+    if (mode == "auto")
+    {
+        return cvh::ParallelBackend::Auto;
+    }
+    if (mode == "stdthread")
+    {
+        return cvh::ParallelBackend::StdThread;
+    }
+    if (mode == "openmp")
+    {
+        return cvh::ParallelBackend::OpenMP;
+    }
+    if (mode == "serial")
+    {
+        return cvh::ParallelBackend::Serial;
+    }
+
+    std::cerr << "Unsupported parallel backend: " << mode
+              << " (expected auto/stdthread/openmp/serial)\n";
     std::exit(2);
 }
 
@@ -185,6 +213,14 @@ Args parse_args(int argc, char** argv)
         {
             args.dispatch_mode = next_value("--dispatch");
         }
+        else if (token == "--parallel-backend")
+        {
+            args.parallel_backend = next_value("--parallel-backend");
+        }
+        else if (token == "--threads")
+        {
+            args.threads = std::max(1, std::stoi(next_value("--threads")));
+        }
         else if (token == "--warmup")
         {
             args.warmup = std::max(0, std::stoi(next_value("--warmup")));
@@ -205,7 +241,8 @@ Args parse_args(int argc, char** argv)
         {
             std::cout << "Usage: cvh_benchmark_imgproc_filter [--profile quick|full] "
                          "[--dispatch auto|optimized-only|fallback-only] [--warmup N] [--iters N] "
-                         "[--repeats N] [--output path]\n";
+                         "[--repeats N] [--parallel-backend auto|stdthread|openmp|serial] "
+                         "[--threads N] [--output path]\n";
             std::exit(0);
         }
         else
@@ -222,6 +259,7 @@ Args parse_args(int argc, char** argv)
     }
 
     (void)parse_dispatch_mode(args.dispatch_mode);
+    (void)parse_parallel_backend(args.parallel_backend);
 
     return args;
 }
@@ -308,7 +346,7 @@ double measure_case(Fn&& fn, const cvh::Mat& dst_probe, int warmup, int iters, i
 
 void print_csv(const std::vector<ResultRow>& rows, std::ostream& os)
 {
-    os << "op,kernel,depth,channels,shape,layout,border,dispatch_path,ms_per_iter\n";
+    os << "op,kernel,depth,channels,shape,layout,border,dispatch_path,parallel_backend,parallel_chunks,ms_per_iter\n";
     os << std::fixed << std::setprecision(6);
     for (const auto& row : rows)
     {
@@ -320,6 +358,8 @@ void print_csv(const std::vector<ResultRow>& rows, std::ostream& os)
            << row.layout << ","
            << row.border << ","
            << row.dispatch_path << ","
+           << row.parallel_backend << ","
+           << row.parallel_chunks << ","
            << row.ms_per_iter << "\n";
     }
 }
@@ -330,6 +370,16 @@ int main(int argc, char** argv)
 {
     const auto args = cvh_bench::parse_args(argc, argv);
     const auto dispatch_mode = cvh_bench::parse_dispatch_mode(args.dispatch_mode);
+    const auto parallel_backend = cvh_bench::parse_parallel_backend(args.parallel_backend);
+    cvh::setParallelBackend(parallel_backend);
+    if (args.threads > 0)
+    {
+        cvh::setNumThreads(args.threads);
+    }
+    if (parallel_backend == cvh::ParallelBackend::OpenMP && !cvh::isOpenMPBackendAvailable())
+    {
+        std::cerr << "warning: OpenMP backend requested but unavailable, runtime will fallback\n";
+    }
     const auto inputs = cvh_bench::build_inputs(args.profile);
     const auto channels = cvh_bench::build_channels();
     const auto kernels = cvh_bench::build_kernels(args.profile);
@@ -366,6 +416,8 @@ int main(int argc, char** argv)
                     cvh::Mat dst;
                     double ms_per_iter = 0.0;
                     std::string dispatch_path = "unknown";
+                    std::string parallel_backend_used = "unknown";
+                    int parallel_chunks = 1;
                     try
                     {
                         if (kernel.op == cvh_bench::FilterOp::BoxFilter)
@@ -396,6 +448,8 @@ int main(int argc, char** argv)
                             dispatch_path = (dispatch_mode == cvh_bench::DispatchMode::FallbackOnly)
                                                 ? "forced_fallback"
                                                 : cvh_bench::dispatch_path_for(kernel.op);
+                            parallel_backend_used = cvh::last_parallel_backend();
+                            parallel_chunks = cvh::last_parallel_chunks();
                         }
                         else
                         {
@@ -423,6 +477,8 @@ int main(int argc, char** argv)
                             dispatch_path = (dispatch_mode == cvh_bench::DispatchMode::FallbackOnly)
                                                 ? "forced_fallback"
                                                 : cvh_bench::dispatch_path_for(kernel.op);
+                            parallel_backend_used = cvh::last_parallel_backend();
+                            parallel_chunks = cvh::last_parallel_chunks();
                         }
                     }
                     catch (const cvh::Exception&)
@@ -439,6 +495,8 @@ int main(int argc, char** argv)
                         input.roi_layout ? "roi_noncontiguous" : "continuous",
                         border.name,
                         dispatch_path,
+                        parallel_backend_used,
+                        parallel_chunks,
                         ms_per_iter,
                     });
                 }

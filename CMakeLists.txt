@@ -252,6 +252,7 @@ if(CVH_BUILD_TESTS)
             test/core/mat_shape_display_test.cpp
             test/core/mat_expr_scalar_compare_test.cpp
             test/core/mat_opencv_compat_test.cpp
+            test/core/parallel_for_runtime_test.cpp
             test/core/mat_scalar_ops_test.cpp
             test/core/mat_submat_test.cpp
             test/core/mat_upstream_channel_port_test.cpp

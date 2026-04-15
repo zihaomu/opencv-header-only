@@ -1,5 +1,5 @@
 #include "normalization_kernel_xsimd.h"
-#include "cvh/core/detail/openmp_utils.h"
+#include "cvh/core/parallel.h"
 #include "cvh/core/detail/xsimd_kernel_utils.h"
 
 #include "xsimd/xsimd.hpp"
@@ -7,10 +7,6 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-
-#ifdef _OPENMP
-#include <omp.h>
-#endif
 
 namespace cvh {
 namespace cpu {
@@ -36,17 +32,36 @@ inline float rms_scale_xsimd(const float* input_row, size_t channels, float eps)
     return 1.0f / std::sqrt(sum_sq / static_cast<float>(channels) + eps);
 }
 
+template <class Fn>
+inline void for_each_outer(size_t outer, size_t inner_work_units, Fn&& fn)
+{
+    const bool do_parallel = should_parallelize_1d_loop(outer, inner_work_units, 1LL << 14, 2);
+    const size_t max_parallel_range = static_cast<size_t>(std::numeric_limits<int>::max());
+    if (!do_parallel || outer > max_parallel_range)
+    {
+        for (size_t outer_i = 0; outer_i < outer; ++outer_i)
+        {
+            fn(outer_i);
+        }
+        return;
+    }
+
+    cvh::parallel_for_(
+        cvh::Range(0, static_cast<int>(outer)),
+        [&](const cvh::Range& range) {
+            for (int outer_idx = range.start; outer_idx < range.end; ++outer_idx)
+            {
+                fn(static_cast<size_t>(outer_idx));
+            }
+        },
+        static_cast<double>(outer));
+}
+
 }  // namespace
 
 void softmax_lastdim_xsimd(const float* input, float* output, size_t outer, size_t inner)
 {
-    const long long outer_ll = static_cast<long long>(outer);
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, inner, 1LL << 14, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, inner, [&](size_t outer_i) {
         const float* input_row = input + outer_i * inner;
         float* output_row = output + outer_i * inner;
 
@@ -93,7 +108,7 @@ void softmax_lastdim_xsimd(const float* input, float* output, size_t outer, size
         {
             output_row[idx] *= inv_sum;
         }
-    }
+    });
 }
 
 void causal_masked_softmax_square_xsimd(const float* input,
@@ -102,13 +117,7 @@ void causal_masked_softmax_square_xsimd(const float* input,
                                         size_t seq_len,
                                         float scale)
 {
-    const long long outer_ll = static_cast<long long>(outer);
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, seq_len * seq_len, 1LL << 14, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, seq_len * seq_len, [&](size_t outer_i) {
         const float* input_mat = input + outer_i * seq_len * seq_len;
         float* output_mat = output + outer_i * seq_len * seq_len;
         const XSimdBatch scale_vec(scale);
@@ -167,7 +176,7 @@ void causal_masked_softmax_square_xsimd(const float* input,
 
             std::fill(output_row + valid_cols, output_row + seq_len, 0.0f);
         }
-    }
+    });
 }
 
 void rmsnorm_lastdim_xsimd_fp16_weight(const float* input,
@@ -177,13 +186,7 @@ void rmsnorm_lastdim_xsimd_fp16_weight(const float* input,
                                        size_t channels,
                                        float eps)
 {
-    const long long outer_ll = static_cast<long long>(outer);
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, channels, 1LL << 14, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, channels, [&](size_t outer_i) {
         const float* input_row = input + outer_i * channels;
         float* output_row = output + outer_i * channels;
 
@@ -202,7 +205,7 @@ void rmsnorm_lastdim_xsimd_fp16_weight(const float* input,
         {
             output_row[idx] = input_row[idx] * scale * static_cast<float>(weight[idx]);
         }
-    }
+    });
 }
 
 void rmsnorm_lastdim_xsimd_i8_weight(const float* input,
@@ -214,13 +217,7 @@ void rmsnorm_lastdim_xsimd_i8_weight(const float* input,
                                      float eps)
 {
     const float weight_scale = scales[0];
-    const long long outer_ll = static_cast<long long>(outer);
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, channels, 1LL << 14, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, channels, [&](size_t outer_i) {
         const float* input_row = input + outer_i * channels;
         float* output_row = output + outer_i * channels;
 
@@ -239,7 +236,7 @@ void rmsnorm_lastdim_xsimd_i8_weight(const float* input,
         {
             output_row[idx] = input_row[idx] * scale * static_cast<float>(weight[idx]);
         }
-    }
+    });
 }
 
 void rmsnorm_lastdim_xsimd(const float* input,
@@ -249,13 +246,7 @@ void rmsnorm_lastdim_xsimd(const float* input,
                            size_t channels,
                            float eps)
 {
-    const long long outer_ll = static_cast<long long>(outer);
-#ifdef _OPENMP
-#pragma omp parallel for if(should_parallelize_1d_loop(outer, channels, 1LL << 14, 2))
-#endif
-    for (long long outer_idx = 0; outer_idx < outer_ll; ++outer_idx)
-    {
-        const size_t outer_i = static_cast<size_t>(outer_idx);
+    for_each_outer(outer, channels, [&](size_t outer_i) {
         const float* input_row = input + outer_i * channels;
         float* output_row = output + outer_i * channels;
 
@@ -274,7 +265,7 @@ void rmsnorm_lastdim_xsimd(const float* input,
         {
             output_row[idx] = input_row[idx] * scale * weight[idx];
         }
-    }
+    });
 }
 
 }  // namespace cpu

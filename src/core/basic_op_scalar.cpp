@@ -562,13 +562,6 @@ inline bool try_dispatch_mat_mat_compare_xsimd_fp16(const Mat& a,
                                                     Mat& dst,
                                                     int op)
 {
-#ifndef _OPENMP
-    (void)a;
-    (void)b;
-    (void)dst;
-    (void)op;
-    return false;
-#else
     if (a.depth() != CV_16F)
     {
         return false;
@@ -602,7 +595,6 @@ inline bool try_dispatch_mat_mat_compare_xsimd_fp16(const Mat& a,
         row_elements);
 
     return true;
-#endif
 }
 
 inline bool try_dispatch_mat_mat_compare_xsimd_int(const Mat& a,

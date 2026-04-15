@@ -8,6 +8,7 @@
 #include "core/define.h"
 #include "core/types.h"
 #include "core/mat.h"
+#include "core/parallel.h"
 #include "core/basic_op.h"
 #include "core/utils.h"
 

@@ -4,14 +4,12 @@
 
 #include "cvh/core/mat.h"
 #include "cvh/core/basic_op.h"
-#include "cvh/core/detail/openmp_utils.h"
+#include "cvh/core/parallel.h"
 #include "cvh/core/system.h"
 #include "cvh/core/utils.h"
 #include "kernel/gemm_kernel_xsimd.h"
 
-#ifdef _OPENMP
-#include <omp.h>
-#endif
+#include <limits>
 
 namespace cvh
 {
@@ -50,6 +48,36 @@ size_t broadcast_linear_index(const MatShape& src_shape, const MatShape& src_str
         linear += static_cast<size_t>(coord) * src_strides[d];
     }
     return linear;
+}
+
+template <class Fn>
+inline void for_each_gemm_batch(size_t out_loop, int m, int n, int k, Fn&& fn)
+{
+    const bool do_parallel = static_cast<long long>(m) * n * k <= (1LL << 15) &&
+                             cpu::should_parallelize_1d_loop(
+                                 out_loop,
+                                 static_cast<size_t>(m) * static_cast<size_t>(n) * static_cast<size_t>(k),
+                                 1LL << 15,
+                                 2);
+    const size_t max_parallel_range = static_cast<size_t>(std::numeric_limits<int>::max());
+    if (!do_parallel || out_loop > max_parallel_range)
+    {
+        for (size_t i = 0; i < out_loop; ++i)
+        {
+            fn(i);
+        }
+        return;
+    }
+
+    cvh::parallel_for_(
+        cvh::Range(0, static_cast<int>(out_loop)),
+        [&](const cvh::Range& range) {
+            for (int idx = range.start; idx < range.end; ++idx)
+            {
+                fn(static_cast<size_t>(idx));
+            }
+        },
+        static_cast<double>(out_loop));
 }
 
 // naive impl, [M x K] x [K x N] = M x N
@@ -110,13 +138,8 @@ void gemm_impl_naive(const Mat& a, const Mat& b, Mat& c)
     const float* pa = (const float*)a.data;
     float* pc = (float*)c.data;
 
-    const long long out_loop_ll = static_cast<long long>(out_loop);
-#ifdef _OPENMP
-#pragma omp parallel for if(static_cast<long long>(M) * N * K <= (1LL << 15) && cpu::should_parallelize_1d_loop(out_loop, static_cast<size_t>(M) * static_cast<size_t>(N) * static_cast<size_t>(K), 1LL << 15, 2))
-#endif
-    for (long long i = 0; i < out_loop_ll; i++)
-    {
-        size_t tmp = static_cast<size_t>(i);
+    for_each_gemm_batch(out_loop, M, N, K, [&](size_t i) {
+        size_t tmp = i;
         std::vector<int> idx_c(out_batch_dims);
         for (int d = 0; d < out_batch_dims; d++)
         {
@@ -128,7 +151,7 @@ void gemm_impl_naive(const Mat& a, const Mat& b, Mat& c)
         size_t lin_b = broadcast_linear_index(shape_b, stride_b, idx_c, out_batch_dims);
 
         const float* pai = lin_a * step_a + pa;
-        float* pci = static_cast<size_t>(i) * step_c + pc;
+        float* pci = i * step_c + pc;
 
         if (b.type() == CV_32F)
         {
@@ -142,7 +165,7 @@ void gemm_impl_naive(const Mat& a, const Mat& b, Mat& c)
             const hfloat* pbi = lin_b * step_b + pb;
             cpu::gemm_kernel_xsimd_nn_fp16(pai, pbi, pci, M, N, K);
         }
-    }
+    });
 }
 
 // Mat b is not transposed! [M x K] x [N x K] = M x N
@@ -266,13 +289,8 @@ void gemm_impl_row(const Mat& a, const Mat& b, const Mat* b_scales, Mat& c)
     const float* pa = (const float*)a.data;
     float* pc = (float*)c.data;
 
-    const long long out_loop_ll = static_cast<long long>(out_loop);
-#ifdef _OPENMP
-#pragma omp parallel for if(static_cast<long long>(M) * N * K <= (1LL << 15) && cpu::should_parallelize_1d_loop(out_loop, static_cast<size_t>(M) * static_cast<size_t>(N) * static_cast<size_t>(K), 1LL << 15, 2))
-#endif
-    for (long long i = 0; i < out_loop_ll; i++)
-    {
-        size_t tmp = static_cast<size_t>(i);
+    for_each_gemm_batch(out_loop, M, N, K, [&](size_t i) {
+        size_t tmp = i;
         std::vector<int> idx_c(out_batch_dims);
         for (int d = 0; d < out_batch_dims; d++)
         {
@@ -284,7 +302,7 @@ void gemm_impl_row(const Mat& a, const Mat& b, const Mat* b_scales, Mat& c)
         size_t lin_b = broadcast_linear_index(shape_b, stride_b, idx_c, out_batch_dims);
 
         const float* pai = lin_a * step_a + pa;
-        float* pci = static_cast<size_t>(i) * step_c + pc;
+        float* pci = i * step_c + pc;
 
         if (b.type() == CV_32F)
         {
@@ -305,7 +323,7 @@ void gemm_impl_row(const Mat& a, const Mat& b, const Mat* b_scales, Mat& c)
             const float* scale_ptr = reinterpret_cast<const float*>(b_scales->data);
             cpu::gemm_kernel_xsimd_nt_i8_rowwise(pai, pbi, scale_ptr, pci, M, N, K);
         }
-    }
+    });
 }
 
 // implementation of rox x column
