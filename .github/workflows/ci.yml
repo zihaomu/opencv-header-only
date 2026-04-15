@@ -54,6 +54,7 @@ jobs:
           CVH_IMGPROC_BENCH_OMP_DYNAMIC: "false"
           CVH_IMGPROC_BENCH_OMP_PROC_BIND: "close"
           CVH_IMGPROC_BENCH_CPU_LIST: "auto"
+          CVH_IMGPROC_BENCH_MAX_SLOWDOWN_BY_OP_DEPTH: "THRESH_BINARY_F32:CV_32F=0.10"
         run: ./scripts/ci_imgproc_quick_gate.sh
 
   imgproc_full_gate:

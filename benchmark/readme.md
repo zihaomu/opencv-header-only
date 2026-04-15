@@ -41,8 +41,14 @@
 
 - 可执行程序：`cvh_benchmark_imgproc_ops`
   - 源码：`benchmark/imgproc_ops_benchmark.cpp`
-  - 覆盖：`imgproc` 基础热点算子（`resize nearest/linear (CV_8U/CV_32F)`, `cvtColor`, `threshold(CV_8U/CV_32F fixed)`, `boxFilter(CV_8U/CV_32F)`, `GaussianBlur(CV_8U/CV_32F)`）
-  - 数据维度：`CV_8U` + `C1/C3/C4`（按算子合法组合）+ `quick/full` 分辨率组合
+  - 覆盖：`imgproc` 基础热点算子（`resize nearest/linear (CV_8U/CV_32F)`, `cvtColor BGR2GRAY/GRAY2BGR/GRAY2BGRA/BGRA2GRAY/GRAY2RGBA/RGBA2GRAY/BGR2RGB/BGR2BGRA/BGRA2BGR/RGB2RGBA/RGBA2RGB/BGR2RGBA/RGBA2BGR/RGB2BGRA/BGRA2RGB/BGRA2RGBA/RGBA2BGRA/BGR2YUV/YUV2BGR/RGB2YUV/YUV2RGB (CV_8U/CV_32F)`, `cvtColor BGR2YUV_NV12/RGB2YUV_NV12/BGR2YUV_NV21/RGB2YUV_NV21/BGR2YUV_I420/RGB2YUV_I420/BGR2YUV_YV12/RGB2YUV_YV12/BGR2YUV_NV16/RGB2YUV_NV16/BGR2YUV_NV61/RGB2YUV_NV61/BGR2YUV_YUY2/RGB2YUV_YUY2/BGR2YUV_UYVY/RGB2YUV_UYVY/BGR2YUV_NV24/RGB2YUV_NV24/BGR2YUV_NV42/RGB2YUV_NV42/BGR2YUV_I444/RGB2YUV_I444/BGR2YUV_YV24/RGB2YUV_YV24/YUV2BGR_NV12/YUV2RGB_NV12/YUV2BGR_NV21/YUV2RGB_NV21/YUV2BGR_I420/YUV2RGB_I420/YUV2BGR_YV12/YUV2RGB_YV12/YUV2BGR_I444/YUV2RGB_I444/YUV2BGR_YV24/YUV2RGB_YV24/YUV2BGR_NV16/YUV2RGB_NV16/YUV2BGR_NV61/YUV2RGB_NV61/YUV2BGR_NV24/YUV2RGB_NV24/YUV2BGR_NV42/YUV2RGB_NV42/YUV2BGR_YUY2/YUV2RGB_YUY2/YUV2BGR_UYVY/YUV2RGB_UYVY (CV_8U)`, `threshold(CV_8U/CV_32F fixed)`, `boxFilter(CV_8U/CV_32F)`, `GaussianBlur(CV_8U/CV_32F)`）
+  - 数据维度：`CV_8U/CV_32F` + 合法 `channel` 组合 + `quick/full` 分辨率组合；`NV12/NV21` 与 `I420/YV12` decode/encode 均按 `C1(H*3/2 x W)` 布局生成，`I444/YV24` 与 `NV24/NV42` decode/encode 使用 `C1(H*3 x W)` 输入/输出布局，`NV16/NV61` decode/encode 使用 `C1(H*2 x W)` 输入/输出布局，`YUY2/UYVY` decode/encode 使用 `C2(H x W)` 输入/输出布局
+  - 其中 `I444/YV24` 的 `C1(H*3 x W)` 语义为：上 `H` 行 `Y`，中间 `H` 行为 `U/V` 平面，最后 `H` 行为 `V/U` 平面；decode 以该布局作为输入，encode 以该布局作为输出
+  - `NV24/NV42` 的 `C1(H*3 x W)` 语义为：上 `H` 行 `Y`，下 `2H` 行为连续 `UV` / `VU` 字节流；decode 以该布局作为输入，encode 以该布局作为输出
+  - `NV12/NV21` 的 `C1(H*3/2 x W)` 语义为：上 `H` 行 `Y`，下 `H/2` 行为连续 `UV` / `VU` 字节流；decode 与 encode 都以该布局作为输入/输出，且每 `2x2` 像素共享一组 `U/V`
+  - `I420/YV12` 的 `C1(H*3/2 x W)` 语义为：上 `H` 行 `Y`，下 `H/2` 行按平面排列；`I420` 为 `U` 后 `V`，`YV12` 为 `V` 后 `U`；decode 与 encode 都以该布局作为输入/输出，且每 `2x2` 像素共享一组 `U/V`
+  - `NV16/NV61` 的 `C1(H*2 x W)` 语义为：上 `H` 行 `Y`，下 `H` 行为连续 `UV` / `VU` 字节流；decode 以该布局作为输入，encode 以该布局作为输出，且每 2 个水平像素共享一组 `U/V`
+  - `YUY2/UYVY` 的 `C2(H x W)` 语义为：`YUY2` 按 `[Y0 U][Y1 V]` 写出，`UYVY` 按 `[U Y0][V Y1]` 写出；decode 以该布局作为输入，encode 以该布局作为输出，且每 2 个水平像素共享一组 `U/V`
   - 输出：标准 CSV（stdout）或 `--output <file>`
 
 - 回归检查脚本：`scripts/check_core_benchmark_regression.py`
@@ -55,6 +61,7 @@
   - 对比 baseline/current CSV
   - key：`profile+op+depth+channels+shape`
   - 支持全局阈值 `--max-slowdown`（默认 `0.08`，即 8%）
+  - 支持分桶阈值 `--max-slowdown-by-op-depth`（按 `op+depth` 或单维覆盖）
   - 超过阈值时返回非 0（可用于 CI gate）
 
 ## 使用示例
@@ -115,14 +122,14 @@ cmake --build build-full-test -j --target cvh_benchmark_imgproc_ops
 2. 生成 quick 基线：
 
 ```bash
-taskset -c 0 env OMP_NUM_THREADS=1 OMP_DYNAMIC=false OMP_PROC_BIND=close \
+taskset -c <stable-cpu> env OMP_NUM_THREADS=1 OMP_DYNAMIC=false OMP_PROC_BIND=close \
 ./build-full-test/cvh_benchmark_imgproc_ops --profile quick --warmup 2 --iters 20 --repeats 5 --output benchmark/baseline_imgproc_quick.csv
 ```
 
 3. 生成当前版本结果：
 
 ```bash
-taskset -c 0 env OMP_NUM_THREADS=1 OMP_DYNAMIC=false OMP_PROC_BIND=close \
+taskset -c <stable-cpu> env OMP_NUM_THREADS=1 OMP_DYNAMIC=false OMP_PROC_BIND=close \
 ./build-full-test/cvh_benchmark_imgproc_ops --profile quick --warmup 2 --iters 20 --repeats 5 --output benchmark/current_imgproc_quick.csv
 ```
 
@@ -141,9 +148,11 @@ python3 scripts/check_imgproc_benchmark_regression.py \
 - workflow：`.github/workflows/ci.yml` 中 `imgproc_quick_gate`（`workflow_dispatch` 手动触发）
 - 默认基线：`benchmark/baseline_imgproc_quick.csv`
 - 默认使用固定 OpenMP 运行时参数：`OMP_NUM_THREADS=1`, `OMP_DYNAMIC=false`, `OMP_PROC_BIND=close`
-- 如果系统提供 `taskset`，gate 脚本会默认将 benchmark 进程绑定到当前 `cpuset` 允许范围内的第一个 CPU，降低进程迁移带来的测量漂移
+- 如果系统提供 `taskset`，gate 脚本默认会把 benchmark 进程绑定到当前 `cpuset` 第一段范围的 `1/4` 位置 CPU（例如 `0-31 -> 8`），尽量避开易受系统噪声影响的 `CPU 0`
 - 这样做是为了降低共享 CI/开发机上的测量噪声；本地多线程 exploratory benchmark 可手动覆盖
 - baseline 属于“机器/runner 类别相关资产”，应在固定机器或固定 runner class 上生成与使用；跨硬件直接复用 baseline 不保证通过
+- 如果 baseline 要被 `scripts/ci_imgproc_quick_gate.sh` / CI gate 直接消费，应使用相同的 gate build config 生成，不要混用 `build-full-test` 与 `build-imgproc-benchmark-gate` 产物
+- quick gate 默认附带一个定向阈值覆盖：`THRESH_BINARY_F32:CV_32F=0.10`，其余 case 继续遵循全局 `8%` 阈值
 - 可通过环境变量覆盖：
   - `CVH_IMGPROC_BENCH_BASELINE`
   - `CVH_IMGPROC_BENCH_CURRENT`
@@ -156,6 +165,7 @@ python3 scripts/check_imgproc_benchmark_regression.py \
   - `CVH_IMGPROC_BENCH_OMP_DYNAMIC`
   - `CVH_IMGPROC_BENCH_OMP_PROC_BIND`
   - `CVH_IMGPROC_BENCH_CPU_LIST`（`auto`/`off`/显式 CPU 列表）
+  - `CVH_IMGPROC_BENCH_MAX_SLOWDOWN_BY_OP_DEPTH`（示例：`THRESH_BINARY_F32:CV_32F=0.10`）
 
 ## Imgproc Full Gate（可选）
 

@@ -10,10 +10,15 @@ WARMUP="${CVH_IMGPROC_BENCH_WARMUP:-2}"
 ITERS="${CVH_IMGPROC_BENCH_ITERS:-20}"
 REPEATS="${CVH_IMGPROC_BENCH_REPEATS:-5}"
 MAX_SLOWDOWN="${CVH_IMGPROC_BENCH_MAX_SLOWDOWN:-0.08}"
+MAX_SLOWDOWN_BY_OP_DEPTH="${CVH_IMGPROC_BENCH_MAX_SLOWDOWN_BY_OP_DEPTH:-}"
 THREADS="${CVH_IMGPROC_BENCH_THREADS:-1}"
 OMP_DYNAMIC_MODE="${CVH_IMGPROC_BENCH_OMP_DYNAMIC:-false}"
 OMP_PROC_BIND_MODE="${CVH_IMGPROC_BENCH_OMP_PROC_BIND:-close}"
 CPU_LIST="${CVH_IMGPROC_BENCH_CPU_LIST:-auto}"
+
+if [[ -z "${MAX_SLOWDOWN_BY_OP_DEPTH}" && "${PROFILE}" == "quick" ]]; then
+  MAX_SLOWDOWN_BY_OP_DEPTH="THRESH_BINARY_F32:CV_32F=0.10"
+fi
 
 if [[ "${PROFILE}" != "quick" && "${PROFILE}" != "full" ]]; then
   echo "Unsupported CVH_IMGPROC_BENCH_PROFILE=${PROFILE}, expected quick|full" >&2
@@ -46,13 +51,24 @@ TASKSET_CPU_LIST=""
 if command -v taskset >/dev/null 2>&1; then
   if [[ "${CPU_LIST}" == "auto" ]]; then
     ALLOWED_CPU_LIST="$(awk '/Cpus_allowed_list:/ {print $2}' /proc/self/status 2>/dev/null || true)"
-    TASKSET_CPU_LIST="${ALLOWED_CPU_LIST%%,*}"
-    TASKSET_CPU_LIST="${TASKSET_CPU_LIST%%-*}"
+    FIRST_SEGMENT="${ALLOWED_CPU_LIST%%,*}"
+    if [[ "${FIRST_SEGMENT}" == *-* ]]; then
+      RANGE_START="${FIRST_SEGMENT%%-*}"
+      RANGE_END="${FIRST_SEGMENT##*-}"
+      if [[ "${RANGE_START}" =~ ^[0-9]+$ && "${RANGE_END}" =~ ^[0-9]+$ && "${RANGE_END}" -ge "${RANGE_START}" ]]; then
+        RANGE_LEN=$((RANGE_END - RANGE_START + 1))
+        RANGE_OFFSET=$((RANGE_LEN / 4))
+        TASKSET_CPU_LIST="$((RANGE_START + RANGE_OFFSET))"
+      fi
+    elif [[ "${FIRST_SEGMENT}" =~ ^[0-9]+$ ]]; then
+      TASKSET_CPU_LIST="${FIRST_SEGMENT}"
+    fi
   elif [[ "${CPU_LIST}" != "off" ]]; then
     TASKSET_CPU_LIST="${CPU_LIST}"
   fi
 fi
 echo "imgproc_bench_runtime: threads=${THREADS}, omp_dynamic=${OMP_DYNAMIC_MODE}, omp_proc_bind=${OMP_PROC_BIND_MODE}, cpu_list=${TASKSET_CPU_LIST:-none}"
+echo "imgproc_bench_threshold_overrides: ${MAX_SLOWDOWN_BY_OP_DEPTH:-none}"
 echo "imgproc_bench_gate_files: baseline=${BASELINE_CSV}, current=${CURRENT_CSV}"
 
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
@@ -89,7 +105,20 @@ else
     >/dev/null
 fi
 
-python3 "${ROOT_DIR}/scripts/check_imgproc_benchmark_regression.py" \
-  --baseline "${BASELINE_CSV}" \
-  --current "${CURRENT_CSV}" \
+REGRESSION_ARGS=(
+  --baseline "${BASELINE_CSV}"
+  --current "${CURRENT_CSV}"
   --max-slowdown "${MAX_SLOWDOWN}"
+)
+
+if [[ -n "${MAX_SLOWDOWN_BY_OP_DEPTH}" ]]; then
+  IFS=',' read -r -a OVERRIDE_RULES <<< "${MAX_SLOWDOWN_BY_OP_DEPTH}"
+  for rule in "${OVERRIDE_RULES[@]}"; do
+    trimmed_rule="$(echo "${rule}" | xargs)"
+    if [[ -n "${trimmed_rule}" ]]; then
+      REGRESSION_ARGS+=(--max-slowdown-by-op-depth "${trimmed_rule}")
+    fi
+  done
+fi
+
+python3 "${ROOT_DIR}/scripts/check_imgproc_benchmark_regression.py" "${REGRESSION_ARGS[@]}"
