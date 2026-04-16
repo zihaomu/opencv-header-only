@@ -8,7 +8,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Added
 - Trust Pipeline PR1 foundation:
-  - `core_basic` and `imgproc_quick_gate` run by default on `push/pull_request`.
+  - `core_basic` runs by default on `push/pull_request`; `imgproc_quick_gate` runs by default on `pull_request`.
   - `contract_v0` hard compatibility gate for upstream core must-pass subset.
   - `benchmark/gate_policy.json` as single gate policy source.
   - Script-level unittest fixtures for gate/policy/regression scripts.

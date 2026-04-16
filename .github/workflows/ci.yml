@@ -42,7 +42,7 @@ jobs:
         run: ./scripts/ci_core_basic.sh
 
   imgproc_quick_gate:
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_imgproc_quick_gate }}
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.run_imgproc_quick_gate) }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

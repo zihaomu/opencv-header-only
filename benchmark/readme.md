@@ -191,10 +191,10 @@ python3 scripts/check_imgproc_benchmark_regression.py \
   --max-slowdown 0.08
 ```
 
-## CI quick gate（默认开启）
+## CI quick gate（PR 默认开启）
 
 - 脚本入口：`scripts/ci_imgproc_quick_gate.sh`
-- workflow：`.github/workflows/ci.yml` 中 `imgproc_quick_gate`（`push/pull_request` 默认执行，`workflow_dispatch` 可选）
+- workflow：`.github/workflows/ci.yml` 中 `imgproc_quick_gate`（`pull_request` 默认执行，`workflow_dispatch` 可选）
 - `pull_request` 默认启用同机对比模式：`base-ref(main)` vs `PR HEAD`
 - 默认基线：`benchmark/baseline_imgproc_quick.csv`
 - 统一策略源：`benchmark/gate_policy.json`（由 `scripts/read_gate_policy.py` 读取）
