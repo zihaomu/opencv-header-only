@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "core_contract": {
+    "path": "test/upstream/opencv/core/contract_v0.json"
+  },
+  "imgproc": {
+    "enforce_fingerprint": true,
+    "profiles": {
+      "quick": {
+        "default_warmup": 2,
+        "default_iters": 20,
+        "default_repeats": 5,
+        "default_threads": 1,
+        "default_max_slowdown": 0.08,
+        "default_max_slowdown_by_op_depth": "THRESH_BINARY_F32:CV_32F=0.10",
+        "minimum_samples": 60
+      },
+      "full": {
+        "default_warmup": 1,
+        "default_iters": 10,
+        "default_repeats": 3,
+        "default_threads": 1,
+        "default_max_slowdown": 0.15,
+        "default_max_slowdown_by_op_depth": "",
+        "minimum_samples": 30
+      }
+    }
+  }
+}

@@ -1,0 +1,3 @@
+profile,op,depth,channels,shape,elements,ms_per_iter,melems_per_sec,gb_per_sec
+quick,THRESH_BINARY_F32,CV_32F,1,512x512,262144,1.250000,209.71,0.84
+quick,RESIZE_LINEAR,CV_8U,3,640x480,307200,2.100000,146.29,0.44

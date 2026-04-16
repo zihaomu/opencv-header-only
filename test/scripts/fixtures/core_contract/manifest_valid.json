@@ -1,0 +1,22 @@
+{
+  "cases": [
+    {
+      "source_file": "modules/core/test/test_mat.cpp",
+      "suite": "Core_Merge",
+      "name": "shape_operations",
+      "status": "PASS_NOW"
+    },
+    {
+      "source_file": "modules/core/test/test_operations.cpp",
+      "suite": "Compare",
+      "name": "regression_8999",
+      "status": "PASS_NOW"
+    },
+    {
+      "source_file": "modules/core/test/test_array.cpp",
+      "suite": "Core_Array",
+      "name": "expressions",
+      "status": "FAIL_NOW"
+    }
+  ]
+}

@@ -32,7 +32,7 @@ jobs:
         run: ./scripts/ci_smoke.sh
 
   core_basic:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_core_basic }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_core_basic }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -42,11 +42,13 @@ jobs:
         run: ./scripts/ci_core_basic.sh
 
   imgproc_quick_gate:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_imgproc_quick_gate }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_imgproc_quick_gate }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Run Imgproc Quick Benchmark Gate
         env:
@@ -54,8 +56,12 @@ jobs:
           CVH_IMGPROC_BENCH_OMP_DYNAMIC: "false"
           CVH_IMGPROC_BENCH_OMP_PROC_BIND: "close"
           CVH_IMGPROC_BENCH_CPU_LIST: "auto"
-          CVH_IMGPROC_BENCH_MAX_SLOWDOWN_BY_OP_DEPTH: "THRESH_BINARY_F32:CV_32F=0.10"
-        run: ./scripts/ci_imgproc_quick_gate.sh
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git fetch --no-tags origin "${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+            export CVH_IMGPROC_BENCH_BASE_REF="origin/${{ github.base_ref }}"
+          fi
+          ./scripts/ci_imgproc_quick_gate.sh
 
   imgproc_full_gate:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_imgproc_full_gate }}

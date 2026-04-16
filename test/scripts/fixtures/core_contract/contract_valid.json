@@ -1,0 +1,20 @@
+{
+  "contract": "v0",
+  "minimum_must_pass": 2,
+  "required_cases": [
+    {
+      "suite": "Core_Merge",
+      "name": "shape_operations"
+    }
+  ],
+  "must_pass": [
+    {
+      "suite": "Core_Merge",
+      "name": "shape_operations"
+    },
+    {
+      "suite": "Compare",
+      "name": "regression_8999"
+    }
+  ]
+}

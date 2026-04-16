@@ -38,6 +38,7 @@ cmake --build build --target test
 ```bash
 ./scripts/ci_smoke.sh
 ./scripts/ci_core_basic.sh
+./scripts/ci_imgproc_quick_gate.sh
 ```
 
 可通过环境变量设置 warning 预算（默认 `0`）：
@@ -45,6 +46,8 @@ cmake --build build --target test
 ```bash
 CVH_WARNING_BUDGET=0 ./scripts/ci_core_basic.sh
 ```
+
+Trust gate policy 单一配置源位于 `benchmark/gate_policy.json`。
 
 ## Build Options
 

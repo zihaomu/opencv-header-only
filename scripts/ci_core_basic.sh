@@ -8,11 +8,26 @@ BUILD_LOG="${BUILD_DIR}/build.log"
 
 "${ROOT_DIR}/scripts/check_public_headers.sh"
 python3 "${ROOT_DIR}/scripts/verify_opencv_core_channel_cases.py" --repo-root "${ROOT_DIR}"
+POLICY_EXPORTS="$(python3 "${ROOT_DIR}/scripts/read_gate_policy.py" --repo-root "${ROOT_DIR}" --profile quick --emit shell)"
+eval "${POLICY_EXPORTS}"
+
+CORE_CONTRACT_PATH="${CVH_CORE_CONTRACT_PATH:-${CVH_POLICY_CORE_CONTRACT_PATH}}"
+if [[ "${CORE_CONTRACT_PATH}" != /* ]]; then
+  CORE_CONTRACT_PATH="${ROOT_DIR}/${CORE_CONTRACT_PATH}"
+fi
+
+CORE_CONTRACT_GTEST_FILTER="$(python3 "${ROOT_DIR}/scripts/verify_core_contract.py" \
+  --repo-root "${ROOT_DIR}" \
+  --manifest test/upstream/opencv/core/channel_manifest.json \
+  --contract "${CORE_CONTRACT_PATH}" \
+  --emit-gtest-filter)"
+
+python3 -m unittest discover -s "${ROOT_DIR}/test/scripts" -p 'test_*.py'
 
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
-  -DCVH_BUILD_FULL_BACKEND=OFF \
-  -DCVH_BUILD_LEGACY_CORE=OFF \
-  -DCVH_BUILD_BACKEND_KERNEL_SOURCES=OFF \
+  -DCVH_BUILD_FULL_BACKEND=ON \
+  -DCVH_BUILD_LEGACY_CORE=ON \
+  -DCVH_BUILD_BACKEND_KERNEL_SOURCES=ON \
   -DCVH_BUILD_TESTS=ON
 
 cmake --build "${BUILD_DIR}" -j 2>&1 | tee "${BUILD_LOG}"
@@ -33,5 +48,5 @@ else
 fi
 
 if [[ -x "${BUILD_DIR}/cvh_test_core" ]]; then
-  "${BUILD_DIR}/cvh_test_core" '--gtest_filter=MatContract_TEST.*'
+  "${BUILD_DIR}/cvh_test_core" "--gtest_filter=${CORE_CONTRACT_GTEST_FILTER}"
 fi

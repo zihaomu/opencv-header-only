@@ -1,0 +1,22 @@
+{
+  "contract": "v0",
+  "description": "Must-pass upstream compatibility subset for Trust Pipeline hard gate.",
+  "minimum_must_pass": 8,
+  "required_cases": [
+    { "suite": "Core_Merge", "name": "shape_operations" },
+    { "suite": "Core_Split", "name": "shape_operations" },
+    { "suite": "Compare", "name": "regression_8999" },
+    { "suite": "Core_Array", "name": "expressions" }
+  ],
+  "must_pass": [
+    { "suite": "Core_Merge", "name": "shape_operations" },
+    { "suite": "Core_Split", "name": "shape_operations" },
+    { "suite": "Core_Merge", "name": "hang_12171" },
+    { "suite": "Core_Split", "name": "hang_12171" },
+    { "suite": "Core_Split", "name": "crash_12171" },
+    { "suite": "Core_Merge", "name": "bug_13544" },
+    { "suite": "Compare", "name": "empty" },
+    { "suite": "Compare", "name": "regression_8999" },
+    { "suite": "Core_Array", "name": "expressions" }
+  ]
+}
