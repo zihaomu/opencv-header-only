@@ -8,6 +8,11 @@ endif()
 
 project(opencv_header_only VERSION ${CVH_PROJECT_VERSION} LANGUAGES CXX)
 
+# default to Release build
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
 include(CTest)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -18,6 +23,8 @@ option(CVH_BUILD_BACKEND_KERNEL_SOURCES "Build sources requiring legacy backend 
 option(CVH_BUILD_TESTS "Build all test targets (smoke + core)" ON)
 option(CVH_BUILD_BENCHMARKS "Build benchmark targets" ON)
 option(CVH_USE_OPENMP "Enable OpenMP acceleration in backend kernels when available" ON)
+option(CVH_ENABLE_OPENCV_COMPARE "Build cvh vs OpenCV compare benchmark target" OFF)
+set(CVH_OPENCV_BENCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/opencv_compare/opencv-bench-slim" CACHE PATH "Path to opencv-bench-slim source repository")
 
 if(APPLE)
     enable_language(OBJCXX)
@@ -46,8 +53,10 @@ target_compile_features(cvh_headers INTERFACE cxx_std_17)
 set(CVH_LEGACY_CORE_SOURCES
     src/core/basic_op_scalar.cpp
     src/core/kernel/binary_kernel_xsimd.cpp
+    src/core/kernel/gemm_kernel_xsimd.cpp
     src/core/kernel/transpose_kernel.cpp
     src/core/mat.cpp
+    src/core/mat_gemm.cpp
     src/core/mat_expr.cpp
     src/core/mat_convert.cpp
     src/core/system.cpp
@@ -137,6 +146,32 @@ if(CVH_ENABLE_FULL_BACKEND)
             ${CMAKE_CURRENT_SOURCE_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}/include
         )
+
+        if(CVH_ENABLE_OPENCV_COMPARE)
+            if(NOT EXISTS "${CVH_OPENCV_BENCH_DIR}")
+                message(FATAL_ERROR "CVH_ENABLE_OPENCV_COMPARE=ON but CVH_OPENCV_BENCH_DIR does not exist: ${CVH_OPENCV_BENCH_DIR}")
+            endif()
+
+            if(NOT OpenCV_DIR)
+                if(EXISTS "${CVH_OPENCV_BENCH_DIR}/build-slim/OpenCVConfig.cmake")
+                    set(OpenCV_DIR "${CVH_OPENCV_BENCH_DIR}/build-slim" CACHE PATH "Path to OpenCVConfig.cmake for compare benchmark" FORCE)
+                endif()
+            endif()
+
+            find_package(OpenCV REQUIRED COMPONENTS core imgproc)
+
+            add_executable(cvh_benchmark_compare
+                benchmark/opencv_compare_benchmark.cpp
+                benchmark/opencv_compare_opencv_backend.cpp
+            )
+            target_link_libraries(cvh_benchmark_compare PRIVATE cvh::legacy_core ${OpenCV_LIBS})
+            target_compile_features(cvh_benchmark_compare PRIVATE cxx_std_17)
+            target_include_directories(cvh_benchmark_compare PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}
+                ${CMAKE_CURRENT_SOURCE_DIR}/include
+                ${OpenCV_INCLUDE_DIRS}
+            )
+        endif()
     endif()
 
     add_executable(cvh_example_highgui_imshow

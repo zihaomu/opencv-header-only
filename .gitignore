@@ -61,3 +61,6 @@ big_models
 /build.*/
 /build-*/
 
+/build-opencv-compare/
+/opencv_compare/opencv-bench-slim/
+/opencv_compare/results/
