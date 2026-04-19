@@ -44,7 +44,7 @@ Environment:
   CVH_COMPARE_BUILD_TYPE (default: ${BUILD_TYPE}, e.g. Release|RelWithDebInfo|Debug)
   CVH_COMPARE_BUILD_DIR (default: ${BUILD_DIR})
   CVH_COMPARE_OUTPUT    (default: opencv_compare/results/current_compare_<profile>.csv, or baseline_* with --baseline)
-  CVH_COMPARE_OUTPUT_MD (default: doc/opencv_compare_<profile>.md, or baseline_* with --baseline)
+  CVH_COMPARE_OUTPUT_MD (default: opencv_compare/opencv_compare_<profile>.md, or baseline_* with --baseline)
   CVH_COMPARE_OUTPUT_META (default: <output_csv>.meta.json)
   CVH_OPENCV_DIR        (default: ${OPENCV_DIR})
 USAGE
@@ -165,10 +165,10 @@ REPEATS="${REPEATS:-${CVH_COMPARE_REPEATS:-${DEFAULT_REPEATS}}}"
 
 if [[ "${MARK_AS_BASELINE}" == "1" ]]; then
   DEFAULT_OUTPUT_CSV="${COMPARE_DIR}/results/baseline_compare_${PROFILE}.csv"
-  DEFAULT_OUTPUT_MD="${ROOT_DIR}/doc/opencv_compare_baseline_${PROFILE}.md"
+  DEFAULT_OUTPUT_MD="${COMPARE_DIR}/opencv_compare_baseline_${PROFILE}.md"
 else
   DEFAULT_OUTPUT_CSV="${COMPARE_DIR}/results/current_compare_${PROFILE}.csv"
-  DEFAULT_OUTPUT_MD="${ROOT_DIR}/doc/opencv_compare_${PROFILE}.md"
+  DEFAULT_OUTPUT_MD="${COMPARE_DIR}/opencv_compare_${PROFILE}.md"
 fi
 
 OUTPUT_CSV="${OUTPUT_CSV:-${CVH_COMPARE_OUTPUT:-${DEFAULT_OUTPUT_CSV}}}"

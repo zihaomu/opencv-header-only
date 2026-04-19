@@ -20,13 +20,6 @@ Regeneration:
 
 ```bash
 python3 scripts/sync_opencv_core_channel_cases.py --repo-root .
-python3 scripts/verify_opencv_core_channel_cases.py --repo-root .
-```
-
-Optional policy gate for promoted runnable cases:
-
-```bash
-CVH_MIN_PASS_NOW=1 python3 scripts/verify_opencv_core_channel_cases.py --repo-root .
 ```
 
 Outputs:

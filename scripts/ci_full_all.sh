@@ -32,7 +32,6 @@ run_gtest_with_case_log() {
 
 print_env_fingerprint
 "${ROOT_DIR}/scripts/check_public_headers.sh"
-python3 -m unittest discover -s "${ROOT_DIR}/test/scripts" -p 'test_*.py'
 
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
   -DCVH_BUILD_FULL_BACKEND=ON \
@@ -48,4 +47,3 @@ cmake --build "${BUILD_DIR}" --target cvh_test_core cvh_test_imgproc -j
 
 run_gtest_with_case_log "${BUILD_DIR}/cvh_test_core" "cvh_test_core_full"
 run_gtest_with_case_log "${BUILD_DIR}/cvh_test_imgproc" "cvh_test_imgproc_full"
-

@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Optional
 
 
+def bi(en: str, zh: str) -> str:
+    return f"{en} / {zh}"
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Render cvh vs OpenCV compare CSV to Markdown")
     p.add_argument("--input", required=True, help="Input CSV path")
@@ -69,51 +73,51 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
     lines = []
     lines.append(f"# {title}")
     lines.append("")
-    lines.append(f"Generated at (UTC): `{generated_at}`")
+    lines.append(f"{bi('Generated at (UTC):', '生成时间（UTC）：')} `{generated_at}`")
     lines.append("")
-    lines.append(f"Source CSV: `{input_path}`")
+    lines.append(f"{bi('Source CSV:', '数据源 CSV：')} `{input_path}`")
     lines.append("")
 
     if meta_path and meta_path.exists():
         import json
 
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        lines.append("## Run Config")
+        lines.append(f"## {bi('Run Config', '运行配置')}")
         lines.append("")
-        lines.append(f"- Profile: `{meta.get('profile', 'unknown')}`")
+        lines.append(f"- {bi('Profile', '档位')}: `{meta.get('profile', 'unknown')}`")
         meta_impls = meta.get("impls", [])
         if isinstance(meta_impls, list) and meta_impls:
-            lines.append(f"- Implementations: `{', '.join(meta_impls)}`")
+            lines.append(f"- {bi('Implementations', '实现模式')}: `{', '.join(meta_impls)}`")
         lines.append(
-            f"- Samples: `warmup={meta.get('warmup', 'n/a')}, iters={meta.get('iters', 'n/a')}, repeats={meta.get('repeats', 'n/a')}`"
+            f"- {bi('Samples', '采样参数')}: `warmup={meta.get('warmup', 'n/a')}, iters={meta.get('iters', 'n/a')}, repeats={meta.get('repeats', 'n/a')}`"
         )
-        lines.append(f"- Threads: `{meta.get('threads', 'n/a')}`")
+        lines.append(f"- {bi('Threads', '线程数')}: `{meta.get('threads', 'n/a')}`")
         lines.append(
-            f"- Runtime: `omp_dynamic={meta.get('omp_dynamic', 'n/a')}, omp_proc_bind={meta.get('omp_proc_bind', 'n/a')}`"
+            f"- {bi('Runtime', '运行时')}: `omp_dynamic={meta.get('omp_dynamic', 'n/a')}, omp_proc_bind={meta.get('omp_proc_bind', 'n/a')}`"
         )
-        lines.append(f"- Host: `{meta.get('system', 'n/a')} {meta.get('arch', 'n/a')}`")
-        lines.append(f"- CPU: `{meta.get('cpu_model', 'n/a')}`")
-        lines.append(f"- Build type: `{meta.get('build_type', 'n/a')}`")
-        lines.append(f"- Compare mode: `{meta.get('compare_mode', 'n/a')}`")
-        lines.append(f"- Meta JSON: `{meta_path}`")
+        lines.append(f"- {bi('Host', '主机平台')}: `{meta.get('system', 'n/a')} {meta.get('arch', 'n/a')}`")
+        lines.append(f"- {bi('CPU', '处理器')}: `{meta.get('cpu_model', 'n/a')}`")
+        lines.append(f"- {bi('Build type', '构建类型')}: `{meta.get('build_type', 'n/a')}`")
+        lines.append(f"- {bi('Compare mode', '对比模式')}: `{meta.get('compare_mode', 'n/a')}`")
+        lines.append(f"- {bi('Meta JSON', '元数据文件')}: `{meta_path}`")
         lines.append("")
 
-    lines.append("## Summary")
+    lines.append(f"## {bi('Summary', '汇总')}")
     lines.append("")
-    lines.append(f"- Total rows: `{len(rows)}`")
-    lines.append(f"- Supported rows (`status=OK`): `{len(supported)}`")
-    lines.append(f"- Unsupported rows: `{len(unsupported)}`")
-    lines.append(f"- Mean speedup (`OpenCV/CVH`): `{avg_speedup:.4f}`")
-    lines.append(f"- Median speedup (`OpenCV/CVH`): `{median_speedup:.4f}`")
-    lines.append(f"- Cases where CVH is faster (`OpenCV/CVH > 1`): `{cvh_faster}`")
-    lines.append(f"- Cases where OpenCV is faster or equal (`OpenCV/CVH <= 1`): `{opencv_faster_or_equal}`")
+    lines.append(f"- {bi('Total rows', '总条目')}: `{len(rows)}`")
+    lines.append(f"- {bi('Supported rows (`status=OK`)', '支持条目（`status=OK`）')}: `{len(supported)}`")
+    lines.append(f"- {bi('Unsupported rows', '不支持条目')}: `{len(unsupported)}`")
+    lines.append(f"- {bi('Mean speedup (`OpenCV/CVH`)', '平均加速比（`OpenCV/CVH`）')}: `{avg_speedup:.4f}`")
+    lines.append(f"- {bi('Median speedup (`OpenCV/CVH`)', '中位加速比（`OpenCV/CVH`）')}: `{median_speedup:.4f}`")
+    lines.append(f"- {bi('Cases where CVH is faster (`OpenCV/CVH > 1`)', 'CVH 更快的用例（`OpenCV/CVH > 1`）')}: `{cvh_faster}`")
+    lines.append(f"- {bi('Cases where OpenCV is faster or equal (`OpenCV/CVH <= 1`)', 'OpenCV 更快或相当的用例（`OpenCV/CVH <= 1`）')}: `{opencv_faster_or_equal}`")
     for impl in impl_values:
         impl_supported = sum(1 for r in supported if row_impl(r) == impl)
         impl_unsupported = sum(1 for r in unsupported if row_impl(r) == impl)
-        lines.append(f"- `{impl}`: supported=`{impl_supported}`, unsupported=`{impl_unsupported}`")
+        lines.append(f"- `{impl}`: {bi('supported', '支持')}=`{impl_supported}`, {bi('unsupported', '不支持')}=`{impl_unsupported}`")
     lines.append("")
 
-    lines.append("## Supported Cases")
+    lines.append(f"## {bi('Supported Cases', '支持用例')}")
     lines.append("")
     has_supported_section = False
     for impl in impl_values:
@@ -153,10 +157,10 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
         )
         lines.append("")
     if not has_supported_section:
-        lines.append("No supported rows.")
+        lines.append(bi("No supported rows.", "没有可用的支持条目。"))
     lines.append("")
 
-    lines.append("## Unsupported Cases")
+    lines.append(f"## {bi('Unsupported Cases', '不支持用例')}")
     lines.append("")
     has_unsupported_section = False
     for impl in impl_values:
@@ -196,14 +200,17 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
         )
         lines.append("")
     if not has_unsupported_section:
-        lines.append("No unsupported rows.")
+        lines.append(bi("No unsupported rows.", "没有不支持条目。"))
     lines.append("")
 
-    lines.append("## Notes")
+    lines.append(f"## {bi('Notes', '说明')}")
     lines.append("")
     lines.append("- Speedup column is `OpenCV/CVH`; values `< 1` mean OpenCV is faster for that case.")
+    lines.append("- 加速比列为 `OpenCV/CVH`；当值 `< 1` 时表示该用例中 OpenCV 更快。")
     lines.append("- Results are grouped by implementation mode (`FULL` vs `LITE`) using the CSV `impl` column.")
+    lines.append("- 结果按实现模式（`FULL`/`LITE`）分组，依据 CSV 中的 `impl` 列。")
     lines.append("- This report is generated automatically from the compare CSV.")
+    lines.append("- 本报告由 compare CSV 自动生成。")
 
     return "\n".join(lines) + "\n"
 

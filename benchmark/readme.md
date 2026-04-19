@@ -57,12 +57,6 @@
   - 支持分桶阈值 `--max-slowdown-by-op-depth`（按 `op+depth` 或单维覆盖）
   - 超过阈值时返回非 0（可用于 CI gate）
 
-- 回归检查脚本：`scripts/check_imgproc_benchmark_regression.py`
-  - 对比 baseline/current CSV
-  - key：`profile+op+depth+channels+shape`
-  - 支持全局阈值 `--max-slowdown`（默认 `0.08`，即 8%）
-  - 支持分桶阈值 `--max-slowdown-by-op-depth`（按 `op+depth` 或单维覆盖）
-  - 超过阈值时返回非 0（可用于 CI gate）
 - 可执行程序：`cvh_benchmark_imgproc_filter`
   - 源码：`benchmark/imgproc_filter_benchmark.cpp`
   - 覆盖：`boxFilter/GaussianBlur`（`CV_8U`，`C1/C3/C4`，continuous/ROI）
@@ -182,55 +176,11 @@ taskset -c <stable-cpu> env OMP_NUM_THREADS=1 OMP_DYNAMIC=false OMP_PROC_BIND=cl
 ./build-full-test/cvh_benchmark_imgproc_ops --profile quick --warmup 2 --iters 20 --repeats 5 --output benchmark/current_imgproc_quick.csv
 ```
 
-4. 执行回归检查（默认允许最多 8% 变慢）：
+4. 使用 compare 工作流进行 CVH / OpenCV 对比：
 
 ```bash
-python3 scripts/check_imgproc_benchmark_regression.py \
-  --baseline benchmark/baseline_imgproc_quick.csv \
-  --current benchmark/current_imgproc_quick.csv \
-  --max-slowdown 0.08
+./scripts/ci_compare_log_only.sh
 ```
-
-## CI quick gate（PR 默认开启）
-
-- 脚本入口：`scripts/ci_imgproc_quick_gate.sh`
-- workflow：`.github/workflows/ci.yml` 中 `imgproc_quick_gate`（`pull_request` 默认执行，`workflow_dispatch` 可选）
-- `pull_request` 默认启用同机对比模式：`base-ref(main)` vs `PR HEAD`
-- 默认基线：`benchmark/baseline_imgproc_quick.csv`
-- 统一策略源：`benchmark/gate_policy.json`（由 `scripts/read_gate_policy.py` 读取）
-- 默认使用固定 OpenMP 运行时参数：`OMP_NUM_THREADS=1`, `OMP_DYNAMIC=false`, `OMP_PROC_BIND=close`
-- 如果系统提供 `taskset`，gate 脚本默认会把 benchmark 进程绑定到当前 `cpuset` 第一段范围的 `1/4` 位置 CPU（例如 `0-31 -> 8`），尽量避开易受系统噪声影响的 `CPU 0`
-- 这样做是为了降低共享 CI/开发机上的测量噪声；本地多线程 exploratory benchmark 可手动覆盖
-- baseline 属于“机器/runner 类别相关资产”，应在固定机器或固定 runner class 上生成与使用；跨硬件直接复用 baseline 不保证通过
-- 如果 baseline 要被 `scripts/ci_imgproc_quick_gate.sh` / CI gate 直接消费，应使用相同的 gate build config 生成，不要混用 `build-full-test` 与 `build-imgproc-benchmark-gate` 产物
-- gate 会写入 `*.meta.json` 运行指纹；启用 `base-ref` 时默认强校验 fingerprint 一致性
-- 若样本预算过低或缺少 baseline 元数据，脚本会标记 `reduced confidence`（默认不失败，可配置为失败）
-- 可通过环境变量覆盖：
-  - `CVH_IMGPROC_BENCH_BASELINE`
-  - `CVH_IMGPROC_BENCH_BASELINE_META`
-  - `CVH_IMGPROC_BENCH_CURRENT`
-  - `CVH_IMGPROC_BENCH_CURRENT_META`
-  - `CVH_IMGPROC_BENCH_BASE_REF`
-  - `CVH_IMGPROC_BENCH_PROFILE`
-  - `CVH_IMGPROC_BENCH_WARMUP`
-  - `CVH_IMGPROC_BENCH_ITERS`
-  - `CVH_IMGPROC_BENCH_REPEATS`
-  - `CVH_IMGPROC_BENCH_MINIMUM_SAMPLES`
-  - `CVH_IMGPROC_BENCH_MAX_SLOWDOWN`
-  - `CVH_IMGPROC_BENCH_THREADS`
-  - `CVH_IMGPROC_BENCH_OMP_DYNAMIC`
-  - `CVH_IMGPROC_BENCH_OMP_PROC_BIND`
-  - `CVH_IMGPROC_BENCH_CPU_LIST`（`auto`/`off`/显式 CPU 列表）
-  - `CVH_IMGPROC_BENCH_MAX_SLOWDOWN_BY_OP_DEPTH`（示例：`THRESH_BINARY_F32:CV_32F=0.10`）
-  - `CVH_IMGPROC_BENCH_ENFORCE_FINGERPRINT`
-  - `CVH_IMGPROC_BENCH_FAIL_ON_REDUCED_CONFIDENCE`
-
-## Imgproc Full Gate（可选）
-
-- workflow：`.github/workflows/ci.yml` 中 `imgproc_full_gate`（`workflow_dispatch` 手动触发）
-- 默认参数：`profile=full`, `warmup=1`, `iters=10`, `repeats=3`, `max_slowdown=0.15`
-- 默认基线：`benchmark/baseline_imgproc_full.csv`
-- 同样建议在固定机器或固定 runner class 上生成和使用 full baseline
 
 ## Imgproc 证据文件保留规则
 

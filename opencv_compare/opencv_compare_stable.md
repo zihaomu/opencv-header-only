@@ -1,10 +1,10 @@
 # cvh vs OpenCV Benchmark Report (stable)
 
-Generated at (UTC): `2026-04-18 15:08:20Z`
+Generated at (UTC) / 生成时间（UTC）： `2026-04-18 15:08:20Z`
 
-Source CSV: `/Volumes/SSD1T/work_ssd/my_project/opencv-header-only/opencv_compare/results/current_compare_stable.csv`
+Source CSV / 数据源 CSV： `/Volumes/SSD1T/work_ssd/my_project/opencv-header-only/opencv_compare/results/current_compare_stable.csv`
 
-## Run Config
+## Run Config / 运行配置
 
 - Profile: `stable`
 - Samples: `warmup=2, iters=20, repeats=5`
@@ -16,7 +16,7 @@ Source CSV: `/Volumes/SSD1T/work_ssd/my_project/opencv-header-only/opencv_compar
 - Compare mode: `current`
 - Meta JSON: `/Volumes/SSD1T/work_ssd/my_project/opencv-header-only/opencv_compare/results/current_compare_stable.csv.meta.json`
 
-## Summary
+## Summary / 汇总
 
 - Total rows: `89`
 - Supported rows (`status=OK`): `89`
@@ -26,7 +26,7 @@ Source CSV: `/Volumes/SSD1T/work_ssd/my_project/opencv-header-only/opencv_compar
 - Cases where CVH is faster (`OpenCV/CVH > 1`): `8`
 - Cases where OpenCV is faster or equal (`OpenCV/CVH <= 1`): `81`
 
-## Supported Cases
+## Supported Cases / 支持用例
 
 | Op | Depth | Ch | Shape | CVH (ms) | OpenCV (ms) | OpenCV/CVH |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -120,11 +120,13 @@ Source CSV: `/Volumes/SSD1T/work_ssd/my_project/opencv-header-only/opencv_compar
 | WARP_AFFINE | CV_8U | 3 | 480x640 | 4.208492 | 0.453904 | 0.107854 |
 | WARP_AFFINE | CV_8U | 4 | 480x640 | 5.277325 | 0.418408 | 0.079284 |
 
-## Unsupported Cases
+## Unsupported Cases / 不支持用例
 
-No unsupported rows.
+No unsupported rows. / 没有不支持条目。
 
-## Notes
+## Notes / 说明
 
 - Speedup column is `OpenCV/CVH`; values `< 1` mean OpenCV is faster for that case.
+- 加速比列为 `OpenCV/CVH`；当值 `< 1` 时表示该用例中 OpenCV 更快。
 - This report is generated automatically from the compare CSV.
+- 本报告由 compare CSV 自动生成。

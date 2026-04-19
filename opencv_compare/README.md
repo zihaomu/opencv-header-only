@@ -2,6 +2,14 @@
 
 This directory is dedicated to **cvh vs official OpenCV** speed comparison.
 
+## Reports
+
+- Quick report: [opencv_compare_quick.md](opencv_compare_quick.md)
+- Stable report: [opencv_compare_stable.md](opencv_compare_stable.md)
+- Baseline stable report: [opencv_compare_baseline_stable.md](opencv_compare_baseline_stable.md)
+
+All reports are generated in bilingual format (English + 中文).
+
 ## Layout
 
 - `setup_opencv_bench_slim.sh`: shallow clone/update `opencv-bench-slim` and optionally build it.
@@ -76,7 +84,7 @@ Default CSV path:
 
 Default Markdown path:
 
-- `doc/opencv_compare_quick.md`
+- `opencv_compare/opencv_compare_quick.md`
 
 Default metadata path:
 

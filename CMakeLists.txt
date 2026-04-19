@@ -86,6 +86,7 @@ set(CVH_FULL_BACKEND_SOURCES
 set(CVH_FULL_BACKEND_PRIVATE_LIBS)
 set(CVH_FULL_BACKEND_PRIVATE_INCLUDE_DIRS)
 set(CVH_FULL_BACKEND_PRIVATE_COMPILE_DEFINITIONS)
+set(CVH_FULL_BACKEND_LINK_DEPS)
 
 if(WIN32)
     list(APPEND CVH_FULL_BACKEND_SOURCES src/highgui/display_win32.cpp)
@@ -127,6 +128,7 @@ if(CVH_ENABLE_FULL_BACKEND)
         find_package(OpenMP QUIET)
         if(OpenMP_CXX_FOUND)
             target_link_libraries(cvh_full_backend PRIVATE OpenMP::OpenMP_CXX)
+            list(APPEND CVH_FULL_BACKEND_LINK_DEPS OpenMP::OpenMP_CXX)
             target_compile_definitions(cvh_full_backend PRIVATE CVH_WITH_OPENMP=1)
             message(STATUS "cvh_full_backend: OpenMP enabled")
         else()
@@ -198,6 +200,8 @@ if(CVH_ENABLE_FULL_BACKEND)
                 cvh::headers
                 ${OpenCV_LIBS}
                 $<TARGET_FILE:cvh_full_backend>
+                ${CVH_FULL_BACKEND_PRIVATE_LIBS}
+                ${CVH_FULL_BACKEND_LINK_DEPS}
             )
             add_dependencies(cvh_benchmark_compare_lite cvh_full_backend)
             target_compile_features(cvh_benchmark_compare_lite PRIVATE cxx_std_17)

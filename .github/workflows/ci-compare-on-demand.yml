@@ -1,0 +1,60 @@
+name: CI Compare On Demand
+
+on:
+  repository_dispatch:
+    types: [cvh_compare_on]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Optional PR number. If set, run against refs/pull/<pr>/merge."
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: >
+    ci-compare-on-demand-${{
+      github.event_name == 'repository_dispatch' && github.event.client_payload.pr_number ||
+      inputs.pr_number ||
+      github.run_id
+    }}
+  cancel-in-progress: true
+
+jobs:
+  opencv_compare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve Target Ref
+        id: resolve
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const eventName = context.eventName;
+            let prNumber = '';
+            if (eventName === 'repository_dispatch') {
+              prNumber = String(context.payload.client_payload?.pr_number || '');
+            } else if (eventName === 'workflow_dispatch') {
+              prNumber = String(context.payload.inputs?.pr_number || '');
+            }
+
+            const ref = prNumber ? `refs/pull/${prNumber}/merge` : context.ref;
+            core.setOutput('pr_number', prNumber);
+            core.setOutput('ref', ref);
+            core.info(`opencv_compare_trigger=${eventName}, pr_number=${prNumber || 'n/a'}, ref=${ref}`);
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve.outputs.ref }}
+
+      - name: Run CVH/CV Compare (log-only)
+        env:
+          CVH_COMPARE_PROFILE: quick
+          CVH_COMPARE_IMPLS: full,lite
+          CVH_COMPARE_THREADS: "1"
+          CVH_COMPARE_OMP_DYNAMIC: "false"
+          CVH_COMPARE_OMP_PROC_BIND: "close"
+        run: ./scripts/ci_compare_log_only.sh

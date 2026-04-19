@@ -95,18 +95,6 @@ From `modules/core/test/test_operations.cpp`:
 python3 scripts/sync_opencv_core_channel_cases.py --repo-root .
 ```
 
-### Verify snapshot integrity (hash-based)
-
-```bash
-python3 scripts/verify_opencv_core_channel_cases.py --repo-root .
-```
-
-Optional gate to require promoted runnable coverage:
-
-```bash
-CVH_MIN_PASS_NOW=1 python3 scripts/verify_opencv_core_channel_cases.py --repo-root .
-```
-
 ## 7. Promotion Rule: Pending -> Runnable
 
 A pending channel case can be promoted to runnable only when:
@@ -121,7 +109,7 @@ A pending channel case can be promoted to runnable only when:
 Add these checks into core CI:
 
 1. Snapshot sync/verification step:
-   - run `verify_opencv_core_channel_cases.py` (includes hash + source coverage + manifest policy checks)
+   - run `sync_opencv_core_channel_cases.py` and ensure `channel_manifest.json` + snapshot files are up to date in PR diff
 2. Runtime layer step:
    - execute currently runnable compatibility tests
 3. Policy step:

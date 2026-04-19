@@ -1,10 +1,10 @@
 # cvh vs OpenCV Benchmark Report (quick)
 
-Generated at (UTC): `2026-04-19 02:18:23Z`
+Generated at (UTC) / 生成时间（UTC）： `2026-04-19 02:18:23Z`
 
-Source CSV: `/Volumes/SSD1T/work_ssd/my_project/opencv-header-only/opencv_compare/results/current_compare_quick.csv`
+Source CSV / 数据源 CSV： `/Volumes/SSD1T/work_ssd/my_project/opencv-header-only/opencv_compare/results/current_compare_quick.csv`
 
-## Run Config
+## Run Config / 运行配置
 
 - Profile: `quick`
 - Implementations: `full, lite`
@@ -17,7 +17,7 @@ Source CSV: `/Volumes/SSD1T/work_ssd/my_project/opencv-header-only/opencv_compar
 - Compare mode: `current`
 - Meta JSON: `/Volumes/SSD1T/work_ssd/my_project/opencv-header-only/opencv_compare/results/current_compare_quick.csv.meta.json`
 
-## Summary
+## Summary / 汇总
 
 - Total rows: `180`
 - Supported rows (`status=OK`): `178`
@@ -29,7 +29,7 @@ Source CSV: `/Volumes/SSD1T/work_ssd/my_project/opencv-header-only/opencv_compar
 - `full`: supported=`90`, unsupported=`0`
 - `lite`: supported=`88`, unsupported=`2`
 
-## Supported Cases
+## Supported Cases / 支持用例
 
 ### FULL
 
@@ -220,7 +220,7 @@ Source CSV: `/Volumes/SSD1T/work_ssd/my_project/opencv-header-only/opencv_compar
 | WARP_AFFINE | CV_8U | 4 | 480x640 | 5.545967 | 0.475033 | 0.085654 |
 
 
-## Unsupported Cases
+## Unsupported Cases / 不支持用例
 
 ### LITE
 
@@ -230,8 +230,10 @@ Source CSV: `/Volumes/SSD1T/work_ssd/my_project/opencv-header-only/opencv_compar
 | GEMM_PREPACK | CV_32F | 1 | 256x256x256 | 0.031250 | UNSUPPORTED | requires_CVH_FULL_backend |
 
 
-## Notes
+## Notes / 说明
 
 - Speedup column is `OpenCV/CVH`; values `< 1` mean OpenCV is faster for that case.
+- 加速比列为 `OpenCV/CVH`；当值 `< 1` 时表示该用例中 OpenCV 更快。
 - Results are grouped by implementation mode (`FULL` vs `LITE`) using the CSV `impl` column.
 - This report is generated automatically from the compare CSV.
+- 本报告由 compare CSV 自动生成。
