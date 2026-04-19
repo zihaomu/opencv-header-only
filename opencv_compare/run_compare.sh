@@ -7,36 +7,43 @@ COMPARE_DIR="${ROOT_DIR}/opencv_compare"
 SETUP_SCRIPT="${COMPARE_DIR}/setup_opencv_bench_slim.sh"
 
 PROFILE="${CVH_COMPARE_PROFILE:-quick}"
-WARMUP="${CVH_COMPARE_WARMUP:-1}"
-ITERS="${CVH_COMPARE_ITERS:-5}"
-REPEATS="${CVH_COMPARE_REPEATS:-1}"
-THREADS="${CVH_COMPARE_THREADS:-}"
+WARMUP=""
+ITERS=""
+REPEATS=""
+THREADS="${CVH_COMPARE_THREADS:-1}"
 BUILD_OPENCV="${CVH_COMPARE_BUILD_OPENCV:-auto}"
 RENDER_MD="${CVH_COMPARE_RENDER_MD:-1}"
 BUILD_TYPE="${CVH_COMPARE_BUILD_TYPE:-Release}"
+OMP_DYNAMIC_MODE="${CVH_COMPARE_OMP_DYNAMIC:-false}"
+OMP_PROC_BIND_MODE="${CVH_COMPARE_OMP_PROC_BIND:-close}"
+MARK_AS_BASELINE=0
 
 OPENCV_DIR="${CVH_OPENCV_DIR:-${COMPARE_DIR}/opencv-bench-slim}"
 BUILD_DIR="${CVH_COMPARE_BUILD_DIR:-${ROOT_DIR}/build-opencv-compare}"
-OUTPUT_CSV="${CVH_COMPARE_OUTPUT:-${COMPARE_DIR}/results/current_compare_${PROFILE}.csv}"
-OUTPUT_MD="${CVH_COMPARE_OUTPUT_MD:-${ROOT_DIR}/doc/opencv_compare_${PROFILE}.md}"
+OUTPUT_CSV=""
+OUTPUT_MD=""
+OUTPUT_META=""
 REPORT_SCRIPT="${COMPARE_DIR}/csv_to_markdown.py"
 
 usage() {
   cat <<USAGE
-Usage: $(basename "$0") [--profile quick|full] [--warmup N] [--iters N] [--repeats N] [--output path]
+Usage: $(basename "$0") [--profile quick|stable|full] [--warmup N] [--iters N] [--repeats N] [--output path] [--baseline]
 
 Environment:
   CVH_COMPARE_PROFILE   (default: ${PROFILE})
-  CVH_COMPARE_WARMUP    (default: ${WARMUP})
-  CVH_COMPARE_ITERS     (default: ${ITERS})
-  CVH_COMPARE_REPEATS   (default: ${REPEATS})
-  CVH_COMPARE_THREADS   (optional, exports OMP_NUM_THREADS)
+  CVH_COMPARE_WARMUP    (profile default, quick=1 stable=2 full=1)
+  CVH_COMPARE_ITERS     (profile default, quick=5 stable=20 full=10)
+  CVH_COMPARE_REPEATS   (profile default, quick=1 stable=5 full=3)
+  CVH_COMPARE_THREADS   (default: ${THREADS}, exports OMP_NUM_THREADS)
+  CVH_COMPARE_OMP_DYNAMIC (default: ${OMP_DYNAMIC_MODE})
+  CVH_COMPARE_OMP_PROC_BIND (default: ${OMP_PROC_BIND_MODE})
   CVH_COMPARE_BUILD_OPENCV (default: ${BUILD_OPENCV}, values: auto|0|1)
   CVH_COMPARE_RENDER_MD (default: ${RENDER_MD}, set 0 to skip Markdown generation)
   CVH_COMPARE_BUILD_TYPE (default: ${BUILD_TYPE}, e.g. Release|RelWithDebInfo|Debug)
   CVH_COMPARE_BUILD_DIR (default: ${BUILD_DIR})
-  CVH_COMPARE_OUTPUT    (default: ${OUTPUT_CSV})
-  CVH_COMPARE_OUTPUT_MD (default: ${OUTPUT_MD})
+  CVH_COMPARE_OUTPUT    (default: opencv_compare/results/current_compare_<profile>.csv, or baseline_* with --baseline)
+  CVH_COMPARE_OUTPUT_MD (default: doc/opencv_compare_<profile>.md, or baseline_* with --baseline)
+  CVH_COMPARE_OUTPUT_META (default: <output_csv>.meta.json)
   CVH_OPENCV_DIR        (default: ${OPENCV_DIR})
 USAGE
 }
@@ -59,9 +66,25 @@ while [[ $# -gt 0 ]]; do
       REPEATS="$2"
       shift 2
       ;;
+    --threads)
+      THREADS="$2"
+      shift 2
+      ;;
     --output)
       OUTPUT_CSV="$2"
       shift 2
+      ;;
+    --output-md)
+      OUTPUT_MD="$2"
+      shift 2
+      ;;
+    --output-meta)
+      OUTPUT_META="$2"
+      shift 2
+      ;;
+    --baseline)
+      MARK_AS_BASELINE=1
+      shift
       ;;
     --help)
       usage
@@ -75,12 +98,46 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "${PROFILE}" != "quick" && "${PROFILE}" != "full" ]]; then
-  echo "Unsupported profile: ${PROFILE} (expected quick|full)" >&2
+if [[ "${PROFILE}" != "quick" && "${PROFILE}" != "stable" && "${PROFILE}" != "full" ]]; then
+  echo "Unsupported profile: ${PROFILE} (expected quick|stable|full)" >&2
   exit 2
 fi
 
-if ! [[ "${WARMUP}" =~ ^[0-9]+$ && "${ITERS}" =~ ^[1-9][0-9]*$ && "${REPEATS}" =~ ^[1-9][0-9]*$ ]]; then
+case "${PROFILE}" in
+  quick)
+    DEFAULT_WARMUP=1
+    DEFAULT_ITERS=5
+    DEFAULT_REPEATS=1
+    ;;
+  stable)
+    DEFAULT_WARMUP=2
+    DEFAULT_ITERS=20
+    DEFAULT_REPEATS=5
+    ;;
+  full)
+    DEFAULT_WARMUP=1
+    DEFAULT_ITERS=10
+    DEFAULT_REPEATS=3
+    ;;
+esac
+
+WARMUP="${WARMUP:-${CVH_COMPARE_WARMUP:-${DEFAULT_WARMUP}}}"
+ITERS="${ITERS:-${CVH_COMPARE_ITERS:-${DEFAULT_ITERS}}}"
+REPEATS="${REPEATS:-${CVH_COMPARE_REPEATS:-${DEFAULT_REPEATS}}}"
+
+if [[ "${MARK_AS_BASELINE}" == "1" ]]; then
+  DEFAULT_OUTPUT_CSV="${COMPARE_DIR}/results/baseline_compare_${PROFILE}.csv"
+  DEFAULT_OUTPUT_MD="${ROOT_DIR}/doc/opencv_compare_baseline_${PROFILE}.md"
+else
+  DEFAULT_OUTPUT_CSV="${COMPARE_DIR}/results/current_compare_${PROFILE}.csv"
+  DEFAULT_OUTPUT_MD="${ROOT_DIR}/doc/opencv_compare_${PROFILE}.md"
+fi
+
+OUTPUT_CSV="${OUTPUT_CSV:-${CVH_COMPARE_OUTPUT:-${DEFAULT_OUTPUT_CSV}}}"
+OUTPUT_MD="${OUTPUT_MD:-${CVH_COMPARE_OUTPUT_MD:-${DEFAULT_OUTPUT_MD}}}"
+OUTPUT_META="${OUTPUT_META:-${CVH_COMPARE_OUTPUT_META:-${OUTPUT_CSV}.meta.json}}"
+
+if ! [[ "${WARMUP}" =~ ^[0-9]+$ && "${ITERS}" =~ ^[1-9][0-9]*$ && "${REPEATS}" =~ ^[1-9][0-9]*$ && "${THREADS}" =~ ^[1-9][0-9]*$ ]]; then
   echo "Invalid warmup/iters/repeats config" >&2
   exit 2
 fi
@@ -101,6 +158,109 @@ find_opencv_dir() {
   done
 
   return 1
+}
+
+detect_cpu_model() {
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    sysctl -n machdep.cpu.brand_string 2>/dev/null || printf '%s' "unknown"
+    return
+  fi
+
+  if [[ -f /proc/cpuinfo ]]; then
+    awk -F ':' '/model name/ {gsub(/^[ \t]+/, "", $2); print $2; exit}' /proc/cpuinfo
+    return
+  fi
+
+  printf '%s' "unknown"
+}
+
+write_compare_metadata() {
+  local output_meta="$1"
+  local output_csv="$2"
+  local output_md="$3"
+  local opencv_config_dir="$4"
+  local generated_at
+  generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  local repo_git_commit
+  repo_git_commit="$(git -C "${ROOT_DIR}" rev-parse HEAD 2>/dev/null || printf '%s' 'unknown')"
+  local opencv_git_commit
+  opencv_git_commit="$(git -C "${OPENCV_DIR}" rev-parse HEAD 2>/dev/null || printf '%s' 'unknown')"
+  local cpu_model
+  cpu_model="$(detect_cpu_model)"
+
+  mkdir -p "$(dirname "${output_meta}")"
+  env \
+    META_OUTPUT="${output_meta}" \
+    META_PROFILE="${PROFILE}" \
+    META_WARMUP="${WARMUP}" \
+    META_ITERS="${ITERS}" \
+    META_REPEATS="${REPEATS}" \
+    META_SAMPLE_COUNT="$((ITERS * REPEATS))" \
+    META_THREADS="${THREADS}" \
+    META_OMP_DYNAMIC="${OMP_DYNAMIC_MODE}" \
+    META_OMP_PROC_BIND="${OMP_PROC_BIND_MODE}" \
+    META_BUILD_TYPE="${BUILD_TYPE}" \
+    META_COMPARE_MODE="$([[ "${MARK_AS_BASELINE}" == "1" ]] && printf '%s' baseline || printf '%s' current)" \
+    META_OUTPUT_CSV="${output_csv}" \
+    META_OUTPUT_MD="${output_md}" \
+    META_OPENCV_DIR="${OPENCV_DIR}" \
+    META_OPENCV_CONFIG_DIR="${opencv_config_dir}" \
+    META_OPENCV_GIT_COMMIT="${opencv_git_commit}" \
+    META_REPO_GIT_COMMIT="${repo_git_commit}" \
+    META_SYSTEM="$(uname -s)" \
+    META_KERNEL="$(uname -r)" \
+    META_ARCH="$(uname -m)" \
+    META_HOSTNAME="$(hostname)" \
+    META_CPU_MODEL="${cpu_model}" \
+    META_GENERATED_AT="${generated_at}" \
+    python3 - <<'PY'
+import json
+import os
+import pathlib
+
+data = {
+    "profile": os.environ["META_PROFILE"],
+    "warmup": int(os.environ["META_WARMUP"]),
+    "iters": int(os.environ["META_ITERS"]),
+    "repeats": int(os.environ["META_REPEATS"]),
+    "sample_count": int(os.environ["META_SAMPLE_COUNT"]),
+    "threads": int(os.environ["META_THREADS"]),
+    "omp_dynamic": os.environ["META_OMP_DYNAMIC"],
+    "omp_proc_bind": os.environ["META_OMP_PROC_BIND"],
+    "build_type": os.environ["META_BUILD_TYPE"],
+    "compare_mode": os.environ["META_COMPARE_MODE"],
+    "output_csv": os.environ["META_OUTPUT_CSV"],
+    "output_md": os.environ["META_OUTPUT_MD"],
+    "opencv_dir": os.environ["META_OPENCV_DIR"],
+    "opencv_config_dir": os.environ["META_OPENCV_CONFIG_DIR"],
+    "opencv_git_commit": os.environ["META_OPENCV_GIT_COMMIT"],
+    "repo_git_commit": os.environ["META_REPO_GIT_COMMIT"],
+    "system": os.environ["META_SYSTEM"],
+    "kernel": os.environ["META_KERNEL"],
+    "arch": os.environ["META_ARCH"],
+    "hostname": os.environ["META_HOSTNAME"],
+    "cpu_model": os.environ["META_CPU_MODEL"],
+    "generated_at_utc": os.environ["META_GENERATED_AT"],
+}
+data["fingerprint"] = {
+    "profile": data["profile"],
+    "warmup": data["warmup"],
+    "iters": data["iters"],
+    "repeats": data["repeats"],
+    "sample_count": data["sample_count"],
+    "threads": data["threads"],
+    "omp_dynamic": data["omp_dynamic"],
+    "omp_proc_bind": data["omp_proc_bind"],
+    "build_type": data["build_type"],
+    "opencv_config_dir": data["opencv_config_dir"],
+    "system": data["system"],
+    "arch": data["arch"],
+    "cpu_model": data["cpu_model"],
+}
+
+meta_path = pathlib.Path(os.environ["META_OUTPUT"])
+meta_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
 }
 
 if [[ "${BUILD_OPENCV}" == "auto" ]]; then
@@ -129,7 +289,7 @@ if ! OPENCV_CONFIG_DIR="$(find_opencv_dir "${OPENCV_DIR}")"; then
   exit 2
 fi
 
-mkdir -p "${BUILD_DIR}" "$(dirname "${OUTPUT_CSV}")"
+mkdir -p "${BUILD_DIR}" "$(dirname "${OUTPUT_CSV}")" "$(dirname "${OUTPUT_META}")" "$(dirname "${OUTPUT_MD}")"
 
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
   -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
@@ -150,25 +310,19 @@ if [[ ! -x "${BENCH_BIN}" ]]; then
   exit 2
 fi
 
-if [[ -n "${THREADS}" ]]; then
-  echo "opencv_compare: running benchmark (profile=${PROFILE}, warmup=${WARMUP}, iters=${ITERS}, repeats=${REPEATS}, threads=${THREADS})"
-  echo "opencv_compare: benchmark stage can take several minutes for quick profile with large kernels."
-  OMP_NUM_THREADS="${THREADS}" "${BENCH_BIN}" \
-    --profile "${PROFILE}" \
-    --warmup "${WARMUP}" \
-    --iters "${ITERS}" \
-    --repeats "${REPEATS}" \
-    --output "${OUTPUT_CSV}"
-else
-  echo "opencv_compare: running benchmark (profile=${PROFILE}, warmup=${WARMUP}, iters=${ITERS}, repeats=${REPEATS})"
-  echo "opencv_compare: benchmark stage can take several minutes for quick profile with large kernels."
-  "${BENCH_BIN}" \
-    --profile "${PROFILE}" \
-    --warmup "${WARMUP}" \
-    --iters "${ITERS}" \
-    --repeats "${REPEATS}" \
-    --output "${OUTPUT_CSV}"
-fi
+echo "opencv_compare: running benchmark (profile=${PROFILE}, warmup=${WARMUP}, iters=${ITERS}, repeats=${REPEATS}, threads=${THREADS}, omp_dynamic=${OMP_DYNAMIC_MODE}, omp_proc_bind=${OMP_PROC_BIND_MODE})"
+echo "opencv_compare: benchmark stage can take several minutes for quick profile with large kernels."
+OMP_NUM_THREADS="${THREADS}" \
+OMP_DYNAMIC="${OMP_DYNAMIC_MODE}" \
+OMP_PROC_BIND="${OMP_PROC_BIND_MODE}" \
+"${BENCH_BIN}" \
+  --profile "${PROFILE}" \
+  --warmup "${WARMUP}" \
+  --iters "${ITERS}" \
+  --repeats "${REPEATS}" \
+  --output "${OUTPUT_CSV}"
+
+write_compare_metadata "${OUTPUT_META}" "${OUTPUT_CSV}" "${OUTPUT_MD}" "${OPENCV_CONFIG_DIR}"
 
 if [[ "${RENDER_MD}" != "0" ]]; then
   if [[ ! -f "${REPORT_SCRIPT}" ]]; then
@@ -179,7 +333,8 @@ if [[ "${RENDER_MD}" != "0" ]]; then
   python3 "${REPORT_SCRIPT}" \
     --input "${OUTPUT_CSV}" \
     --output "${OUTPUT_MD}" \
+    --meta "${OUTPUT_META}" \
     --title "cvh vs OpenCV Benchmark Report (${PROFILE})"
 fi
 
-echo "opencv_compare_done: output_csv=${OUTPUT_CSV}, output_md=${OUTPUT_MD}, profile=${PROFILE}, warmup=${WARMUP}, iters=${ITERS}, repeats=${REPEATS}, build_type=${BUILD_TYPE}, opencv_dir=${OPENCV_DIR}"
+echo "opencv_compare_done: output_csv=${OUTPUT_CSV}, output_md=${OUTPUT_MD}, output_meta=${OUTPUT_META}, mode=$([[ "${MARK_AS_BASELINE}" == "1" ]] && printf '%s' baseline || printf '%s' current), profile=${PROFILE}, warmup=${WARMUP}, iters=${ITERS}, repeats=${REPEATS}, threads=${THREADS}, build_type=${BUILD_TYPE}, opencv_dir=${OPENCV_DIR}"

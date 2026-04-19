@@ -1,6 +1,9 @@
 #include "cvh.h"
 #include "gtest/gtest.h"
 
+#include <cstdlib>
+#include <cstdint>
+
 using namespace cvh;
 
 namespace
@@ -8,6 +11,79 @@ namespace
 void skip_pending(const char* upstream_case, const char* reason)
 {
     GTEST_SKIP() << "Pending upstream port: " << upstream_case << " | " << reason;
+}
+
+void fill_u8_pattern(Mat& src, std::uint32_t seed)
+{
+    CV_Assert(src.depth() == CV_8U);
+    const size_t count = src.total() * static_cast<size_t>(src.channels());
+    for (size_t i = 0; i < count; ++i)
+    {
+        seed = seed * 1664525u + 1013904223u;
+        src.data[i] = static_cast<uchar>((seed >> 24) & 0xFFu);
+    }
+}
+
+void fill_lut_u8_c1(Mat& lut)
+{
+    CV_Assert(lut.total() == 256 && lut.type() == CV_8UC1);
+    for (int i = 0; i < 256; ++i)
+    {
+        lut.at<uchar>(0, i) = static_cast<uchar>((i * 13 + 7) & 0xFF);
+    }
+}
+
+void fill_lut_u8_c3(Mat& lut)
+{
+    CV_Assert(lut.total() == 256 && lut.type() == CV_8UC3);
+    for (int i = 0; i < 256; ++i)
+    {
+        lut.at<uchar>(0, i, 0) = static_cast<uchar>((i * 5 + 1) & 0xFF);
+        lut.at<uchar>(0, i, 1) = static_cast<uchar>((i * 7 + 3) & 0xFF);
+        lut.at<uchar>(0, i, 2) = static_cast<uchar>((i * 11 + 9) & 0xFF);
+    }
+}
+
+Mat lut_reference_u8(const Mat& input, const Mat& table)
+{
+    CV_Assert(input.depth() == CV_8U);
+    CV_Assert(table.depth() == CV_8U);
+    CV_Assert(table.total() == 256);
+    CV_Assert(table.channels() == 1 || table.channels() == input.channels());
+
+    Mat ref({input.size[0], input.size[1]}, CV_MAKETYPE(CV_8U, input.channels()));
+    const int lut_cn = table.channels();
+    for (int y = 0; y < input.size[0]; ++y)
+    {
+        for (int x = 0; x < input.size[1]; ++x)
+        {
+            for (int c = 0; c < input.channels(); ++c)
+            {
+                const int idx = static_cast<int>(input.at<uchar>(y, x, c));
+                ref.at<uchar>(y, x, c) = table.at<uchar>(0, idx, lut_cn == 1 ? 0 : c);
+            }
+        }
+    }
+    return ref;
+}
+
+int max_abs_diff_u8(const Mat& a, const Mat& b)
+{
+    CV_Assert(a.type() == b.type());
+    CV_Assert(a.total() == b.total());
+    CV_Assert(a.channels() == b.channels());
+    CV_Assert(a.depth() == CV_8U);
+    const size_t count = a.total() * static_cast<size_t>(a.channels());
+    int max_diff = 0;
+    for (size_t i = 0; i < count; ++i)
+    {
+        const int d = std::abs(static_cast<int>(a.data[i]) - static_cast<int>(b.data[i]));
+        if (d > max_diff)
+        {
+            max_diff = d;
+        }
+    }
+    return max_diff;
 }
 } // namespace
 
@@ -312,4 +388,55 @@ TEST(OpenCVUpstreamChannelPort_TEST, Core_Array_expressions)
     EXPECT_EQ(m1.channels(), 1);
     EXPECT_EQ(m2.channels(), 2);
     EXPECT_EQ(m3.channels(), 3);
+}
+
+TEST(OpenCVUpstreamChannelPort_TEST, Core_LUT_accuracy)
+{
+    Mat input({117, 113}, CV_8UC1);
+    fill_u8_pattern(input, 0x1234u);
+
+    Mat table({1, 256}, CV_8UC1);
+    fill_lut_u8_c1(table);
+
+    Mat output;
+    ASSERT_NO_THROW(LUT(input, table, output));
+    ASSERT_FALSE(output.empty());
+
+    const Mat gt = lut_reference_u8(input, table);
+    ASSERT_FALSE(gt.empty());
+    ASSERT_EQ(0, max_abs_diff_u8(output, gt));
+}
+
+TEST(OpenCVUpstreamChannelPort_TEST, Core_LUT_accuracy_multi)
+{
+    Mat input({117, 113}, CV_8UC3);
+    fill_u8_pattern(input, 0x5678u);
+
+    Mat table({1, 256}, CV_8UC1);
+    fill_lut_u8_c1(table);
+
+    Mat output;
+    ASSERT_NO_THROW(LUT(input, table, output));
+    ASSERT_FALSE(output.empty());
+
+    const Mat gt = lut_reference_u8(input, table);
+    ASSERT_FALSE(gt.empty());
+    ASSERT_EQ(0, max_abs_diff_u8(output, gt));
+}
+
+TEST(OpenCVUpstreamChannelPort_TEST, Core_LUT_accuracy_multi2)
+{
+    Mat input({117, 113}, CV_8UC3);
+    fill_u8_pattern(input, 0x9abcu);
+
+    Mat table({1, 256}, CV_8UC3);
+    fill_lut_u8_c3(table);
+
+    Mat output;
+    ASSERT_NO_THROW(LUT(input, table, output));
+    ASSERT_FALSE(output.empty());
+
+    const Mat gt = lut_reference_u8(input, table);
+    ASSERT_FALSE(gt.empty());
+    ASSERT_EQ(0, max_abs_diff_u8(output, gt));
 }

@@ -22,6 +22,7 @@ from typing import Iterable, List, Set
 
 REQUIRED_FIXTURES = [
     "cv/shared/pic1.png",
+    "cv/shared/fruits.png",
     "cv/imgproc/stuff.jpg",
     "cv/grabcut/image1652.ppm",
     "cv/grabcut/mask1652.ppm",

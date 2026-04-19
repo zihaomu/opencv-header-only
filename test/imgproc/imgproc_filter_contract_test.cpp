@@ -47,6 +47,26 @@ float max_abs_diff_f32(const Mat& a, const Mat& b)
     return max_diff;
 }
 
+double l2_norm_diff_f32(const Mat& a, const Mat& b)
+{
+    if (a.type() != b.type() || a.size[0] != b.size[0] || a.size[1] != b.size[1])
+    {
+        return 1e12;
+    }
+    CV_Assert(a.depth() == CV_32F);
+    const size_t count = a.total() * static_cast<size_t>(a.channels());
+    const float* pa = reinterpret_cast<const float*>(a.data);
+    const float* pb = reinterpret_cast<const float*>(b.data);
+
+    double sum_sq = 0.0;
+    for (size_t i = 0; i < count; ++i)
+    {
+        const double diff = static_cast<double>(pa[i]) - static_cast<double>(pb[i]);
+        sum_sq += diff * diff;
+    }
+    return std::sqrt(sum_sq);
+}
+
 int normalize_border_type(int borderType)
 {
     return borderType & (~BORDER_ISOLATED);
@@ -521,6 +541,26 @@ TEST(OpenCVUpstreamFilterPort_TEST, GaussianBlur_Bitexact_regression_15015)
     ASSERT_EQ(dst.size[0], src.size[0]);
     ASSERT_EQ(dst.size[1], src.size[1]);
     EXPECT_EQ(max_abs_diff_u8(dst, src), 0);
+}
+
+TEST(OpenCVUpstreamFilterPort_TEST, Imgproc_GaussianBlur_regression_11303)
+{
+    // Upstream reference:
+    // modules/imgproc/test/test_filter.cpp :: TEST(Imgproc_GaussianBlur, regression_11303)
+    const int width = 2115;
+    const int height = 211;
+    const double sigma = 8.64421;
+
+    Mat src({height, width}, CV_32FC1);
+    src = 1.0f;
+
+    Mat dst;
+    GaussianBlur(src, dst, Size(), sigma, sigma);
+
+    ASSERT_EQ(dst.type(), src.type());
+    ASSERT_EQ(dst.size[0], src.size[0]);
+    ASSERT_EQ(dst.size[1], src.size[1]);
+    EXPECT_LE(l2_norm_diff_f32(src, dst), 1e-3);
 }
 
 TEST(ImgprocFilterFastpath_TEST, boxfilter_non_contiguous_roi_custom_anchor_and_normalize_off_matches_reference)

@@ -16,6 +16,7 @@ enum InterpolationFlags
     INTER_NEAREST = 0,
     INTER_LINEAR = 1,
     INTER_NEAREST_EXACT = 6,
+    WARP_INVERSE_MAP = 16,
 };
 
 enum ColorConversionCodes
@@ -103,6 +104,18 @@ enum ThresholdTypes
     THRESH_OTSU = 8,
     THRESH_TRIANGLE = 16,
     THRESH_DRYRUN = 128,
+};
+
+enum MorphTypes
+{
+    MORPH_ERODE = 0,
+    MORPH_DILATE = 1,
+    MORPH_OPEN = 2,
+    MORPH_CLOSE = 3,
+    MORPH_GRADIENT = 4,
+    MORPH_TOPHAT = 5,
+    MORPH_BLACKHAT = 6,
+    MORPH_HITMISS = 7,
 };
 
 enum BorderTypes

@@ -196,6 +196,42 @@
       "snapshot_file": "test/upstream/opencv/core/d719c6d/test_arithm.channel_cases.cpp"
     },
     {
+      "source_file": "modules/core/test/test_arithm.cpp",
+      "source_line_start": 3340,
+      "source_line_end": 3362,
+      "suite": "Core_LUT",
+      "name": "accuracy",
+      "status": "PASS_NOW",
+      "reason": "ported and runnable in test/core/mat_upstream_channel_port_test.cpp (fixed-parameter subset)",
+      "unblock_by": "none",
+      "sha256": "efb4c264d95622dc1d629026cf2262777fb4b95cb48098a0cea029c4f7e6afcc",
+      "snapshot_file": "test/upstream/opencv/core/d719c6d/test_arithm.channel_cases.cpp"
+    },
+    {
+      "source_file": "modules/core/test/test_arithm.cpp",
+      "source_line_start": 3364,
+      "source_line_end": 3386,
+      "suite": "Core_LUT",
+      "name": "accuracy_multi",
+      "status": "PASS_NOW",
+      "reason": "ported and runnable in test/core/mat_upstream_channel_port_test.cpp (fixed-parameter subset)",
+      "unblock_by": "none",
+      "sha256": "51d9f00fbd8891bec088cdca9d13a949c77a37e66dc7a08f703ac94a8934578c",
+      "snapshot_file": "test/upstream/opencv/core/d719c6d/test_arithm.channel_cases.cpp"
+    },
+    {
+      "source_file": "modules/core/test/test_arithm.cpp",
+      "source_line_start": 3388,
+      "source_line_end": 3410,
+      "suite": "Core_LUT",
+      "name": "accuracy_multi2",
+      "status": "PASS_NOW",
+      "reason": "ported and runnable in test/core/mat_upstream_channel_port_test.cpp (fixed-parameter subset)",
+      "unblock_by": "none",
+      "sha256": "9687b14dc511a97b819036fd63c0cedbf3e83f7733ec9bc15dc855d0121b5952",
+      "snapshot_file": "test/upstream/opencv/core/d719c6d/test_arithm.channel_cases.cpp"
+    },
+    {
       "source_file": "modules/core/test/test_operations.cpp",
       "source_line_start": 1278,
       "source_line_end": 1278,

@@ -247,7 +247,7 @@ Args parse_args(int argc, char** argv)
         }
         else if (token == "--help")
         {
-            std::cout << "Usage: cvh_benchmark_compare [--profile quick|full] [--warmup N] [--iters N] "
+            std::cout << "Usage: cvh_benchmark_compare [--profile quick|stable|full] [--warmup N] [--iters N] "
                          "[--repeats N] [--output path]\n";
             std::exit(0);
         }
@@ -258,9 +258,9 @@ Args parse_args(int argc, char** argv)
         }
     }
 
-    if (args.profile != "quick" && args.profile != "full")
+    if (args.profile != "quick" && args.profile != "stable" && args.profile != "full")
     {
-        std::cerr << "Unsupported profile: " << args.profile << " (expected quick/full)\n";
+        std::cerr << "Unsupported profile: " << args.profile << " (expected quick/stable/full)\n";
         std::exit(2);
     }
 
@@ -417,6 +417,36 @@ void append_gemm_rows(const Args& args, std::vector<CompareRow>& rows)
         row.speedup = safe_speedup(cvh_ms, opencv_ms);
         row.status = "OK";
         rows.push_back(row);
+
+        const cvh::GemmPackedB packed_b = cvh::gemm_pack_b(b_cvh, false);
+        const double cvh_prepack_ms = measure_ms(
+            [&]() { dst_cvh = cvh::gemm(a_cvh, packed_b, false); },
+            [&]() { return checksum(dst_cvh); },
+            args.warmup,
+            args.iters,
+            args.repeats);
+
+        const double opencv_prepack_ms = bench_opencv_gemm_prepack(shape.m,
+                                                                    shape.k,
+                                                                    shape.n,
+                                                                    args.warmup,
+                                                                    args.iters,
+                                                                    args.repeats,
+                                                                    seed_a,
+                                                                    seed_b);
+
+        CompareRow prepack_row;
+        prepack_row.profile = args.profile;
+        prepack_row.op = "GEMM_PREPACK";
+        prepack_row.depth = "CV_32F";
+        prepack_row.channels = 1;
+        prepack_row.shape = gemm_shape_to_string(shape);
+        prepack_row.cvh_ms = cvh_prepack_ms;
+        prepack_row.opencv_ms = opencv_prepack_ms;
+        prepack_row.speedup = safe_speedup(cvh_prepack_ms, opencv_prepack_ms);
+        prepack_row.status = "OK";
+        prepack_row.note = "pack_B_once";
+        rows.push_back(prepack_row);
     }
 }
 
@@ -520,7 +550,7 @@ void append_filter_rows(const Args& args, std::vector<CompareRow>& rows)
     }
 }
 
-void append_opencv_only_rows(const Args& args, std::vector<CompareRow>& rows)
+void append_morph_gradient_rows(const Args& args, std::vector<CompareRow>& rows)
 {
     const auto shapes = filter_shapes(args.profile);
     const std::vector<int> channels = {1, 3, 4};
@@ -529,28 +559,398 @@ void append_opencv_only_rows(const Args& args, std::vector<CompareRow>& rows)
     {
         for (int cn : channels)
         {
-            const double sobel_ms =
-                bench_opencv_sobel(shape.rows, shape.cols, cn, args.warmup, args.iters, args.repeats, 0x91u + cn);
-            const double erode_ms =
-                bench_opencv_erode(shape.rows, shape.cols, cn, args.warmup, args.iters, args.repeats, 0xA3u + cn);
-            const double dilate_ms =
-                bench_opencv_dilate(shape.rows, shape.cols, cn, args.warmup, args.iters, args.repeats, 0xB5u + cn);
+            const std::uint32_t sobel_seed = 0x91u + static_cast<std::uint32_t>(cn);
+            const std::uint32_t canny_seed = 0x9Du + static_cast<std::uint32_t>(cn);
+            const std::uint32_t erode_seed = 0xA3u + static_cast<std::uint32_t>(cn);
+            const std::uint32_t dilate_seed = 0xB5u + static_cast<std::uint32_t>(cn);
 
-            for (int i = 0; i < 3; ++i)
+            cvh::Mat src_sobel(std::vector<int>{shape.rows, shape.cols}, CV_MAKETYPE(CV_8U, cn));
+            cvh::Mat src_erode(std::vector<int>{shape.rows, shape.cols}, CV_MAKETYPE(CV_8U, cn));
+            cvh::Mat src_dilate(std::vector<int>{shape.rows, shape.cols}, CV_MAKETYPE(CV_8U, cn));
+            fill_u8(src_sobel, sobel_seed);
+            fill_u8(src_erode, erode_seed);
+            fill_u8(src_dilate, dilate_seed);
+
+            cvh::Mat dst_sobel;
+            cvh::Mat dst_erode;
+            cvh::Mat dst_dilate;
+
+            const double cvh_sobel_ms = measure_ms(
+                [&]() {
+                    cvh::Sobel(
+                        src_sobel, dst_sobel, CV_32F, 1, 0, 3, 1.0, 0.0, cvh::BORDER_DEFAULT);
+                },
+                [&]() { return checksum(dst_sobel); },
+                args.warmup,
+                args.iters,
+                args.repeats);
+
+            const double cvh_erode_ms = measure_ms(
+                [&]() {
+                    cvh::erode(
+                        src_erode, dst_erode, cvh::Mat(), cvh::Point(-1, -1), 1, cvh::BORDER_DEFAULT);
+                },
+                [&]() { return checksum(dst_erode); },
+                args.warmup,
+                args.iters,
+                args.repeats);
+
+            const double cvh_dilate_ms = measure_ms(
+                [&]() {
+                    cvh::dilate(
+                        src_dilate, dst_dilate, cvh::Mat(), cvh::Point(-1, -1), 1, cvh::BORDER_DEFAULT);
+                },
+                [&]() { return checksum(dst_dilate); },
+                args.warmup,
+                args.iters,
+                args.repeats);
+
+            const double opencv_sobel_ms = bench_opencv_sobel(
+                shape.rows, shape.cols, cn, args.warmup, args.iters, args.repeats, sobel_seed);
+            const double opencv_erode_ms = bench_opencv_erode(
+                shape.rows, shape.cols, cn, args.warmup, args.iters, args.repeats, erode_seed);
+            const double opencv_dilate_ms = bench_opencv_dilate(
+                shape.rows, shape.cols, cn, args.warmup, args.iters, args.repeats, dilate_seed);
+
+            CompareRow sobel_row;
+            sobel_row.profile = args.profile;
+            sobel_row.op = "SOBEL";
+            sobel_row.depth = "CV_8U";
+            sobel_row.channels = cn;
+            sobel_row.shape = shape_to_string(shape.rows, shape.cols);
+            sobel_row.cvh_ms = cvh_sobel_ms;
+            sobel_row.opencv_ms = opencv_sobel_ms;
+            sobel_row.speedup = safe_speedup(cvh_sobel_ms, opencv_sobel_ms);
+            sobel_row.status = "OK";
+            rows.push_back(sobel_row);
+
+            if (cn == 1)
             {
-                CompareRow row;
-                row.profile = args.profile;
-                row.op = (i == 0) ? "SOBEL" : ((i == 1) ? "ERODE" : "DILATE");
-                row.depth = "CV_8U";
-                row.channels = cn;
-                row.shape = shape_to_string(shape.rows, shape.cols);
-                row.cvh_ms = -1.0;
-                row.opencv_ms = (i == 0) ? sobel_ms : ((i == 1) ? erode_ms : dilate_ms);
-                row.speedup = 0.0;
-                row.status = "UNSUPPORTED_CVH";
-                row.note = "cvh_api_not_available_yet";
-                rows.push_back(row);
+                cvh::Mat src_canny(std::vector<int>{shape.rows, shape.cols}, CV_8UC1);
+                cvh::Mat dst_canny;
+                fill_u8(src_canny, canny_seed);
+                struct CannyMode
+                {
+                    const char* name;
+                    double threshold1;
+                    double threshold2;
+                    int aperture;
+                    bool l2;
+                };
+
+                const CannyMode canny_modes[] = {
+                    {"CANNY_A3_L1", 100.0, 200.0, 3, false},
+                    {"CANNY_A3_L2", 100.0, 200.0, 3, true},
+                    {"CANNY_A5_L1", 300.0, 600.0, 5, false},
+                    {"CANNY_A5_L2", 300.0, 600.0, 5, true},
+                };
+
+                for (const CannyMode& mode : canny_modes)
+                {
+                    const double cvh_canny_ms = measure_ms(
+                        [&]() {
+                            cvh::Canny(src_canny,
+                                       dst_canny,
+                                       mode.threshold1,
+                                       mode.threshold2,
+                                       mode.aperture,
+                                       mode.l2);
+                        },
+                        [&]() { return checksum(dst_canny); },
+                        args.warmup,
+                        args.iters,
+                        args.repeats);
+
+                    const double opencv_canny_ms = bench_opencv_canny(shape.rows,
+                                                                      shape.cols,
+                                                                      args.warmup,
+                                                                      args.iters,
+                                                                      args.repeats,
+                                                                      canny_seed,
+                                                                      mode.threshold1,
+                                                                      mode.threshold2,
+                                                                      mode.aperture,
+                                                                      mode.l2);
+
+                    CompareRow canny_row;
+                    canny_row.profile = args.profile;
+                    canny_row.op = mode.name;
+                    canny_row.depth = "CV_8U";
+                    canny_row.channels = 1;
+                    canny_row.shape = shape_to_string(shape.rows, shape.cols);
+                    canny_row.cvh_ms = cvh_canny_ms;
+                    canny_row.opencv_ms = opencv_canny_ms;
+                    canny_row.speedup = safe_speedup(cvh_canny_ms, opencv_canny_ms);
+                    canny_row.status = "OK";
+                    rows.push_back(canny_row);
+                }
             }
+
+            CompareRow erode_row;
+            erode_row.profile = args.profile;
+            erode_row.op = "ERODE";
+            erode_row.depth = "CV_8U";
+            erode_row.channels = cn;
+            erode_row.shape = shape_to_string(shape.rows, shape.cols);
+            erode_row.cvh_ms = cvh_erode_ms;
+            erode_row.opencv_ms = opencv_erode_ms;
+            erode_row.speedup = safe_speedup(cvh_erode_ms, opencv_erode_ms);
+            erode_row.status = "OK";
+            rows.push_back(erode_row);
+
+            CompareRow dilate_row;
+            dilate_row.profile = args.profile;
+            dilate_row.op = "DILATE";
+            dilate_row.depth = "CV_8U";
+            dilate_row.channels = cn;
+            dilate_row.shape = shape_to_string(shape.rows, shape.cols);
+            dilate_row.cvh_ms = cvh_dilate_ms;
+            dilate_row.opencv_ms = opencv_dilate_ms;
+            dilate_row.speedup = safe_speedup(cvh_dilate_ms, opencv_dilate_ms);
+            dilate_row.status = "OK";
+            rows.push_back(dilate_row);
+        }
+    }
+}
+
+void append_m2_rows(const Args& args, std::vector<CompareRow>& rows)
+{
+    const auto shapes = filter_shapes(args.profile);
+    const std::vector<DepthId> depths = {DepthId::U8, DepthId::F32};
+    const std::vector<int> channels = {1, 3, 4};
+
+    for (const auto& shape : shapes)
+    {
+        for (DepthId depth : depths)
+        {
+            for (int cn : channels)
+            {
+                const int type = CV_MAKETYPE(cvh_depth(depth), cn);
+                const std::uint32_t seed = static_cast<std::uint32_t>(0xC0u + cn * 19 + (depth == DepthId::U8 ? 1 : 7));
+
+                cvh::Mat src_cvh(std::vector<int>{shape.rows, shape.cols}, type);
+                fill_by_depth(src_cvh, depth, seed);
+
+                cvh::Mat copy_dst;
+                const double cvh_copy_ms = measure_ms(
+                    [&]() {
+                        cvh::copyMakeBorder(src_cvh,
+                                            copy_dst,
+                                            1,
+                                            1,
+                                            2,
+                                            2,
+                                            cvh::BORDER_REPLICATE,
+                                            cvh::Scalar::all(0.0));
+                    },
+                    [&]() { return checksum(copy_dst); },
+                    args.warmup,
+                    args.iters,
+                    args.repeats);
+
+                const double opencv_copy_ms = bench_opencv_copy_make_border(shape.rows,
+                                                                             shape.cols,
+                                                                             depth,
+                                                                             cn,
+                                                                             1,
+                                                                             1,
+                                                                             2,
+                                                                             2,
+                                                                             args.warmup,
+                                                                             args.iters,
+                                                                             args.repeats,
+                                                                             seed);
+
+                CompareRow copy_row;
+                copy_row.profile = args.profile;
+                copy_row.op = "COPYMAKEBORDER";
+                copy_row.depth = depth_to_name(depth);
+                copy_row.channels = cn;
+                copy_row.shape = shape_to_string(shape.rows, shape.cols);
+                copy_row.cvh_ms = cvh_copy_ms;
+                copy_row.opencv_ms = opencv_copy_ms;
+                copy_row.speedup = safe_speedup(cvh_copy_ms, opencv_copy_ms);
+                copy_row.status = "OK";
+                rows.push_back(copy_row);
+
+                cvh::Mat kernel2d({3, 3}, CV_32FC1);
+                kernel2d.at<float>(0, 0) = 0.0f;
+                kernel2d.at<float>(0, 1) = 0.25f;
+                kernel2d.at<float>(0, 2) = 0.0f;
+                kernel2d.at<float>(1, 0) = 0.25f;
+                kernel2d.at<float>(1, 1) = 0.0f;
+                kernel2d.at<float>(1, 2) = 0.25f;
+                kernel2d.at<float>(2, 0) = 0.0f;
+                kernel2d.at<float>(2, 1) = 0.25f;
+                kernel2d.at<float>(2, 2) = 0.0f;
+
+                cvh::Mat filter_dst;
+                const double cvh_filter_ms = measure_ms(
+                    [&]() {
+                        cvh::filter2D(src_cvh, filter_dst, -1, kernel2d, cvh::Point(-1, -1), 0.0, cvh::BORDER_DEFAULT);
+                    },
+                    [&]() { return checksum(filter_dst); },
+                    args.warmup,
+                    args.iters,
+                    args.repeats);
+
+                const double opencv_filter_ms = bench_opencv_filter2d(shape.rows,
+                                                                      shape.cols,
+                                                                      depth,
+                                                                      cn,
+                                                                      args.warmup,
+                                                                      args.iters,
+                                                                      args.repeats,
+                                                                      seed);
+
+                CompareRow filter_row;
+                filter_row.profile = args.profile;
+                filter_row.op = "FILTER2D_3X3";
+                filter_row.depth = depth_to_name(depth);
+                filter_row.channels = cn;
+                filter_row.shape = shape_to_string(shape.rows, shape.cols);
+                filter_row.cvh_ms = cvh_filter_ms;
+                filter_row.opencv_ms = opencv_filter_ms;
+                filter_row.speedup = safe_speedup(cvh_filter_ms, opencv_filter_ms);
+                filter_row.status = "OK";
+                rows.push_back(filter_row);
+
+                cvh::Mat kernel_x({1, 3}, CV_32FC1);
+                kernel_x.at<float>(0, 0) = 0.25f;
+                kernel_x.at<float>(0, 1) = 0.5f;
+                kernel_x.at<float>(0, 2) = 0.25f;
+                cvh::Mat kernel_y({3, 1}, CV_32FC1);
+                kernel_y.at<float>(0, 0) = 0.25f;
+                kernel_y.at<float>(1, 0) = 0.5f;
+                kernel_y.at<float>(2, 0) = 0.25f;
+
+                cvh::Mat sep_dst;
+                const double cvh_sep_ms = measure_ms(
+                    [&]() {
+                        cvh::sepFilter2D(src_cvh,
+                                         sep_dst,
+                                         -1,
+                                         kernel_x,
+                                         kernel_y,
+                                         cvh::Point(-1, -1),
+                                         0.0,
+                                         cvh::BORDER_DEFAULT);
+                    },
+                    [&]() { return checksum(sep_dst); },
+                    args.warmup,
+                    args.iters,
+                    args.repeats);
+
+                const double opencv_sep_ms = bench_opencv_sep_filter2d(shape.rows,
+                                                                        shape.cols,
+                                                                        depth,
+                                                                        cn,
+                                                                        args.warmup,
+                                                                        args.iters,
+                                                                        args.repeats,
+                                                                        seed);
+
+                CompareRow sep_row;
+                sep_row.profile = args.profile;
+                sep_row.op = "SEPFILTER2D_3X3";
+                sep_row.depth = depth_to_name(depth);
+                sep_row.channels = cn;
+                sep_row.shape = shape_to_string(shape.rows, shape.cols);
+                sep_row.cvh_ms = cvh_sep_ms;
+                sep_row.opencv_ms = opencv_sep_ms;
+                sep_row.speedup = safe_speedup(cvh_sep_ms, opencv_sep_ms);
+                sep_row.status = "OK";
+                rows.push_back(sep_row);
+
+                cvh::Mat warp_mat({2, 3}, CV_32FC1);
+                warp_mat.at<float>(0, 0) = 1.0f;
+                warp_mat.at<float>(0, 1) = 0.0f;
+                warp_mat.at<float>(0, 2) = -1.25f;
+                warp_mat.at<float>(1, 0) = 0.0f;
+                warp_mat.at<float>(1, 1) = 1.0f;
+                warp_mat.at<float>(1, 2) = 0.75f;
+
+                cvh::Mat warp_dst;
+                const double cvh_warp_ms = measure_ms(
+                    [&]() {
+                        cvh::warpAffine(src_cvh,
+                                        warp_dst,
+                                        warp_mat,
+                                        cvh::Size(shape.cols, shape.rows),
+                                        cvh::INTER_LINEAR | cvh::WARP_INVERSE_MAP,
+                                        cvh::BORDER_REPLICATE,
+                                        cvh::Scalar::all(0.0));
+                    },
+                    [&]() { return checksum(warp_dst); },
+                    args.warmup,
+                    args.iters,
+                    args.repeats);
+
+                const double opencv_warp_ms = bench_opencv_warp_affine(shape.rows,
+                                                                        shape.cols,
+                                                                        depth,
+                                                                        cn,
+                                                                        args.warmup,
+                                                                        args.iters,
+                                                                        args.repeats,
+                                                                        seed);
+
+                CompareRow warp_row;
+                warp_row.profile = args.profile;
+                warp_row.op = "WARP_AFFINE";
+                warp_row.depth = depth_to_name(depth);
+                warp_row.channels = cn;
+                warp_row.shape = shape_to_string(shape.rows, shape.cols);
+                warp_row.cvh_ms = cvh_warp_ms;
+                warp_row.opencv_ms = opencv_warp_ms;
+                warp_row.speedup = safe_speedup(cvh_warp_ms, opencv_warp_ms);
+                warp_row.status = "OK";
+                rows.push_back(warp_row);
+            }
+        }
+    }
+
+    for (const auto& shape : shapes)
+    {
+        for (int cn : channels)
+        {
+            const std::uint32_t seed = static_cast<std::uint32_t>(0xE1u + cn * 23);
+            cvh::Mat src_cvh(std::vector<int>{shape.rows, shape.cols}, CV_MAKETYPE(CV_8U, cn));
+            fill_u8(src_cvh, seed);
+
+            cvh::Mat lut_table({1, 256}, CV_8UC1);
+            for (int i = 0; i < 256; ++i)
+            {
+                lut_table.at<uchar>(0, i) = static_cast<uchar>(255 - i);
+            }
+
+            cvh::Mat lut_dst;
+            const double cvh_lut_ms = measure_ms(
+                [&]() { cvh::LUT(src_cvh, lut_table, lut_dst); },
+                [&]() { return checksum(lut_dst); },
+                args.warmup,
+                args.iters,
+                args.repeats);
+
+            const double opencv_lut_ms = bench_opencv_lut(shape.rows,
+                                                          shape.cols,
+                                                          cn,
+                                                          args.warmup,
+                                                          args.iters,
+                                                          args.repeats,
+                                                          seed);
+
+            CompareRow lut_row;
+            lut_row.profile = args.profile;
+            lut_row.op = "LUT";
+            lut_row.depth = "CV_8U";
+            lut_row.channels = cn;
+            lut_row.shape = shape_to_string(shape.rows, shape.cols);
+            lut_row.cvh_ms = cvh_lut_ms;
+            lut_row.opencv_ms = opencv_lut_ms;
+            lut_row.speedup = safe_speedup(cvh_lut_ms, opencv_lut_ms);
+            lut_row.status = "OK";
+            rows.push_back(lut_row);
         }
     }
 }
@@ -595,7 +995,8 @@ int main(int argc, char** argv)
     append_add_sub_rows(args, rows);
     append_gemm_rows(args, rows);
     append_filter_rows(args, rows);
-    append_opencv_only_rows(args, rows);
+    append_morph_gradient_rows(args, rows);
+    append_m2_rows(args, rows);
 
     if (!args.output_csv.empty())
     {

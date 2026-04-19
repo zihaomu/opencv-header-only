@@ -1070,7 +1070,7 @@ inline bool is_row_broadcast(const MatShape& aligned_shape, const MatShape& out_
 
 inline bool try_fast_binary_float(BinaryOp op, const BinaryOpHelper& helper, const Mat& a, const Mat& b, Mat& c)
 {
-    if (a.type() != CV_32F)
+    if (a.depth() != CV_32F)
         return false;
 
     cpu::BinaryKernelOp kernel_op;
@@ -1080,14 +1080,20 @@ inline bool try_fast_binary_float(BinaryOp op, const BinaryOpHelper& helper, con
     const float* pa = reinterpret_cast<const float*>(a.data);
     const float* pb = reinterpret_cast<const float*>(b.data);
     float* pc = reinterpret_cast<float*>(c.data);
-    const size_t total_num = total(helper.out_shape);
-    const size_t inner = helper.out_shape.back();
+    const int channels = a.channels();
+    const size_t total_num = total(helper.out_shape) * static_cast<size_t>(channels);
+    const size_t inner = helper.out_shape.back() * static_cast<size_t>(channels);
     const size_t outer = total_num / inner;
 
     if (a.shape() == helper.out_shape && b.shape() == helper.out_shape)
     {
         cpu::binary_broadcast_xsimd(kernel_op, pa, inner, 1, pb, inner, 1, pc, outer, inner);
         return true;
+    }
+
+    if (channels != 1)
+    {
+        return false;
     }
 
     if (a.total() == 1)
@@ -1119,7 +1125,7 @@ inline bool try_fast_binary_float(BinaryOp op, const BinaryOpHelper& helper, con
 
 inline bool try_fast_binary_hfloat(BinaryOp op, const BinaryOpHelper& helper, const Mat& a, const Mat& b, Mat& c)
 {
-    if (a.type() != CV_16F)
+    if (a.depth() != CV_16F)
         return false;
 
     cpu::BinaryKernelOp kernel_op;
@@ -1129,14 +1135,20 @@ inline bool try_fast_binary_hfloat(BinaryOp op, const BinaryOpHelper& helper, co
     const void* pa = a.data;
     const void* pb = b.data;
     void* pc = c.data;
-    const size_t total_num = total(helper.out_shape);
-    const size_t inner = helper.out_shape.back();
+    const int channels = a.channels();
+    const size_t total_num = total(helper.out_shape) * static_cast<size_t>(channels);
+    const size_t inner = helper.out_shape.back() * static_cast<size_t>(channels);
     const size_t outer = total_num / inner;
 
     if (a.shape() == helper.out_shape && b.shape() == helper.out_shape)
     {
         cpu::binary_broadcast_xsimd_hfloat(kernel_op, pa, inner, 1, pb, inner, 1, pc, outer, inner);
         return true;
+    }
+
+    if (channels != 1)
+    {
+        return false;
     }
 
     if (a.total() == 1)
@@ -1168,7 +1180,7 @@ inline bool try_fast_binary_hfloat(BinaryOp op, const BinaryOpHelper& helper, co
 
 inline bool try_fast_binary_double(BinaryOp op, const BinaryOpHelper& helper, const Mat& a, const Mat& b, Mat& c)
 {
-    if (a.type() != CV_64F)
+    if (a.depth() != CV_64F)
         return false;
 
     cpu::BinaryKernelOp kernel_op;
@@ -1178,14 +1190,20 @@ inline bool try_fast_binary_double(BinaryOp op, const BinaryOpHelper& helper, co
     const void* pa = a.data;
     const void* pb = b.data;
     void* pc = c.data;
-    const size_t total_num = total(helper.out_shape);
-    const size_t inner = helper.out_shape.back();
+    const int channels = a.channels();
+    const size_t total_num = total(helper.out_shape) * static_cast<size_t>(channels);
+    const size_t inner = helper.out_shape.back() * static_cast<size_t>(channels);
     const size_t outer = total_num / inner;
 
     if (a.shape() == helper.out_shape && b.shape() == helper.out_shape)
     {
         cpu::binary_broadcast_xsimd_double(kernel_op, pa, inner, 1, pb, inner, 1, pc, outer, inner);
         return true;
+    }
+
+    if (channels != 1)
+    {
+        return false;
     }
 
     if (a.total() == 1)
@@ -1217,7 +1235,7 @@ inline bool try_fast_binary_double(BinaryOp op, const BinaryOpHelper& helper, co
 
 inline bool try_fast_binary_int32(BinaryOp op, const BinaryOpHelper& helper, const Mat& a, const Mat& b, Mat& c)
 {
-    if (a.type() != CV_32S)
+    if (a.depth() != CV_32S)
         return false;
 
     cpu::BinaryKernelOp kernel_op;
@@ -1227,14 +1245,20 @@ inline bool try_fast_binary_int32(BinaryOp op, const BinaryOpHelper& helper, con
     const void* pa = a.data;
     const void* pb = b.data;
     void* pc = c.data;
-    const size_t total_num = total(helper.out_shape);
-    const size_t inner = helper.out_shape.back();
+    const int channels = a.channels();
+    const size_t total_num = total(helper.out_shape) * static_cast<size_t>(channels);
+    const size_t inner = helper.out_shape.back() * static_cast<size_t>(channels);
     const size_t outer = total_num / inner;
 
     if (a.shape() == helper.out_shape && b.shape() == helper.out_shape)
     {
         cpu::binary_broadcast_xsimd_int32(kernel_op, pa, inner, 1, pb, inner, 1, pc, outer, inner);
         return true;
+    }
+
+    if (channels != 1)
+    {
+        return false;
     }
 
     if (a.total() == 1)
@@ -1274,14 +1298,20 @@ inline bool try_fast_binary_int(BinaryOp op, const BinaryOpHelper& helper, const
     const void* pa = a.data;
     const void* pb = b.data;
     void* pc = c.data;
-    const size_t total_num = total(helper.out_shape);
-    const size_t inner = helper.out_shape.back();
+    const int channels = a.channels();
+    const size_t total_num = total(helper.out_shape) * static_cast<size_t>(channels);
+    const size_t inner = helper.out_shape.back() * static_cast<size_t>(channels);
     const size_t outer = total_num / inner;
 
     if (a.shape() == helper.out_shape && b.shape() == helper.out_shape)
     {
         kernel_func(kernel_op, pa, inner, 1, pb, inner, 1, pc, outer, inner);
         return true;
+    }
+
+    if (channels != 1)
+    {
+        return false;
     }
 
     if (a.total() == 1)

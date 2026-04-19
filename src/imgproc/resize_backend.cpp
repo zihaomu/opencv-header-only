@@ -2617,6 +2617,276 @@ bool try_boxfilter_fastpath_u8(const Mat& src,
     return true;
 }
 
+bool try_boxfilter_fastpath_f32(const Mat& src,
+                                Mat& dst,
+                                int ddepth,
+                                Size ksize,
+                                Point anchor,
+                                bool normalize,
+                                int borderType)
+{
+    if (src.empty() || src.dims != 2 || src.depth() != CV_32F)
+    {
+        return false;
+    }
+
+    if (!is_u8_fastpath_channels(src.channels()))
+    {
+        return false;
+    }
+
+    if (ddepth != -1 && ddepth != CV_32F)
+    {
+        return false;
+    }
+
+    if (ksize.width <= 0 || ksize.height <= 0)
+    {
+        return false;
+    }
+
+    const int anchor_x = anchor.x >= 0 ? anchor.x : (ksize.width / 2);
+    const int anchor_y = anchor.y >= 0 ? anchor.y : (ksize.height / 2);
+    if (anchor_x < 0 || anchor_x >= ksize.width || anchor_y < 0 || anchor_y >= ksize.height)
+    {
+        return false;
+    }
+
+    const int border_type = normalize_border_type(borderType);
+    if (!is_supported_filter_border(border_type))
+    {
+        return false;
+    }
+
+    Mat src_local;
+    const Mat* src_ref = &src;
+    if (src.data == dst.data)
+    {
+        src_local = src.clone();
+        src_ref = &src_local;
+    }
+
+    const int rows = src_ref->size[0];
+    const int cols = src_ref->size[1];
+    const int channels = src_ref->channels();
+    const std::size_t src_step = src_ref->step(0);
+    const std::size_t dst_row_stride = static_cast<std::size_t>(cols) * static_cast<std::size_t>(channels);
+    const int row_stride = cols * channels;
+
+    dst.create(std::vector<int>{rows, cols}, src_ref->type());
+    const std::size_t dst_step = dst.step(0);
+
+    const int kx = ksize.width;
+    const int ky = ksize.height;
+    const int kernel_area = kx * ky;
+    const float inv_kernel_area = kernel_area > 0 ? (1.0f / static_cast<float>(kernel_area)) : 0.0f;
+
+    const int right = kx - anchor_x - 1;
+    const int bottom = ky - anchor_y - 1;
+    const std::vector<int> x_map = build_extended_index_map(cols, anchor_x, right, border_type);
+    const std::vector<int> y_map = build_extended_index_map(rows, anchor_y, bottom, border_type);
+
+    std::vector<float> row_sums(static_cast<std::size_t>(rows) * static_cast<std::size_t>(row_stride), 0.0f);
+    const bool do_parallel_h = should_parallelize_filter_rows(rows, cols, channels, kx);
+    parallel_for_index_if(do_parallel_h, rows, [&](int y) {
+        const float* src_row = reinterpret_cast<const float*>(src_ref->data + static_cast<std::size_t>(y) * src_step);
+        float* sum_row = row_sums.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(row_stride);
+
+        if (channels == 1)
+        {
+            float s0 = 0.0f;
+            for (int i = 0; i < kx; ++i)
+            {
+                const int sx = x_map[static_cast<std::size_t>(i)];
+                if (sx >= 0)
+                {
+                    s0 += src_row[sx];
+                }
+            }
+            sum_row[0] = s0;
+
+            for (int x = 1; x < cols; ++x)
+            {
+                const int sx_add = x_map[static_cast<std::size_t>(x + kx - 1)];
+                if (sx_add >= 0)
+                {
+                    s0 += src_row[sx_add];
+                }
+
+                const int sx_sub = x_map[static_cast<std::size_t>(x - 1)];
+                if (sx_sub >= 0)
+                {
+                    s0 -= src_row[sx_sub];
+                }
+
+                sum_row[x] = s0;
+            }
+            return;
+        }
+
+        if (channels == 3)
+        {
+            float s0 = 0.0f;
+            float s1 = 0.0f;
+            float s2 = 0.0f;
+            for (int i = 0; i < kx; ++i)
+            {
+                const int sx = x_map[static_cast<std::size_t>(i)];
+                if (sx < 0)
+                {
+                    continue;
+                }
+                const float* px = src_row + static_cast<std::size_t>(sx) * 3;
+                s0 += px[0];
+                s1 += px[1];
+                s2 += px[2];
+            }
+            sum_row[0] = s0;
+            sum_row[1] = s1;
+            sum_row[2] = s2;
+
+            for (int x = 1; x < cols; ++x)
+            {
+                const int sx_add = x_map[static_cast<std::size_t>(x + kx - 1)];
+                if (sx_add >= 0)
+                {
+                    const float* px = src_row + static_cast<std::size_t>(sx_add) * 3;
+                    s0 += px[0];
+                    s1 += px[1];
+                    s2 += px[2];
+                }
+
+                const int sx_sub = x_map[static_cast<std::size_t>(x - 1)];
+                if (sx_sub >= 0)
+                {
+                    const float* px = src_row + static_cast<std::size_t>(sx_sub) * 3;
+                    s0 -= px[0];
+                    s1 -= px[1];
+                    s2 -= px[2];
+                }
+
+                const int dx = x * 3;
+                sum_row[dx + 0] = s0;
+                sum_row[dx + 1] = s1;
+                sum_row[dx + 2] = s2;
+            }
+            return;
+        }
+
+        if (channels == 4)
+        {
+            float s0 = 0.0f;
+            float s1 = 0.0f;
+            float s2 = 0.0f;
+            float s3 = 0.0f;
+            for (int i = 0; i < kx; ++i)
+            {
+                const int sx = x_map[static_cast<std::size_t>(i)];
+                if (sx < 0)
+                {
+                    continue;
+                }
+                const float* px = src_row + static_cast<std::size_t>(sx) * 4;
+                s0 += px[0];
+                s1 += px[1];
+                s2 += px[2];
+                s3 += px[3];
+            }
+            sum_row[0] = s0;
+            sum_row[1] = s1;
+            sum_row[2] = s2;
+            sum_row[3] = s3;
+
+            for (int x = 1; x < cols; ++x)
+            {
+                const int sx_add = x_map[static_cast<std::size_t>(x + kx - 1)];
+                if (sx_add >= 0)
+                {
+                    const float* px = src_row + static_cast<std::size_t>(sx_add) * 4;
+                    s0 += px[0];
+                    s1 += px[1];
+                    s2 += px[2];
+                    s3 += px[3];
+                }
+
+                const int sx_sub = x_map[static_cast<std::size_t>(x - 1)];
+                if (sx_sub >= 0)
+                {
+                    const float* px = src_row + static_cast<std::size_t>(sx_sub) * 4;
+                    s0 -= px[0];
+                    s1 -= px[1];
+                    s2 -= px[2];
+                    s3 -= px[3];
+                }
+
+                const int dx = x * 4;
+                sum_row[dx + 0] = s0;
+                sum_row[dx + 1] = s1;
+                sum_row[dx + 2] = s2;
+                sum_row[dx + 3] = s3;
+            }
+        }
+    });
+
+    std::vector<float> accum(dst_row_stride, 0.0f);
+    for (int i = 0; i < ky; ++i)
+    {
+        const int sy = y_map[static_cast<std::size_t>(i)];
+        if (sy < 0)
+        {
+            continue;
+        }
+        const float* row_ptr = row_sums.data() + static_cast<std::size_t>(sy) * static_cast<std::size_t>(row_stride);
+        for (std::size_t idx = 0; idx < dst_row_stride; ++idx)
+        {
+            accum[idx] += row_ptr[idx];
+        }
+    }
+
+    for (int y = 0; y < rows; ++y)
+    {
+        float* dst_row = reinterpret_cast<float*>(dst.data + static_cast<std::size_t>(y) * dst_step);
+        if (normalize)
+        {
+            for (std::size_t idx = 0; idx < dst_row_stride; ++idx)
+            {
+                dst_row[idx] = accum[idx] * inv_kernel_area;
+            }
+        }
+        else
+        {
+            std::memcpy(dst_row, accum.data(), dst_row_stride * sizeof(float));
+        }
+
+        if (y + 1 >= rows)
+        {
+            continue;
+        }
+
+        const int sy_sub = y_map[static_cast<std::size_t>(y)];
+        if (sy_sub >= 0)
+        {
+            const float* row_ptr = row_sums.data() + static_cast<std::size_t>(sy_sub) * static_cast<std::size_t>(row_stride);
+            for (std::size_t idx = 0; idx < dst_row_stride; ++idx)
+            {
+                accum[idx] -= row_ptr[idx];
+            }
+        }
+
+        const int sy_add = y_map[static_cast<std::size_t>(y + ky)];
+        if (sy_add >= 0)
+        {
+            const float* row_ptr = row_sums.data() + static_cast<std::size_t>(sy_add) * static_cast<std::size_t>(row_stride);
+            for (std::size_t idx = 0; idx < dst_row_stride; ++idx)
+            {
+                accum[idx] += row_ptr[idx];
+            }
+        }
+    }
+
+    return true;
+}
+
 bool try_gaussian_blur_fastpath_u8(const Mat& src, Mat& dst, Size ksize, double sigmaX, double sigmaY, int borderType)
 {
     if (src.empty() || src.dims != 2 || src.depth() != CV_8U)
@@ -2978,6 +3248,2196 @@ bool try_gaussian_blur_fastpath_u8(const Mat& src, Mat& dst, Size ksize, double 
     return true;
 }
 
+bool try_gaussian_blur_fastpath_f32(const Mat& src, Mat& dst, Size ksize, double sigmaX, double sigmaY, int borderType)
+{
+    if (src.empty() || src.dims != 2 || src.depth() != CV_32F)
+    {
+        return false;
+    }
+
+    if (!is_u8_fastpath_channels(src.channels()))
+    {
+        return false;
+    }
+
+    int kx = ksize.width;
+    int ky = ksize.height;
+
+    if (kx <= 0 && sigmaX > 0.0)
+    {
+        kx = auto_gaussian_ksize(sigmaX);
+    }
+    if (ky <= 0 && sigmaY > 0.0)
+    {
+        ky = auto_gaussian_ksize(sigmaY);
+    }
+    if (kx <= 0 && ky > 0)
+    {
+        kx = ky;
+    }
+    if (ky <= 0 && kx > 0)
+    {
+        ky = kx;
+    }
+
+    if (kx <= 0 || ky <= 0 || (kx & 1) == 0 || (ky & 1) == 0)
+    {
+        return false;
+    }
+
+    if (sigmaX <= 0.0)
+    {
+        sigmaX = default_gaussian_sigma_for_ksize(kx);
+    }
+    if (sigmaY <= 0.0)
+    {
+        sigmaY = sigmaX;
+    }
+    if (sigmaX <= 0.0 || sigmaY <= 0.0)
+    {
+        return false;
+    }
+
+    const int border_type = normalize_border_type(borderType);
+    if (!is_supported_filter_border(border_type))
+    {
+        return false;
+    }
+
+    Mat src_local;
+    const Mat* src_ref = &src;
+    if (src.data == dst.data)
+    {
+        src_local = src.clone();
+        src_ref = &src_local;
+    }
+
+    const int rows = src_ref->size[0];
+    const int cols = src_ref->size[1];
+    const int channels = src_ref->channels();
+    const std::size_t src_step = src_ref->step(0);
+    const int row_stride = cols * channels;
+
+    dst.create(std::vector<int>{rows, cols}, src_ref->type());
+    const std::size_t dst_step = dst.step(0);
+
+    const std::vector<float> kernel_x = build_gaussian_kernel_1d(kx, sigmaX);
+    const std::vector<float> kernel_y = build_gaussian_kernel_1d(ky, sigmaY);
+    const int rx = kx / 2;
+    const int ry = ky / 2;
+    const bool has_constant_border = border_type == BORDER_CONSTANT;
+
+    std::vector<int> x_offsets(static_cast<std::size_t>(cols) * static_cast<std::size_t>(kx), -1);
+    for (int x = 0; x < cols; ++x)
+    {
+        int* x_ofs = x_offsets.data() + static_cast<std::size_t>(x) * static_cast<std::size_t>(kx);
+        for (int i = 0; i < kx; ++i)
+        {
+            const int sx = border_interpolate(x + i - rx, cols, border_type);
+            x_ofs[i] = sx >= 0 ? sx * channels : -1;
+        }
+    }
+
+    std::vector<int> y_offsets(static_cast<std::size_t>(rows) * static_cast<std::size_t>(ky), -1);
+    for (int y = 0; y < rows; ++y)
+    {
+        int* y_ofs = y_offsets.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(ky);
+        for (int i = 0; i < ky; ++i)
+        {
+            const int sy = border_interpolate(y + i - ry, rows, border_type);
+            y_ofs[i] = sy >= 0 ? sy * row_stride : -1;
+        }
+    }
+
+    std::vector<float> tmp(static_cast<std::size_t>(rows) * static_cast<std::size_t>(row_stride), 0.0f);
+
+    const bool do_parallel_h = should_parallelize_filter_rows(rows, cols, channels, kx);
+    parallel_for_index_if(do_parallel_h, rows, [&](int y) {
+        const float* src_row = reinterpret_cast<const float*>(src_ref->data + static_cast<std::size_t>(y) * src_step);
+        float* tmp_row = tmp.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(row_stride);
+
+        if (channels == 1)
+        {
+            for (int x = 0; x < cols; ++x)
+            {
+                const int* x_ofs = x_offsets.data() + static_cast<std::size_t>(x) * static_cast<std::size_t>(kx);
+                float acc0 = 0.0f;
+                if (has_constant_border)
+                {
+                    for (int i = 0; i < kx; ++i)
+                    {
+                        const int sx = x_ofs[i];
+                        if (sx < 0)
+                        {
+                            continue;
+                        }
+                        acc0 += kernel_x[static_cast<std::size_t>(i)] * src_row[sx];
+                    }
+                }
+                else
+                {
+                    for (int i = 0; i < kx; ++i)
+                    {
+                        const int sx = x_ofs[i];
+                        acc0 += kernel_x[static_cast<std::size_t>(i)] * src_row[sx];
+                    }
+                }
+                tmp_row[x] = acc0;
+            }
+            return;
+        }
+
+        if (channels == 3)
+        {
+            for (int x = 0; x < cols; ++x)
+            {
+                const int* x_ofs = x_offsets.data() + static_cast<std::size_t>(x) * static_cast<std::size_t>(kx);
+                const int dx = x * 3;
+                float acc0 = 0.0f;
+                float acc1 = 0.0f;
+                float acc2 = 0.0f;
+                if (has_constant_border)
+                {
+                    for (int i = 0; i < kx; ++i)
+                    {
+                        const int sx = x_ofs[i];
+                        if (sx < 0)
+                        {
+                            continue;
+                        }
+                        const float w = kernel_x[static_cast<std::size_t>(i)];
+                        const float* px = src_row + sx;
+                        acc0 += w * px[0];
+                        acc1 += w * px[1];
+                        acc2 += w * px[2];
+                    }
+                }
+                else
+                {
+                    for (int i = 0; i < kx; ++i)
+                    {
+                        const int sx = x_ofs[i];
+                        const float w = kernel_x[static_cast<std::size_t>(i)];
+                        const float* px = src_row + sx;
+                        acc0 += w * px[0];
+                        acc1 += w * px[1];
+                        acc2 += w * px[2];
+                    }
+                }
+                tmp_row[dx + 0] = acc0;
+                tmp_row[dx + 1] = acc1;
+                tmp_row[dx + 2] = acc2;
+            }
+            return;
+        }
+
+        if (channels == 4)
+        {
+            for (int x = 0; x < cols; ++x)
+            {
+                const int* x_ofs = x_offsets.data() + static_cast<std::size_t>(x) * static_cast<std::size_t>(kx);
+                const int dx = x * 4;
+                float acc0 = 0.0f;
+                float acc1 = 0.0f;
+                float acc2 = 0.0f;
+                float acc3 = 0.0f;
+                if (has_constant_border)
+                {
+                    for (int i = 0; i < kx; ++i)
+                    {
+                        const int sx = x_ofs[i];
+                        if (sx < 0)
+                        {
+                            continue;
+                        }
+                        const float w = kernel_x[static_cast<std::size_t>(i)];
+                        const float* px = src_row + sx;
+                        acc0 += w * px[0];
+                        acc1 += w * px[1];
+                        acc2 += w * px[2];
+                        acc3 += w * px[3];
+                    }
+                }
+                else
+                {
+                    for (int i = 0; i < kx; ++i)
+                    {
+                        const int sx = x_ofs[i];
+                        const float w = kernel_x[static_cast<std::size_t>(i)];
+                        const float* px = src_row + sx;
+                        acc0 += w * px[0];
+                        acc1 += w * px[1];
+                        acc2 += w * px[2];
+                        acc3 += w * px[3];
+                    }
+                }
+                tmp_row[dx + 0] = acc0;
+                tmp_row[dx + 1] = acc1;
+                tmp_row[dx + 2] = acc2;
+                tmp_row[dx + 3] = acc3;
+            }
+        }
+    });
+
+    const bool do_parallel_v = should_parallelize_filter_rows(rows, cols, channels, ky);
+    parallel_for_index_if(do_parallel_v, rows, [&](int y) {
+        float* dst_row = reinterpret_cast<float*>(dst.data + static_cast<std::size_t>(y) * dst_step);
+        const int* y_ofs = y_offsets.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(ky);
+
+        if (channels == 1)
+        {
+            for (int x = 0; x < cols; ++x)
+            {
+                float acc0 = 0.0f;
+                if (has_constant_border)
+                {
+                    for (int i = 0; i < ky; ++i)
+                    {
+                        const int sy = y_ofs[i];
+                        if (sy < 0)
+                        {
+                            continue;
+                        }
+                        acc0 += kernel_y[static_cast<std::size_t>(i)] *
+                                tmp[static_cast<std::size_t>(sy + x)];
+                    }
+                }
+                else
+                {
+                    for (int i = 0; i < ky; ++i)
+                    {
+                        const int sy = y_ofs[i];
+                        acc0 += kernel_y[static_cast<std::size_t>(i)] *
+                                tmp[static_cast<std::size_t>(sy + x)];
+                    }
+                }
+                dst_row[x] = acc0;
+            }
+            return;
+        }
+
+        if (channels == 3)
+        {
+            for (int x = 0; x < cols; ++x)
+            {
+                const int dx = x * 3;
+                float acc0 = 0.0f;
+                float acc1 = 0.0f;
+                float acc2 = 0.0f;
+                if (has_constant_border)
+                {
+                    for (int i = 0; i < ky; ++i)
+                    {
+                        const int sy = y_ofs[i];
+                        if (sy < 0)
+                        {
+                            continue;
+                        }
+                        const float w = kernel_y[static_cast<std::size_t>(i)];
+                        const float* px = tmp.data() + static_cast<std::size_t>(sy + dx);
+                        acc0 += w * px[0];
+                        acc1 += w * px[1];
+                        acc2 += w * px[2];
+                    }
+                }
+                else
+                {
+                    for (int i = 0; i < ky; ++i)
+                    {
+                        const int sy = y_ofs[i];
+                        const float w = kernel_y[static_cast<std::size_t>(i)];
+                        const float* px = tmp.data() + static_cast<std::size_t>(sy + dx);
+                        acc0 += w * px[0];
+                        acc1 += w * px[1];
+                        acc2 += w * px[2];
+                    }
+                }
+                dst_row[dx + 0] = acc0;
+                dst_row[dx + 1] = acc1;
+                dst_row[dx + 2] = acc2;
+            }
+            return;
+        }
+
+        if (channels == 4)
+        {
+            for (int x = 0; x < cols; ++x)
+            {
+                const int dx = x * 4;
+                float acc0 = 0.0f;
+                float acc1 = 0.0f;
+                float acc2 = 0.0f;
+                float acc3 = 0.0f;
+                if (has_constant_border)
+                {
+                    for (int i = 0; i < ky; ++i)
+                    {
+                        const int sy = y_ofs[i];
+                        if (sy < 0)
+                        {
+                            continue;
+                        }
+                        const float w = kernel_y[static_cast<std::size_t>(i)];
+                        const float* px = tmp.data() + static_cast<std::size_t>(sy + dx);
+                        acc0 += w * px[0];
+                        acc1 += w * px[1];
+                        acc2 += w * px[2];
+                        acc3 += w * px[3];
+                    }
+                }
+                else
+                {
+                    for (int i = 0; i < ky; ++i)
+                    {
+                        const int sy = y_ofs[i];
+                        const float w = kernel_y[static_cast<std::size_t>(i)];
+                        const float* px = tmp.data() + static_cast<std::size_t>(sy + dx);
+                        acc0 += w * px[0];
+                        acc1 += w * px[1];
+                        acc2 += w * px[2];
+                        acc3 += w * px[3];
+                    }
+                }
+                dst_row[dx + 0] = acc0;
+                dst_row[dx + 1] = acc1;
+                dst_row[dx + 2] = acc2;
+                dst_row[dx + 3] = acc3;
+            }
+        }
+    });
+
+    return true;
+}
+
+bool try_filter2d_fastpath(const Mat& src,
+                           Mat& dst,
+                           int ddepth,
+                           const Mat& kernel,
+                           Point anchor,
+                           double delta,
+                           int borderType)
+{
+    if (src.empty() || src.dims != 2)
+    {
+        return false;
+    }
+
+    const int src_depth = src.depth();
+    if (src_depth != CV_8U && src_depth != CV_32F)
+    {
+        return false;
+    }
+
+    if (kernel.empty() || kernel.dims != 2 || kernel.channels() != 1 || kernel.depth() != CV_32F)
+    {
+        return false;
+    }
+
+    const int krows = kernel.size[0];
+    const int kcols = kernel.size[1];
+    if (krows <= 0 || kcols <= 0)
+    {
+        return false;
+    }
+
+    const int ax = anchor.x >= 0 ? anchor.x : (kcols / 2);
+    const int ay = anchor.y >= 0 ? anchor.y : (krows / 2);
+    if (ax < 0 || ax >= kcols || ay < 0 || ay >= krows)
+    {
+        return false;
+    }
+
+    int out_depth = ddepth;
+    if (out_depth == -1)
+    {
+        out_depth = src_depth;
+    }
+    if (out_depth != CV_8U && out_depth != CV_32F)
+    {
+        return false;
+    }
+
+    const int border_type = normalize_border_type(borderType);
+    if (!is_supported_filter_border(border_type))
+    {
+        return false;
+    }
+
+    Mat src_local;
+    const Mat* src_ref = &src;
+    if (src.data == dst.data)
+    {
+        src_local = src.clone();
+        src_ref = &src_local;
+    }
+
+    const int rows = src_ref->size[0];
+    const int cols = src_ref->size[1];
+    const int channels = src_ref->channels();
+    if (rows <= 0 || cols <= 0 || channels <= 0)
+    {
+        return false;
+    }
+
+    std::vector<float> kernel_coeffs(static_cast<std::size_t>(krows) * static_cast<std::size_t>(kcols), 0.0f);
+    for (int ky = 0; ky < krows; ++ky)
+    {
+        for (int kx = 0; kx < kcols; ++kx)
+        {
+            kernel_coeffs[static_cast<std::size_t>(ky) * static_cast<std::size_t>(kcols) + static_cast<std::size_t>(kx)] =
+                kernel.at<float>(ky, kx);
+        }
+    }
+
+    std::vector<int> x_offsets(static_cast<std::size_t>(cols) * static_cast<std::size_t>(kcols), -1);
+    for (int x = 0; x < cols; ++x)
+    {
+        int* x_ofs = x_offsets.data() + static_cast<std::size_t>(x) * static_cast<std::size_t>(kcols);
+        for (int kx = 0; kx < kcols; ++kx)
+        {
+            const int sx = border_interpolate(x + kx - ax, cols, border_type);
+            x_ofs[kx] = sx >= 0 ? sx * channels : -1;
+        }
+    }
+
+    std::vector<int> y_indices(static_cast<std::size_t>(rows) * static_cast<std::size_t>(krows), -1);
+    for (int y = 0; y < rows; ++y)
+    {
+        int* y_idx = y_indices.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(krows);
+        for (int ky = 0; ky < krows; ++ky)
+        {
+            y_idx[ky] = border_interpolate(y + ky - ay, rows, border_type);
+        }
+    }
+
+    dst.create(std::vector<int>{rows, cols}, CV_MAKETYPE(out_depth, channels));
+    const std::size_t src_step = src_ref->step(0);
+    const std::size_t dst_step = dst.step(0);
+    const bool do_parallel = should_parallelize_filter_rows(rows, cols, channels, krows * kcols);
+
+    if (src_depth == CV_8U)
+    {
+        const uchar* src_data = src_ref->data;
+        parallel_for_index_if(do_parallel, rows, [&](int y) {
+            const int* y_idx = y_indices.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(krows);
+            uchar* dst_row_u8 = out_depth == CV_8U ? (dst.data + static_cast<std::size_t>(y) * dst_step) : nullptr;
+            float* dst_row_f32 =
+                out_depth == CV_32F ? reinterpret_cast<float*>(dst.data + static_cast<std::size_t>(y) * dst_step) : nullptr;
+
+            for (int x = 0; x < cols; ++x)
+            {
+                const int* x_ofs = x_offsets.data() + static_cast<std::size_t>(x) * static_cast<std::size_t>(kcols);
+                const std::size_t out_base = static_cast<std::size_t>(x) * static_cast<std::size_t>(channels);
+
+                if (channels == 1)
+                {
+                    double acc0 = delta;
+                    for (int ky = 0; ky < krows; ++ky)
+                    {
+                        const int sy = y_idx[ky];
+                        if (sy < 0)
+                        {
+                            continue;
+                        }
+                        const uchar* src_row = src_data + static_cast<std::size_t>(sy) * src_step;
+                        const float* krow = kernel_coeffs.data() + static_cast<std::size_t>(ky) * static_cast<std::size_t>(kcols);
+                        for (int kx = 0; kx < kcols; ++kx)
+                        {
+                            const int sx = x_ofs[kx];
+                            if (sx < 0)
+                            {
+                                continue;
+                            }
+                            acc0 += static_cast<double>(krow[kx]) * static_cast<double>(src_row[sx]);
+                        }
+                    }
+
+                    if (dst_row_f32)
+                    {
+                        dst_row_f32[out_base] = static_cast<float>(acc0);
+                    }
+                    else
+                    {
+                        dst_row_u8[out_base] = saturate_cast<uchar>(acc0);
+                    }
+                    continue;
+                }
+
+                if (channels == 3)
+                {
+                    double acc0 = delta;
+                    double acc1 = delta;
+                    double acc2 = delta;
+                    for (int ky = 0; ky < krows; ++ky)
+                    {
+                        const int sy = y_idx[ky];
+                        if (sy < 0)
+                        {
+                            continue;
+                        }
+                        const uchar* src_row = src_data + static_cast<std::size_t>(sy) * src_step;
+                        const float* krow = kernel_coeffs.data() + static_cast<std::size_t>(ky) * static_cast<std::size_t>(kcols);
+                        for (int kx = 0; kx < kcols; ++kx)
+                        {
+                            const int sx = x_ofs[kx];
+                            if (sx < 0)
+                            {
+                                continue;
+                            }
+                            const float w = krow[kx];
+                            acc0 += static_cast<double>(w) * static_cast<double>(src_row[sx + 0]);
+                            acc1 += static_cast<double>(w) * static_cast<double>(src_row[sx + 1]);
+                            acc2 += static_cast<double>(w) * static_cast<double>(src_row[sx + 2]);
+                        }
+                    }
+
+                    if (dst_row_f32)
+                    {
+                        dst_row_f32[out_base + 0] = static_cast<float>(acc0);
+                        dst_row_f32[out_base + 1] = static_cast<float>(acc1);
+                        dst_row_f32[out_base + 2] = static_cast<float>(acc2);
+                    }
+                    else
+                    {
+                        dst_row_u8[out_base + 0] = saturate_cast<uchar>(acc0);
+                        dst_row_u8[out_base + 1] = saturate_cast<uchar>(acc1);
+                        dst_row_u8[out_base + 2] = saturate_cast<uchar>(acc2);
+                    }
+                    continue;
+                }
+
+                if (channels == 4)
+                {
+                    double acc0 = delta;
+                    double acc1 = delta;
+                    double acc2 = delta;
+                    double acc3 = delta;
+                    for (int ky = 0; ky < krows; ++ky)
+                    {
+                        const int sy = y_idx[ky];
+                        if (sy < 0)
+                        {
+                            continue;
+                        }
+                        const uchar* src_row = src_data + static_cast<std::size_t>(sy) * src_step;
+                        const float* krow = kernel_coeffs.data() + static_cast<std::size_t>(ky) * static_cast<std::size_t>(kcols);
+                        for (int kx = 0; kx < kcols; ++kx)
+                        {
+                            const int sx = x_ofs[kx];
+                            if (sx < 0)
+                            {
+                                continue;
+                            }
+                            const float w = krow[kx];
+                            acc0 += static_cast<double>(w) * static_cast<double>(src_row[sx + 0]);
+                            acc1 += static_cast<double>(w) * static_cast<double>(src_row[sx + 1]);
+                            acc2 += static_cast<double>(w) * static_cast<double>(src_row[sx + 2]);
+                            acc3 += static_cast<double>(w) * static_cast<double>(src_row[sx + 3]);
+                        }
+                    }
+
+                    if (dst_row_f32)
+                    {
+                        dst_row_f32[out_base + 0] = static_cast<float>(acc0);
+                        dst_row_f32[out_base + 1] = static_cast<float>(acc1);
+                        dst_row_f32[out_base + 2] = static_cast<float>(acc2);
+                        dst_row_f32[out_base + 3] = static_cast<float>(acc3);
+                    }
+                    else
+                    {
+                        dst_row_u8[out_base + 0] = saturate_cast<uchar>(acc0);
+                        dst_row_u8[out_base + 1] = saturate_cast<uchar>(acc1);
+                        dst_row_u8[out_base + 2] = saturate_cast<uchar>(acc2);
+                        dst_row_u8[out_base + 3] = saturate_cast<uchar>(acc3);
+                    }
+                    continue;
+                }
+
+                for (int c = 0; c < channels; ++c)
+                {
+                    double acc = delta;
+                    for (int ky = 0; ky < krows; ++ky)
+                    {
+                        const int sy = y_idx[ky];
+                        if (sy < 0)
+                        {
+                            continue;
+                        }
+                        const uchar* src_row = src_data + static_cast<std::size_t>(sy) * src_step;
+                        const float* krow = kernel_coeffs.data() + static_cast<std::size_t>(ky) * static_cast<std::size_t>(kcols);
+                        for (int kx = 0; kx < kcols; ++kx)
+                        {
+                            const int sx = x_ofs[kx];
+                            if (sx < 0)
+                            {
+                                continue;
+                            }
+                            acc += static_cast<double>(krow[kx]) * static_cast<double>(src_row[sx + c]);
+                        }
+                    }
+
+                    if (dst_row_f32)
+                    {
+                        dst_row_f32[out_base + static_cast<std::size_t>(c)] = static_cast<float>(acc);
+                    }
+                    else
+                    {
+                        dst_row_u8[out_base + static_cast<std::size_t>(c)] = saturate_cast<uchar>(acc);
+                    }
+                }
+            }
+        });
+        return true;
+    }
+
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
+        const int* y_idx = y_indices.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(krows);
+        uchar* dst_row_u8 = out_depth == CV_8U ? (dst.data + static_cast<std::size_t>(y) * dst_step) : nullptr;
+        float* dst_row_f32 =
+            out_depth == CV_32F ? reinterpret_cast<float*>(dst.data + static_cast<std::size_t>(y) * dst_step) : nullptr;
+
+        for (int x = 0; x < cols; ++x)
+        {
+            const int* x_ofs = x_offsets.data() + static_cast<std::size_t>(x) * static_cast<std::size_t>(kcols);
+            const std::size_t out_base = static_cast<std::size_t>(x) * static_cast<std::size_t>(channels);
+
+            if (channels == 1)
+            {
+                double acc0 = delta;
+                for (int ky = 0; ky < krows; ++ky)
+                {
+                    const int sy = y_idx[ky];
+                    if (sy < 0)
+                    {
+                        continue;
+                    }
+                    const float* src_row =
+                        reinterpret_cast<const float*>(src_ref->data + static_cast<std::size_t>(sy) * src_step);
+                    const float* krow = kernel_coeffs.data() + static_cast<std::size_t>(ky) * static_cast<std::size_t>(kcols);
+                    for (int kx = 0; kx < kcols; ++kx)
+                    {
+                        const int sx = x_ofs[kx];
+                        if (sx < 0)
+                        {
+                            continue;
+                        }
+                        acc0 += static_cast<double>(krow[kx]) * static_cast<double>(src_row[sx]);
+                    }
+                }
+
+                if (dst_row_f32)
+                {
+                    dst_row_f32[out_base] = static_cast<float>(acc0);
+                }
+                else
+                {
+                    dst_row_u8[out_base] = saturate_cast<uchar>(acc0);
+                }
+                continue;
+            }
+
+            if (channels == 3)
+            {
+                double acc0 = delta;
+                double acc1 = delta;
+                double acc2 = delta;
+                for (int ky = 0; ky < krows; ++ky)
+                {
+                    const int sy = y_idx[ky];
+                    if (sy < 0)
+                    {
+                        continue;
+                    }
+                    const float* src_row =
+                        reinterpret_cast<const float*>(src_ref->data + static_cast<std::size_t>(sy) * src_step);
+                    const float* krow = kernel_coeffs.data() + static_cast<std::size_t>(ky) * static_cast<std::size_t>(kcols);
+                    for (int kx = 0; kx < kcols; ++kx)
+                    {
+                        const int sx = x_ofs[kx];
+                        if (sx < 0)
+                        {
+                            continue;
+                        }
+                        const float w = krow[kx];
+                        acc0 += static_cast<double>(w) * static_cast<double>(src_row[sx + 0]);
+                        acc1 += static_cast<double>(w) * static_cast<double>(src_row[sx + 1]);
+                        acc2 += static_cast<double>(w) * static_cast<double>(src_row[sx + 2]);
+                    }
+                }
+
+                if (dst_row_f32)
+                {
+                    dst_row_f32[out_base + 0] = static_cast<float>(acc0);
+                    dst_row_f32[out_base + 1] = static_cast<float>(acc1);
+                    dst_row_f32[out_base + 2] = static_cast<float>(acc2);
+                }
+                else
+                {
+                    dst_row_u8[out_base + 0] = saturate_cast<uchar>(acc0);
+                    dst_row_u8[out_base + 1] = saturate_cast<uchar>(acc1);
+                    dst_row_u8[out_base + 2] = saturate_cast<uchar>(acc2);
+                }
+                continue;
+            }
+
+            if (channels == 4)
+            {
+                double acc0 = delta;
+                double acc1 = delta;
+                double acc2 = delta;
+                double acc3 = delta;
+                for (int ky = 0; ky < krows; ++ky)
+                {
+                    const int sy = y_idx[ky];
+                    if (sy < 0)
+                    {
+                        continue;
+                    }
+                    const float* src_row =
+                        reinterpret_cast<const float*>(src_ref->data + static_cast<std::size_t>(sy) * src_step);
+                    const float* krow = kernel_coeffs.data() + static_cast<std::size_t>(ky) * static_cast<std::size_t>(kcols);
+                    for (int kx = 0; kx < kcols; ++kx)
+                    {
+                        const int sx = x_ofs[kx];
+                        if (sx < 0)
+                        {
+                            continue;
+                        }
+                        const float w = krow[kx];
+                        acc0 += static_cast<double>(w) * static_cast<double>(src_row[sx + 0]);
+                        acc1 += static_cast<double>(w) * static_cast<double>(src_row[sx + 1]);
+                        acc2 += static_cast<double>(w) * static_cast<double>(src_row[sx + 2]);
+                        acc3 += static_cast<double>(w) * static_cast<double>(src_row[sx + 3]);
+                    }
+                }
+
+                if (dst_row_f32)
+                {
+                    dst_row_f32[out_base + 0] = static_cast<float>(acc0);
+                    dst_row_f32[out_base + 1] = static_cast<float>(acc1);
+                    dst_row_f32[out_base + 2] = static_cast<float>(acc2);
+                    dst_row_f32[out_base + 3] = static_cast<float>(acc3);
+                }
+                else
+                {
+                    dst_row_u8[out_base + 0] = saturate_cast<uchar>(acc0);
+                    dst_row_u8[out_base + 1] = saturate_cast<uchar>(acc1);
+                    dst_row_u8[out_base + 2] = saturate_cast<uchar>(acc2);
+                    dst_row_u8[out_base + 3] = saturate_cast<uchar>(acc3);
+                }
+                continue;
+            }
+
+            for (int c = 0; c < channels; ++c)
+            {
+                double acc = delta;
+                for (int ky = 0; ky < krows; ++ky)
+                {
+                    const int sy = y_idx[ky];
+                    if (sy < 0)
+                    {
+                        continue;
+                    }
+                    const float* src_row =
+                        reinterpret_cast<const float*>(src_ref->data + static_cast<std::size_t>(sy) * src_step);
+                    const float* krow = kernel_coeffs.data() + static_cast<std::size_t>(ky) * static_cast<std::size_t>(kcols);
+                    for (int kx = 0; kx < kcols; ++kx)
+                    {
+                        const int sx = x_ofs[kx];
+                        if (sx < 0)
+                        {
+                            continue;
+                        }
+                        acc += static_cast<double>(krow[kx]) * static_cast<double>(src_row[sx + c]);
+                    }
+                }
+
+                if (dst_row_f32)
+                {
+                    dst_row_f32[out_base + static_cast<std::size_t>(c)] = static_cast<float>(acc);
+                }
+                else
+                {
+                    dst_row_u8[out_base + static_cast<std::size_t>(c)] = saturate_cast<uchar>(acc);
+                }
+            }
+        }
+    });
+
+    return true;
+}
+
+bool try_sep_filter2d_fastpath(const Mat& src,
+                               Mat& dst,
+                               int ddepth,
+                               const Mat& kernelX,
+                               const Mat& kernelY,
+                               Point anchor,
+                               double delta,
+                               int borderType)
+{
+    if (src.empty() || src.dims != 2)
+    {
+        return false;
+    }
+
+    const int src_depth = src.depth();
+    if (src_depth != CV_8U && src_depth != CV_32F)
+    {
+        return false;
+    }
+
+    std::vector<float> kx;
+    std::vector<float> ky;
+    if (kernelX.empty() || kernelY.empty())
+    {
+        return false;
+    }
+    if (kernelX.dims != 2 || kernelY.dims != 2 ||
+        kernelX.channels() != 1 || kernelY.channels() != 1 ||
+        kernelX.depth() != CV_32F || kernelY.depth() != CV_32F)
+    {
+        return false;
+    }
+    sepfilter2d_collect_kernel(kernelX, kx, "kernelX");
+    sepfilter2d_collect_kernel(kernelY, ky, "kernelY");
+
+    const int kx_len = static_cast<int>(kx.size());
+    const int ky_len = static_cast<int>(ky.size());
+    const int ax = anchor.x >= 0 ? anchor.x : (kx_len / 2);
+    const int ay = anchor.y >= 0 ? anchor.y : (ky_len / 2);
+    if (ax < 0 || ax >= kx_len || ay < 0 || ay >= ky_len)
+    {
+        return false;
+    }
+
+    int out_depth = ddepth;
+    if (out_depth == -1)
+    {
+        out_depth = src_depth;
+    }
+    if (out_depth != CV_8U && out_depth != CV_32F)
+    {
+        return false;
+    }
+
+    const int border_type = normalize_border_type(borderType);
+    if (!is_supported_filter_border(border_type))
+    {
+        return false;
+    }
+
+    Mat src_local;
+    const Mat* src_ref = &src;
+    if (src.data == dst.data)
+    {
+        src_local = src.clone();
+        src_ref = &src_local;
+    }
+
+    const int rows = src_ref->size[0];
+    const int cols = src_ref->size[1];
+    const int channels = src_ref->channels();
+    if (rows <= 0 || cols <= 0 || channels <= 0)
+    {
+        return false;
+    }
+
+    const int row_stride = cols * channels;
+    std::vector<int> x_offsets(static_cast<std::size_t>(cols) * static_cast<std::size_t>(kx_len), -1);
+    for (int x = 0; x < cols; ++x)
+    {
+        int* x_ofs = x_offsets.data() + static_cast<std::size_t>(x) * static_cast<std::size_t>(kx_len);
+        for (int i = 0; i < kx_len; ++i)
+        {
+            const int sx = border_interpolate(x + i - ax, cols, border_type);
+            x_ofs[i] = sx >= 0 ? sx * channels : -1;
+        }
+    }
+
+    std::vector<int> y_offsets(static_cast<std::size_t>(rows) * static_cast<std::size_t>(ky_len), -1);
+    for (int y = 0; y < rows; ++y)
+    {
+        int* y_ofs = y_offsets.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(ky_len);
+        for (int i = 0; i < ky_len; ++i)
+        {
+            const int sy = border_interpolate(y + i - ay, rows, border_type);
+            y_ofs[i] = sy >= 0 ? sy * row_stride : -1;
+        }
+    }
+
+    std::vector<float> tmp(static_cast<std::size_t>(rows) * static_cast<std::size_t>(row_stride), 0.0f);
+    const std::size_t src_step = src_ref->step(0);
+    const bool do_parallel_h = should_parallelize_filter_rows(rows, cols, channels, kx_len);
+
+    if (src_depth == CV_8U)
+    {
+        parallel_for_index_if(do_parallel_h, rows, [&](int y) {
+            const uchar* src_row = src_ref->data + static_cast<std::size_t>(y) * src_step;
+            float* tmp_row = tmp.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(row_stride);
+
+            for (int x = 0; x < cols; ++x)
+            {
+                const int* x_ofs = x_offsets.data() + static_cast<std::size_t>(x) * static_cast<std::size_t>(kx_len);
+                const int dx = x * channels;
+
+                if (channels == 1)
+                {
+                    float acc0 = 0.0f;
+                    for (int i = 0; i < kx_len; ++i)
+                    {
+                        const int sx = x_ofs[i];
+                        if (sx < 0)
+                        {
+                            continue;
+                        }
+                        acc0 += kx[static_cast<std::size_t>(i)] * static_cast<float>(src_row[sx]);
+                    }
+                    tmp_row[dx] = acc0;
+                    continue;
+                }
+
+                if (channels == 3)
+                {
+                    float acc0 = 0.0f;
+                    float acc1 = 0.0f;
+                    float acc2 = 0.0f;
+                    for (int i = 0; i < kx_len; ++i)
+                    {
+                        const int sx = x_ofs[i];
+                        if (sx < 0)
+                        {
+                            continue;
+                        }
+                        const float w = kx[static_cast<std::size_t>(i)];
+                        const uchar* px = src_row + sx;
+                        acc0 += w * static_cast<float>(px[0]);
+                        acc1 += w * static_cast<float>(px[1]);
+                        acc2 += w * static_cast<float>(px[2]);
+                    }
+                    tmp_row[dx + 0] = acc0;
+                    tmp_row[dx + 1] = acc1;
+                    tmp_row[dx + 2] = acc2;
+                    continue;
+                }
+
+                if (channels == 4)
+                {
+                    float acc0 = 0.0f;
+                    float acc1 = 0.0f;
+                    float acc2 = 0.0f;
+                    float acc3 = 0.0f;
+                    for (int i = 0; i < kx_len; ++i)
+                    {
+                        const int sx = x_ofs[i];
+                        if (sx < 0)
+                        {
+                            continue;
+                        }
+                        const float w = kx[static_cast<std::size_t>(i)];
+                        const uchar* px = src_row + sx;
+                        acc0 += w * static_cast<float>(px[0]);
+                        acc1 += w * static_cast<float>(px[1]);
+                        acc2 += w * static_cast<float>(px[2]);
+                        acc3 += w * static_cast<float>(px[3]);
+                    }
+                    tmp_row[dx + 0] = acc0;
+                    tmp_row[dx + 1] = acc1;
+                    tmp_row[dx + 2] = acc2;
+                    tmp_row[dx + 3] = acc3;
+                    continue;
+                }
+
+                for (int c = 0; c < channels; ++c)
+                {
+                    float acc = 0.0f;
+                    for (int i = 0; i < kx_len; ++i)
+                    {
+                        const int sx = x_ofs[i];
+                        if (sx < 0)
+                        {
+                            continue;
+                        }
+                        acc += kx[static_cast<std::size_t>(i)] * static_cast<float>(src_row[sx + c]);
+                    }
+                    tmp_row[dx + c] = acc;
+                }
+            }
+        });
+    }
+    else
+    {
+        parallel_for_index_if(do_parallel_h, rows, [&](int y) {
+            const float* src_row = reinterpret_cast<const float*>(src_ref->data + static_cast<std::size_t>(y) * src_step);
+            float* tmp_row = tmp.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(row_stride);
+
+            for (int x = 0; x < cols; ++x)
+            {
+                const int* x_ofs = x_offsets.data() + static_cast<std::size_t>(x) * static_cast<std::size_t>(kx_len);
+                const int dx = x * channels;
+
+                if (channels == 1)
+                {
+                    float acc0 = 0.0f;
+                    for (int i = 0; i < kx_len; ++i)
+                    {
+                        const int sx = x_ofs[i];
+                        if (sx < 0)
+                        {
+                            continue;
+                        }
+                        acc0 += kx[static_cast<std::size_t>(i)] * src_row[sx];
+                    }
+                    tmp_row[dx] = acc0;
+                    continue;
+                }
+
+                if (channels == 3)
+                {
+                    float acc0 = 0.0f;
+                    float acc1 = 0.0f;
+                    float acc2 = 0.0f;
+                    for (int i = 0; i < kx_len; ++i)
+                    {
+                        const int sx = x_ofs[i];
+                        if (sx < 0)
+                        {
+                            continue;
+                        }
+                        const float w = kx[static_cast<std::size_t>(i)];
+                        const float* px = src_row + sx;
+                        acc0 += w * px[0];
+                        acc1 += w * px[1];
+                        acc2 += w * px[2];
+                    }
+                    tmp_row[dx + 0] = acc0;
+                    tmp_row[dx + 1] = acc1;
+                    tmp_row[dx + 2] = acc2;
+                    continue;
+                }
+
+                if (channels == 4)
+                {
+                    float acc0 = 0.0f;
+                    float acc1 = 0.0f;
+                    float acc2 = 0.0f;
+                    float acc3 = 0.0f;
+                    for (int i = 0; i < kx_len; ++i)
+                    {
+                        const int sx = x_ofs[i];
+                        if (sx < 0)
+                        {
+                            continue;
+                        }
+                        const float w = kx[static_cast<std::size_t>(i)];
+                        const float* px = src_row + sx;
+                        acc0 += w * px[0];
+                        acc1 += w * px[1];
+                        acc2 += w * px[2];
+                        acc3 += w * px[3];
+                    }
+                    tmp_row[dx + 0] = acc0;
+                    tmp_row[dx + 1] = acc1;
+                    tmp_row[dx + 2] = acc2;
+                    tmp_row[dx + 3] = acc3;
+                    continue;
+                }
+
+                for (int c = 0; c < channels; ++c)
+                {
+                    float acc = 0.0f;
+                    for (int i = 0; i < kx_len; ++i)
+                    {
+                        const int sx = x_ofs[i];
+                        if (sx < 0)
+                        {
+                            continue;
+                        }
+                        acc += kx[static_cast<std::size_t>(i)] * src_row[sx + c];
+                    }
+                    tmp_row[dx + c] = acc;
+                }
+            }
+        });
+    }
+
+    dst.create(std::vector<int>{rows, cols}, CV_MAKETYPE(out_depth, channels));
+    const std::size_t dst_step = dst.step(0);
+    const bool do_parallel_v = should_parallelize_filter_rows(rows, cols, channels, ky_len);
+
+    parallel_for_index_if(do_parallel_v, rows, [&](int y) {
+        const int* y_ofs = y_offsets.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(ky_len);
+        uchar* dst_row_u8 = out_depth == CV_8U ? (dst.data + static_cast<std::size_t>(y) * dst_step) : nullptr;
+        float* dst_row_f32 =
+            out_depth == CV_32F ? reinterpret_cast<float*>(dst.data + static_cast<std::size_t>(y) * dst_step) : nullptr;
+
+        for (int x = 0; x < cols; ++x)
+        {
+            const int dx = x * channels;
+            if (channels == 1)
+            {
+                float acc0 = static_cast<float>(delta);
+                for (int i = 0; i < ky_len; ++i)
+                {
+                    const int sy = y_ofs[i];
+                    if (sy < 0)
+                    {
+                        continue;
+                    }
+                    acc0 += ky[static_cast<std::size_t>(i)] * tmp[static_cast<std::size_t>(sy + dx)];
+                }
+                if (dst_row_f32)
+                {
+                    dst_row_f32[dx] = acc0;
+                }
+                else
+                {
+                    dst_row_u8[dx] = saturate_cast<uchar>(acc0);
+                }
+                continue;
+            }
+
+            if (channels == 3)
+            {
+                float acc0 = static_cast<float>(delta);
+                float acc1 = static_cast<float>(delta);
+                float acc2 = static_cast<float>(delta);
+                for (int i = 0; i < ky_len; ++i)
+                {
+                    const int sy = y_ofs[i];
+                    if (sy < 0)
+                    {
+                        continue;
+                    }
+                    const float w = ky[static_cast<std::size_t>(i)];
+                    const float* px = tmp.data() + static_cast<std::size_t>(sy + dx);
+                    acc0 += w * px[0];
+                    acc1 += w * px[1];
+                    acc2 += w * px[2];
+                }
+                if (dst_row_f32)
+                {
+                    dst_row_f32[dx + 0] = acc0;
+                    dst_row_f32[dx + 1] = acc1;
+                    dst_row_f32[dx + 2] = acc2;
+                }
+                else
+                {
+                    dst_row_u8[dx + 0] = saturate_cast<uchar>(acc0);
+                    dst_row_u8[dx + 1] = saturate_cast<uchar>(acc1);
+                    dst_row_u8[dx + 2] = saturate_cast<uchar>(acc2);
+                }
+                continue;
+            }
+
+            if (channels == 4)
+            {
+                float acc0 = static_cast<float>(delta);
+                float acc1 = static_cast<float>(delta);
+                float acc2 = static_cast<float>(delta);
+                float acc3 = static_cast<float>(delta);
+                for (int i = 0; i < ky_len; ++i)
+                {
+                    const int sy = y_ofs[i];
+                    if (sy < 0)
+                    {
+                        continue;
+                    }
+                    const float w = ky[static_cast<std::size_t>(i)];
+                    const float* px = tmp.data() + static_cast<std::size_t>(sy + dx);
+                    acc0 += w * px[0];
+                    acc1 += w * px[1];
+                    acc2 += w * px[2];
+                    acc3 += w * px[3];
+                }
+                if (dst_row_f32)
+                {
+                    dst_row_f32[dx + 0] = acc0;
+                    dst_row_f32[dx + 1] = acc1;
+                    dst_row_f32[dx + 2] = acc2;
+                    dst_row_f32[dx + 3] = acc3;
+                }
+                else
+                {
+                    dst_row_u8[dx + 0] = saturate_cast<uchar>(acc0);
+                    dst_row_u8[dx + 1] = saturate_cast<uchar>(acc1);
+                    dst_row_u8[dx + 2] = saturate_cast<uchar>(acc2);
+                    dst_row_u8[dx + 3] = saturate_cast<uchar>(acc3);
+                }
+                continue;
+            }
+
+            for (int c = 0; c < channels; ++c)
+            {
+                float acc = static_cast<float>(delta);
+                for (int i = 0; i < ky_len; ++i)
+                {
+                    const int sy = y_ofs[i];
+                    if (sy < 0)
+                    {
+                        continue;
+                    }
+                    acc += ky[static_cast<std::size_t>(i)] * tmp[static_cast<std::size_t>(sy + dx + c)];
+                }
+                if (dst_row_f32)
+                {
+                    dst_row_f32[dx + c] = acc;
+                }
+                else
+                {
+                    dst_row_u8[dx + c] = saturate_cast<uchar>(acc);
+                }
+            }
+        }
+    });
+
+    return true;
+}
+
+inline bool is_morph_rect3x3_kernel(const Mat& kernel, Point anchor)
+{
+    if (kernel.empty())
+    {
+        return true;
+    }
+
+    if (kernel.dims != 2 || kernel.depth() != CV_8U || kernel.channels() != 1)
+    {
+        return false;
+    }
+
+    if (kernel.size[1] != 3 || kernel.size[0] != 3)
+    {
+        return false;
+    }
+
+    const int anchor_x = anchor.x >= 0 ? anchor.x : 1;
+    const int anchor_y = anchor.y >= 0 ? anchor.y : 1;
+    if (anchor_x != 1 || anchor_y != 1)
+    {
+        return false;
+    }
+
+    const std::size_t kstep = kernel.step(0);
+    for (int ky = 0; ky < 3; ++ky)
+    {
+        const uchar* row = kernel.data + static_cast<std::size_t>(ky) * kstep;
+        for (int kx = 0; kx < 3; ++kx)
+        {
+            if (row[kx] == 0)
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+bool try_morph_rect3x3_fastpath(const Mat& src,
+                                Mat& dst,
+                                const Mat& kernel,
+                                Point anchor,
+                                int iterations,
+                                int borderType,
+                                const Scalar& borderValue,
+                                bool is_erode)
+{
+    if (src.empty() || src.dims != 2 || src.depth() != CV_8U)
+    {
+        return false;
+    }
+
+    if (iterations != 1)
+    {
+        return false;
+    }
+
+    if (!is_morph_rect3x3_kernel(kernel, anchor))
+    {
+        return false;
+    }
+
+    const int border_type = normalize_border_type(borderType);
+    if (!is_supported_filter_border(border_type))
+    {
+        return false;
+    }
+
+    Mat src_local;
+    const Mat* src_ref = &src;
+    if (src.data == dst.data)
+    {
+        src_local = src.clone();
+        src_ref = &src_local;
+    }
+
+    const int rows = src_ref->size[0];
+    const int cols = src_ref->size[1];
+    const int channels = src_ref->channels();
+    if (rows <= 0 || cols <= 0 || channels <= 0)
+    {
+        return false;
+    }
+
+    const int row_stride = cols * channels;
+    const std::size_t src_step = src_ref->step(0);
+
+    std::vector<int> x_offsets(static_cast<std::size_t>(cols) * 3u, -1);
+    for (int x = 0; x < cols; ++x)
+    {
+        int* x_ofs = x_offsets.data() + static_cast<std::size_t>(x) * 3u;
+        for (int kx = 0; kx < 3; ++kx)
+        {
+            const int sx = border_interpolate(x + kx - 1, cols, border_type);
+            x_ofs[kx] = sx >= 0 ? sx * channels : -1;
+        }
+    }
+
+    std::vector<int> y_indices(static_cast<std::size_t>(rows) * 3u, -1);
+    for (int y = 0; y < rows; ++y)
+    {
+        int* y_idx = y_indices.data() + static_cast<std::size_t>(y) * 3u;
+        for (int ky = 0; ky < 3; ++ky)
+        {
+            y_idx[ky] = border_interpolate(y + ky - 1, rows, border_type);
+        }
+    }
+
+    std::vector<uchar> border_vals(static_cast<std::size_t>(channels), 0);
+    for (int c = 0; c < channels; ++c)
+    {
+        const int sc = c < 4 ? c : 0;
+        border_vals[static_cast<std::size_t>(c)] = saturate_cast<uchar>(borderValue.val[sc]);
+    }
+
+    std::vector<uchar> tmp(static_cast<std::size_t>(rows) * static_cast<std::size_t>(row_stride), 0);
+    const bool do_parallel_h = should_parallelize_filter_rows(rows, cols, channels, 3);
+    parallel_for_index_if(do_parallel_h, rows, [&](int y) {
+        const uchar* src_row = src_ref->data + static_cast<std::size_t>(y) * src_step;
+        uchar* tmp_row = tmp.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(row_stride);
+
+        for (int x = 0; x < cols; ++x)
+        {
+            const int* x_ofs = x_offsets.data() + static_cast<std::size_t>(x) * 3u;
+            const int dx = x * channels;
+
+            for (int c = 0; c < channels; ++c)
+            {
+                const uchar b = border_vals[static_cast<std::size_t>(c)];
+                const int sx0 = x_ofs[0];
+                const int sx1 = x_ofs[1];
+                const int sx2 = x_ofs[2];
+                const uchar v0 = sx0 >= 0 ? src_row[sx0 + c] : b;
+                const uchar v1 = sx1 >= 0 ? src_row[sx1 + c] : b;
+                const uchar v2 = sx2 >= 0 ? src_row[sx2 + c] : b;
+
+                if (is_erode)
+                {
+                    tmp_row[dx + c] = std::min(v0, std::min(v1, v2));
+                }
+                else
+                {
+                    tmp_row[dx + c] = std::max(v0, std::max(v1, v2));
+                }
+            }
+        }
+    });
+
+    dst.create(std::vector<int>{rows, cols}, src_ref->type());
+    const std::size_t dst_step = dst.step(0);
+    const bool do_parallel_v = should_parallelize_filter_rows(rows, cols, channels, 3);
+    parallel_for_index_if(do_parallel_v, rows, [&](int y) {
+        uchar* dst_row = dst.data + static_cast<std::size_t>(y) * dst_step;
+        const int* y_idx = y_indices.data() + static_cast<std::size_t>(y) * 3u;
+
+        const int sy0 = y_idx[0];
+        const int sy1 = y_idx[1];
+        const int sy2 = y_idx[2];
+        const uchar* row0 = sy0 >= 0 ? (tmp.data() + static_cast<std::size_t>(sy0) * static_cast<std::size_t>(row_stride)) : nullptr;
+        const uchar* row1 = sy1 >= 0 ? (tmp.data() + static_cast<std::size_t>(sy1) * static_cast<std::size_t>(row_stride)) : nullptr;
+        const uchar* row2 = sy2 >= 0 ? (tmp.data() + static_cast<std::size_t>(sy2) * static_cast<std::size_t>(row_stride)) : nullptr;
+
+        for (int x = 0; x < cols; ++x)
+        {
+            const int dx = x * channels;
+            for (int c = 0; c < channels; ++c)
+            {
+                const uchar b = border_vals[static_cast<std::size_t>(c)];
+                const uchar v0 = row0 ? row0[dx + c] : b;
+                const uchar v1 = row1 ? row1[dx + c] : b;
+                const uchar v2 = row2 ? row2[dx + c] : b;
+
+                if (is_erode)
+                {
+                    dst_row[dx + c] = std::min(v0, std::min(v1, v2));
+                }
+                else
+                {
+                    dst_row[dx + c] = std::max(v0, std::max(v1, v2));
+                }
+            }
+        }
+    });
+
+    return true;
+}
+
+bool try_lut_fastpath_u8(const Mat& src, const Mat& lut, Mat& dst)
+{
+    if (src.empty() || src.dims != 2 || src.depth() != CV_8U)
+    {
+        return false;
+    }
+
+    if (lut.empty() || lut.total() != 256 || lut.depth() != CV_8U)
+    {
+        return false;
+    }
+
+    const int src_cn = src.channels();
+    const int lut_cn = lut.channels();
+    if (lut_cn != 1 && lut_cn != src_cn)
+    {
+        return false;
+    }
+
+    Mat src_local;
+    Mat lut_local;
+    const Mat* src_ref = &src;
+    const Mat* lut_ref = &lut;
+    if (dst.data && dst.data == src.data)
+    {
+        src_local = src.clone();
+        src_ref = &src_local;
+    }
+    if (dst.data && dst.data == lut.data)
+    {
+        lut_local = lut.clone();
+        lut_ref = &lut_local;
+    }
+
+    const int rows = src_ref->size[0];
+    const int cols = src_ref->size[1];
+    if (rows <= 0 || cols <= 0 || src_cn <= 0)
+    {
+        return false;
+    }
+
+    std::vector<uchar> table;
+    if (lut_cn == 1)
+    {
+        table.resize(256u);
+        for (int i = 0; i < 256; ++i)
+        {
+            const uchar* base = lut_entry_base_ptr(*lut_ref, i);
+            table[static_cast<std::size_t>(i)] = base[0];
+        }
+    }
+    else
+    {
+        table.resize(256u * static_cast<std::size_t>(src_cn));
+        for (int i = 0; i < 256; ++i)
+        {
+            const uchar* base = lut_entry_base_ptr(*lut_ref, i);
+            std::memcpy(
+                table.data() + static_cast<std::size_t>(i) * static_cast<std::size_t>(src_cn),
+                base,
+                static_cast<std::size_t>(src_cn));
+        }
+    }
+
+    dst.create(std::vector<int>{rows, cols}, src_ref->type());
+    const std::size_t src_step = src_ref->step(0);
+    const std::size_t dst_step = dst.step(0);
+    const bool do_parallel = should_parallelize_cvtcolor(rows, cols, src_cn);
+
+    if (lut_cn == 1)
+    {
+        const uchar* map = table.data();
+        parallel_for_index_if(do_parallel, rows, [&](int y) {
+            const uchar* src_row = src_ref->data + static_cast<std::size_t>(y) * src_step;
+            uchar* dst_row = dst.data + static_cast<std::size_t>(y) * dst_step;
+
+            const int row_elems = cols * src_cn;
+            int i = 0;
+            for (; i + 7 < row_elems; i += 8)
+            {
+                dst_row[i + 0] = map[src_row[i + 0]];
+                dst_row[i + 1] = map[src_row[i + 1]];
+                dst_row[i + 2] = map[src_row[i + 2]];
+                dst_row[i + 3] = map[src_row[i + 3]];
+                dst_row[i + 4] = map[src_row[i + 4]];
+                dst_row[i + 5] = map[src_row[i + 5]];
+                dst_row[i + 6] = map[src_row[i + 6]];
+                dst_row[i + 7] = map[src_row[i + 7]];
+            }
+            for (; i < row_elems; ++i)
+            {
+                dst_row[i] = map[src_row[i]];
+            }
+        });
+        return true;
+    }
+
+    const uchar* map = table.data();
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
+        const uchar* src_row = src_ref->data + static_cast<std::size_t>(y) * src_step;
+        uchar* dst_row = dst.data + static_cast<std::size_t>(y) * dst_step;
+
+        for (int x = 0; x < cols; ++x)
+        {
+            const uchar* src_px = src_row + static_cast<std::size_t>(x) * static_cast<std::size_t>(src_cn);
+            uchar* dst_px = dst_row + static_cast<std::size_t>(x) * static_cast<std::size_t>(src_cn);
+
+            for (int c = 0; c < src_cn; ++c)
+            {
+                dst_px[c] = map[static_cast<std::size_t>(src_px[c]) * static_cast<std::size_t>(src_cn) + static_cast<std::size_t>(c)];
+            }
+        }
+    });
+
+    return true;
+}
+
+bool try_sobel_fastpath_u8(const Mat& src,
+                           Mat& dst,
+                           int ddepth,
+                           int dx,
+                           int dy,
+                           int ksize,
+                           double scale,
+                           double delta,
+                           int borderType)
+{
+    if (src.empty() || src.dims != 2 || src.depth() != CV_8U)
+    {
+        return false;
+    }
+
+    if (!((dx == 1 && dy == 0) || (dx == 0 && dy == 1)))
+    {
+        return false;
+    }
+
+    if (ksize != 3 && ksize != 5)
+    {
+        return false;
+    }
+
+    int out_depth = ddepth;
+    if (out_depth < 0)
+    {
+        out_depth = CV_32F;
+    }
+    if (out_depth != CV_32F && out_depth != CV_16S)
+    {
+        return false;
+    }
+
+    const bool isolated_border = (borderType & BORDER_ISOLATED) != 0;
+    const int border_type = normalize_border_type(borderType);
+    if (!is_supported_filter_border(border_type))
+    {
+        return false;
+    }
+    if (border_type == BORDER_CONSTANT)
+    {
+        return false;
+    }
+
+    Mat src_local;
+    const Mat* src_ref = &src;
+    if (src.data == dst.data)
+    {
+        src_local = src.clone();
+        src_ref = &src_local;
+    }
+
+    const SobelSamplingWindow sample_window = resolve_sobel_sampling_window(*src_ref, isolated_border);
+    const int rows = src_ref->size[0];
+    const int cols = src_ref->size[1];
+    const int channels = src_ref->channels();
+    if (rows <= 0 || cols <= 0 || channels <= 0)
+    {
+        return false;
+    }
+
+    if (ksize == 5)
+    {
+        const int taps = 5;
+        const int radius = 2;
+
+        int hcoeff[5] = {0, 0, 0, 0, 0};
+        int vcoeff[5] = {0, 0, 0, 0, 0};
+        if (dx == 1)
+        {
+            hcoeff[0] = -1; hcoeff[1] = -2; hcoeff[2] = 0; hcoeff[3] = 2; hcoeff[4] = 1;
+            vcoeff[0] = 1; vcoeff[1] = 4; vcoeff[2] = 6; vcoeff[3] = 4; vcoeff[4] = 1;
+        }
+        else
+        {
+            hcoeff[0] = 1; hcoeff[1] = 4; hcoeff[2] = 6; hcoeff[3] = 4; hcoeff[4] = 1;
+            vcoeff[0] = -1; vcoeff[1] = -2; vcoeff[2] = 0; vcoeff[3] = 2; vcoeff[4] = 1;
+        }
+
+        std::vector<int> x_offsets(static_cast<std::size_t>(cols) * static_cast<std::size_t>(taps), -1);
+        for (int x = 0; x < cols; ++x)
+        {
+            const int base_x = x + sample_window.col_offset;
+            int* x_ofs = x_offsets.data() + static_cast<std::size_t>(x) * static_cast<std::size_t>(taps);
+            for (int i = 0; i < taps; ++i)
+            {
+                const int sx = border_interpolate(base_x + i - radius, sample_window.cols, border_type);
+                x_ofs[i] = sx * channels;
+            }
+        }
+
+        std::vector<int> y_indices(static_cast<std::size_t>(rows) * static_cast<std::size_t>(taps), -1);
+        for (int y = 0; y < rows; ++y)
+        {
+            const int base_y = y + sample_window.row_offset;
+            int* y_idx = y_indices.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(taps);
+            for (int i = 0; i < taps; ++i)
+            {
+                y_idx[i] = border_interpolate(base_y + i - radius, sample_window.rows, border_type);
+            }
+        }
+
+        const int tmp_rows = sample_window.rows;
+        const int tmp_stride = cols * channels;
+        std::vector<int> tmp(static_cast<std::size_t>(tmp_rows) * static_cast<std::size_t>(tmp_stride), 0);
+
+        const std::size_t src_step = src_ref->step(0);
+        const uchar* base_data = sample_window.base_data;
+        const bool do_parallel_h = should_parallelize_filter_rows(tmp_rows, cols, channels, taps);
+        parallel_for_index_if(do_parallel_h, tmp_rows, [&](int py) {
+            const uchar* src_row = base_data + static_cast<std::size_t>(py) * src_step;
+            int* tmp_row = tmp.data() + static_cast<std::size_t>(py) * static_cast<std::size_t>(tmp_stride);
+
+            for (int x = 0; x < cols; ++x)
+            {
+                const int* x_ofs = x_offsets.data() + static_cast<std::size_t>(x) * static_cast<std::size_t>(taps);
+                const int dx_base = x * channels;
+                for (int c = 0; c < channels; ++c)
+                {
+                    int acc = 0;
+                    acc += hcoeff[0] * static_cast<int>(src_row[x_ofs[0] + c]);
+                    acc += hcoeff[1] * static_cast<int>(src_row[x_ofs[1] + c]);
+                    acc += hcoeff[2] * static_cast<int>(src_row[x_ofs[2] + c]);
+                    acc += hcoeff[3] * static_cast<int>(src_row[x_ofs[3] + c]);
+                    acc += hcoeff[4] * static_cast<int>(src_row[x_ofs[4] + c]);
+                    tmp_row[dx_base + c] = acc;
+                }
+            }
+        });
+
+        dst.create(std::vector<int>{rows, cols}, CV_MAKETYPE(out_depth, channels));
+        const std::size_t dst_step = dst.step(0);
+        const bool do_parallel_v = should_parallelize_filter_rows(rows, cols, channels, taps);
+
+        if (out_depth == CV_32F)
+        {
+            parallel_for_index_if(do_parallel_v, rows, [&](int y) {
+                float* dst_row = reinterpret_cast<float*>(dst.data + static_cast<std::size_t>(y) * dst_step);
+                const int* y_idx = y_indices.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(taps);
+                const int* row0 = tmp.data() + static_cast<std::size_t>(y_idx[0]) * static_cast<std::size_t>(tmp_stride);
+                const int* row1 = tmp.data() + static_cast<std::size_t>(y_idx[1]) * static_cast<std::size_t>(tmp_stride);
+                const int* row2 = tmp.data() + static_cast<std::size_t>(y_idx[2]) * static_cast<std::size_t>(tmp_stride);
+                const int* row3 = tmp.data() + static_cast<std::size_t>(y_idx[3]) * static_cast<std::size_t>(tmp_stride);
+                const int* row4 = tmp.data() + static_cast<std::size_t>(y_idx[4]) * static_cast<std::size_t>(tmp_stride);
+
+                for (int x = 0; x < cols; ++x)
+                {
+                    const int dx_base = x * channels;
+                    for (int c = 0; c < channels; ++c)
+                    {
+                        int acc = 0;
+                        acc += vcoeff[0] * row0[dx_base + c];
+                        acc += vcoeff[1] * row1[dx_base + c];
+                        acc += vcoeff[2] * row2[dx_base + c];
+                        acc += vcoeff[3] * row3[dx_base + c];
+                        acc += vcoeff[4] * row4[dx_base + c];
+                        dst_row[dx_base + c] = static_cast<float>(static_cast<double>(acc) * scale + delta);
+                    }
+                }
+            });
+            return true;
+        }
+
+        parallel_for_index_if(do_parallel_v, rows, [&](int y) {
+            short* dst_row = reinterpret_cast<short*>(dst.data + static_cast<std::size_t>(y) * dst_step);
+            const int* y_idx = y_indices.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(taps);
+            const int* row0 = tmp.data() + static_cast<std::size_t>(y_idx[0]) * static_cast<std::size_t>(tmp_stride);
+            const int* row1 = tmp.data() + static_cast<std::size_t>(y_idx[1]) * static_cast<std::size_t>(tmp_stride);
+            const int* row2 = tmp.data() + static_cast<std::size_t>(y_idx[2]) * static_cast<std::size_t>(tmp_stride);
+            const int* row3 = tmp.data() + static_cast<std::size_t>(y_idx[3]) * static_cast<std::size_t>(tmp_stride);
+            const int* row4 = tmp.data() + static_cast<std::size_t>(y_idx[4]) * static_cast<std::size_t>(tmp_stride);
+
+            for (int x = 0; x < cols; ++x)
+            {
+                const int dx_base = x * channels;
+                for (int c = 0; c < channels; ++c)
+                {
+                    int acc = 0;
+                    acc += vcoeff[0] * row0[dx_base + c];
+                    acc += vcoeff[1] * row1[dx_base + c];
+                    acc += vcoeff[2] * row2[dx_base + c];
+                    acc += vcoeff[3] * row3[dx_base + c];
+                    acc += vcoeff[4] * row4[dx_base + c];
+                    dst_row[dx_base + c] = saturate_cast<short>(static_cast<double>(acc) * scale + delta);
+                }
+            }
+        });
+        return true;
+    }
+
+    std::vector<int> x_offsets(static_cast<std::size_t>(cols) * 3u, -1);
+    for (int x = 0; x < cols; ++x)
+    {
+        const int base_x = x + sample_window.col_offset;
+        int* x_ofs = x_offsets.data() + static_cast<std::size_t>(x) * 3u;
+        for (int i = 0; i < 3; ++i)
+        {
+            const int sx = border_interpolate(base_x + i - 1, sample_window.cols, border_type);
+            x_ofs[i] = sx >= 0 ? sx * channels : -1;
+        }
+    }
+
+    std::vector<int> y_indices(static_cast<std::size_t>(rows) * 3u, -1);
+    for (int y = 0; y < rows; ++y)
+    {
+        const int base_y = y + sample_window.row_offset;
+        int* y_idx = y_indices.data() + static_cast<std::size_t>(y) * 3u;
+        for (int i = 0; i < 3; ++i)
+        {
+            y_idx[i] = border_interpolate(base_y + i - 1, sample_window.rows, border_type);
+        }
+    }
+
+    dst.create(std::vector<int>{rows, cols}, CV_MAKETYPE(out_depth, channels));
+    const std::size_t dst_step = dst.step(0);
+    const std::size_t src_step = src_ref->step(0);
+    const uchar* base_data = sample_window.base_data;
+    const bool do_parallel = should_parallelize_filter_rows(rows, cols, channels, 9);
+
+    if (out_depth == CV_32F)
+    {
+        parallel_for_index_if(do_parallel, rows, [&](int y) {
+            float* dst_row = reinterpret_cast<float*>(dst.data + static_cast<std::size_t>(y) * dst_step);
+            const int* y_idx = y_indices.data() + static_cast<std::size_t>(y) * 3u;
+
+            const uchar* row0 = base_data + static_cast<std::size_t>(y_idx[0]) * src_step;
+            const uchar* row1 = base_data + static_cast<std::size_t>(y_idx[1]) * src_step;
+            const uchar* row2 = base_data + static_cast<std::size_t>(y_idx[2]) * src_step;
+
+            for (int x = 0; x < cols; ++x)
+            {
+                const int* x_ofs = x_offsets.data() + static_cast<std::size_t>(x) * 3u;
+                const int sx0 = x_ofs[0];
+                const int sx1 = x_ofs[1];
+                const int sx2 = x_ofs[2];
+                const int dx_base = x * channels;
+
+                for (int c = 0; c < channels; ++c)
+                {
+                    const int p00 = static_cast<int>(row0[sx0 + c]);
+                    const int p01 = static_cast<int>(row0[sx1 + c]);
+                    const int p02 = static_cast<int>(row0[sx2 + c]);
+                    const int p10 = static_cast<int>(row1[sx0 + c]);
+                    const int p12 = static_cast<int>(row1[sx2 + c]);
+                    const int p20 = static_cast<int>(row2[sx0 + c]);
+                    const int p21 = static_cast<int>(row2[sx1 + c]);
+                    const int p22 = static_cast<int>(row2[sx2 + c]);
+
+                    int gv = 0;
+                    if (dx == 1)
+                    {
+                        gv = (p02 - p00) + ((p12 - p10) << 1) + (p22 - p20);
+                    }
+                    else
+                    {
+                        gv = (p20 + (p21 << 1) + p22) - (p00 + (p01 << 1) + p02);
+                    }
+
+                    dst_row[dx_base + c] = static_cast<float>(static_cast<double>(gv) * scale + delta);
+                }
+            }
+        });
+        return true;
+    }
+
+    parallel_for_index_if(do_parallel, rows, [&](int y) {
+        short* dst_row = reinterpret_cast<short*>(dst.data + static_cast<std::size_t>(y) * dst_step);
+        const int* y_idx = y_indices.data() + static_cast<std::size_t>(y) * 3u;
+
+        const uchar* row0 = base_data + static_cast<std::size_t>(y_idx[0]) * src_step;
+        const uchar* row1 = base_data + static_cast<std::size_t>(y_idx[1]) * src_step;
+        const uchar* row2 = base_data + static_cast<std::size_t>(y_idx[2]) * src_step;
+
+        for (int x = 0; x < cols; ++x)
+        {
+            const int* x_ofs = x_offsets.data() + static_cast<std::size_t>(x) * 3u;
+            const int sx0 = x_ofs[0];
+            const int sx1 = x_ofs[1];
+            const int sx2 = x_ofs[2];
+            const int dx_base = x * channels;
+
+            for (int c = 0; c < channels; ++c)
+            {
+                const int p00 = static_cast<int>(row0[sx0 + c]);
+                const int p01 = static_cast<int>(row0[sx1 + c]);
+                const int p02 = static_cast<int>(row0[sx2 + c]);
+                const int p10 = static_cast<int>(row1[sx0 + c]);
+                const int p12 = static_cast<int>(row1[sx2 + c]);
+                const int p20 = static_cast<int>(row2[sx0 + c]);
+                const int p21 = static_cast<int>(row2[sx1 + c]);
+                const int p22 = static_cast<int>(row2[sx2 + c]);
+
+                int gv = 0;
+                if (dx == 1)
+                {
+                    gv = (p02 - p00) + ((p12 - p10) << 1) + (p22 - p20);
+                }
+                else
+                {
+                    gv = (p20 + (p21 << 1) + p22) - (p00 + (p01 << 1) + p02);
+                }
+
+                const double out_v = static_cast<double>(gv) * scale + delta;
+                dst_row[dx_base + c] = saturate_cast<short>(out_v);
+            }
+        }
+    });
+
+    return true;
+}
+
+bool try_copy_make_border_fastpath_replicate(const Mat& src,
+                                             Mat& dst,
+                                             int top,
+                                             int bottom,
+                                             int left,
+                                             int right,
+                                             int borderType)
+{
+    if (src.empty() || src.dims != 2)
+    {
+        return false;
+    }
+
+    if (top < 0 || bottom < 0 || left < 0 || right < 0)
+    {
+        return false;
+    }
+
+    const int src_depth = src.depth();
+    if (src_depth != CV_8U && src_depth != CV_32F)
+    {
+        return false;
+    }
+
+    const int border_type = normalize_border_type(borderType);
+    if (border_type != BORDER_REPLICATE)
+    {
+        return false;
+    }
+
+    Mat src_local;
+    const Mat* src_ref = &src;
+    if (src.data == dst.data)
+    {
+        src_local = src.clone();
+        src_ref = &src_local;
+    }
+
+    const int src_rows = src_ref->size[0];
+    const int src_cols = src_ref->size[1];
+    const int channels = src_ref->channels();
+    if (src_rows <= 0 || src_cols <= 0 || channels <= 0)
+    {
+        return false;
+    }
+
+    const std::size_t pixel_bytes = src_ref->elemSize();
+    const std::size_t src_step = src_ref->step(0);
+    const std::size_t src_row_bytes = static_cast<std::size_t>(src_cols) * pixel_bytes;
+
+    const int dst_rows = src_rows + top + bottom;
+    const int dst_cols = src_cols + left + right;
+    dst.create(std::vector<int>{dst_rows, dst_cols}, src_ref->type());
+    const std::size_t dst_step = dst.step(0);
+
+    const std::size_t left_bytes = static_cast<std::size_t>(left) * pixel_bytes;
+    const bool do_parallel = should_parallelize_filter_rows(dst_rows, dst_cols, channels, 1);
+    parallel_for_index_if(do_parallel, dst_rows, [&](int y) {
+        const int sy = std::clamp(y - top, 0, src_rows - 1);
+        const uchar* src_row = src_ref->data + static_cast<std::size_t>(sy) * src_step;
+        uchar* dst_row = dst.data + static_cast<std::size_t>(y) * dst_step;
+
+        uchar* dst_inner = dst_row + left_bytes;
+        std::memcpy(dst_inner, src_row, src_row_bytes);
+
+        if (left > 0)
+        {
+            const uchar* first_px = dst_inner;
+            for (int x = 0; x < left; ++x)
+            {
+                std::memcpy(dst_row + static_cast<std::size_t>(x) * pixel_bytes, first_px, pixel_bytes);
+            }
+        }
+
+        if (right > 0)
+        {
+            const uchar* last_px = dst_inner + static_cast<std::size_t>(src_cols - 1) * pixel_bytes;
+            uchar* dst_right = dst_inner + src_row_bytes;
+            for (int x = 0; x < right; ++x)
+            {
+                std::memcpy(dst_right + static_cast<std::size_t>(x) * pixel_bytes, last_px, pixel_bytes);
+            }
+        }
+    });
+
+    return true;
+}
+
+bool try_canny_from_derivatives_fastpath_s16(const Mat& dx,
+                                             const Mat& dy,
+                                             Mat& edges,
+                                             double threshold1,
+                                             double threshold2,
+                                             bool L2gradient)
+{
+    if (dx.empty() || dy.empty())
+    {
+        return false;
+    }
+    if (dx.dims != 2 || dy.dims != 2)
+    {
+        return false;
+    }
+    if (dx.type() != CV_16SC1 || dy.type() != CV_16SC1)
+    {
+        return false;
+    }
+    if (dx.size[0] != dy.size[0] || dx.size[1] != dy.size[1])
+    {
+        return false;
+    }
+
+    const int rows = dx.size[0];
+    const int cols = dx.size[1];
+    if (rows <= 0 || cols <= 0)
+    {
+        return false;
+    }
+
+    const std::size_t count = static_cast<std::size_t>(rows) * static_cast<std::size_t>(cols);
+    const std::size_t dx_step = dx.step(0);
+    const std::size_t dy_step = dy.step(0);
+    const float low_threshold = static_cast<float>(std::min(threshold1, threshold2));
+    const float high_threshold = static_cast<float>(std::max(threshold1, threshold2));
+    const double tan_pi_8 = std::tan(CV_PI / 8.0);
+    const double tan_3pi_8 = std::tan(CV_PI * 3.0 / 8.0);
+
+    std::vector<float> magnitude(count, 0.0f);
+    const bool do_parallel_mag = should_parallelize_filter_rows(rows, cols, 1, 1);
+    parallel_for_index_if(do_parallel_mag, rows, [&](int y) {
+        const short* dx_row = reinterpret_cast<const short*>(dx.data + static_cast<std::size_t>(y) * dx_step);
+        const short* dy_row = reinterpret_cast<const short*>(dy.data + static_cast<std::size_t>(y) * dy_step);
+        float* mag_row = magnitude.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(cols);
+        for (int x = 0; x < cols; ++x)
+        {
+            const int gx = dx_row[x];
+            const int gy = dy_row[x];
+            if (L2gradient)
+            {
+                mag_row[x] =
+                    static_cast<float>(std::sqrt(static_cast<double>(gx) * gx + static_cast<double>(gy) * gy));
+            }
+            else
+            {
+                mag_row[x] = static_cast<float>(std::abs(gx) + std::abs(gy));
+            }
+        }
+    });
+
+    std::vector<float> nms = magnitude;
+    const bool do_parallel_nms = should_parallelize_filter_rows(rows, cols, 1, 3);
+    parallel_for_index_if(do_parallel_nms, rows, [&](int y) {
+        const short* dx_row = reinterpret_cast<const short*>(dx.data + static_cast<std::size_t>(y) * dx_step);
+        const short* dy_row = reinterpret_cast<const short*>(dy.data + static_cast<std::size_t>(y) * dy_step);
+        for (int x = 0; x < cols; ++x)
+        {
+            const std::size_t idx = static_cast<std::size_t>(y) * static_cast<std::size_t>(cols) +
+                                    static_cast<std::size_t>(x);
+            const float a = magnitude[idx];
+            if (a <= low_threshold)
+            {
+                continue;
+            }
+
+            const int gx = dx_row[x];
+            const int gy = dy_row[x];
+            const double tg = gx ? static_cast<double>(gy) / gx : DBL_MAX * (gy >= 0 ? 1.0 : -1.0);
+
+            int x1 = 0;
+            int y1 = 0;
+            int x2 = 0;
+            int y2 = 0;
+            if (std::abs(tg) < tan_pi_8)
+            {
+                y1 = y;
+                y2 = y;
+                x1 = x + 1;
+                x2 = x - 1;
+            }
+            else if (tan_pi_8 <= tg && tg <= tan_3pi_8)
+            {
+                y1 = y + 1;
+                y2 = y - 1;
+                x1 = x + 1;
+                x2 = x - 1;
+            }
+            else if (-tan_3pi_8 <= tg && tg <= -tan_pi_8)
+            {
+                y1 = y - 1;
+                y2 = y + 1;
+                x1 = x + 1;
+                x2 = x - 1;
+            }
+            else
+            {
+                x1 = x;
+                x2 = x;
+                y1 = y + 1;
+                y2 = y - 1;
+            }
+
+            float b = 0.0f;
+            float c = 0.0f;
+            if (static_cast<unsigned>(x1) < static_cast<unsigned>(cols) &&
+                static_cast<unsigned>(y1) < static_cast<unsigned>(rows))
+            {
+                b = magnitude[static_cast<std::size_t>(y1) * static_cast<std::size_t>(cols) +
+                              static_cast<std::size_t>(x1)];
+            }
+            if (static_cast<unsigned>(x2) < static_cast<unsigned>(cols) &&
+                static_cast<unsigned>(y2) < static_cast<unsigned>(rows))
+            {
+                c = magnitude[static_cast<std::size_t>(y2) * static_cast<std::size_t>(cols) +
+                              static_cast<std::size_t>(x2)];
+            }
+
+            if (!((a > b || (a == b && ((x1 == x + 1 && y1 == y) || (x1 == x && y1 == y + 1)))) && a > c))
+            {
+                nms[idx] = -a;
+            }
+        }
+    });
+
+    std::vector<uchar> edge_map(count, static_cast<uchar>(0));
+    static const int kOffsets[8][2] = {
+        {1, 0}, {1, -1}, {0, -1}, {-1, -1},
+        {-1, 0}, {-1, 1}, {0, 1}, {1, 1},
+    };
+
+    std::vector<int> stack;
+    stack.reserve(count / 8u + 8u);
+
+    for (int y = 0; y < rows; ++y)
+    {
+        for (int x = 0; x < cols; ++x)
+        {
+            const int seed_idx = y * cols + x;
+            if (nms[static_cast<std::size_t>(seed_idx)] <= high_threshold)
+            {
+                continue;
+            }
+            if (edge_map[static_cast<std::size_t>(seed_idx)] != 0)
+            {
+                continue;
+            }
+
+            edge_map[static_cast<std::size_t>(seed_idx)] = 255;
+            stack.push_back(seed_idx);
+
+            while (!stack.empty())
+            {
+                const int p = stack.back();
+                stack.pop_back();
+                const int px = p % cols;
+                const int py = p / cols;
+
+                for (int k = 0; k < 8; ++k)
+                {
+                    const int nx = px + kOffsets[k][0];
+                    const int ny = py + kOffsets[k][1];
+                    if (static_cast<unsigned>(nx) >= static_cast<unsigned>(cols) ||
+                        static_cast<unsigned>(ny) >= static_cast<unsigned>(rows))
+                    {
+                        continue;
+                    }
+
+                    const int nidx = ny * cols + nx;
+                    if (edge_map[static_cast<std::size_t>(nidx)] != 0)
+                    {
+                        continue;
+                    }
+
+                    if (nms[static_cast<std::size_t>(nidx)] > low_threshold)
+                    {
+                        edge_map[static_cast<std::size_t>(nidx)] = 255;
+                        stack.push_back(nidx);
+                    }
+                }
+            }
+        }
+    }
+
+    edges.create(std::vector<int>{rows, cols}, CV_8UC1);
+    const std::size_t edge_step = edges.step(0);
+    for (int y = 0; y < rows; ++y)
+    {
+        std::memcpy(edges.data + static_cast<std::size_t>(y) * edge_step,
+                    edge_map.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(cols),
+                    static_cast<std::size_t>(cols));
+    }
+
+    return true;
+}
+
+bool try_canny_image_fastpath_u8(const Mat& image,
+                                 Mat& edges,
+                                 double threshold1,
+                                 double threshold2,
+                                 int apertureSize,
+                                 bool L2gradient)
+{
+    if (image.empty() || image.dims != 2 || image.type() != CV_8UC1)
+    {
+        return false;
+    }
+    if (apertureSize != 3 && apertureSize != 5)
+    {
+        return false;
+    }
+
+    Mat src_local;
+    const Mat* src_ref = &image;
+    if (image.data == edges.data)
+    {
+        src_local = image.clone();
+        src_ref = &src_local;
+    }
+
+    Mat dx;
+    Mat dy;
+    const int sobel_border = BORDER_REPLICATE | BORDER_ISOLATED;
+    Sobel(*src_ref, dx, CV_16S, 1, 0, apertureSize, 1.0, 0.0, sobel_border);
+    Sobel(*src_ref, dy, CV_16S, 0, 1, apertureSize, 1.0, 0.0, sobel_border);
+    return try_canny_from_derivatives_fastpath_s16(dx, dy, edges, threshold1, threshold2, L2gradient);
+}
+
 } // namespace
 
 const char* last_boxfilter_dispatch_path()
@@ -3026,6 +5486,16 @@ double threshold_backend_impl(const Mat& src, Mat& dst, double thresh, double ma
     return threshold_fallback(src, dst, thresh, maxval, type);
 }
 
+void lut_backend_impl(const Mat& src, const Mat& lut, Mat& dst)
+{
+    if (try_lut_fastpath_u8(src, lut, dst))
+    {
+        return;
+    }
+
+    LUT_fallback(src, lut, dst);
+}
+
 void boxFilter_backend_impl(const Mat& src,
                             Mat& dst,
                             int ddepth,
@@ -3036,6 +5506,19 @@ void boxFilter_backend_impl(const Mat& src,
 {
     set_last_boxfilter_dispatch_path("fallback");
     if (try_boxfilter_fastpath_u8(src, dst, ddepth, ksize, anchor, normalize, borderType))
+    {
+        if (is_boxfilter_3x3_candidate(ksize, anchor, normalize))
+        {
+            set_last_boxfilter_dispatch_path("box3x3");
+        }
+        else
+        {
+            set_last_boxfilter_dispatch_path("box_generic");
+        }
+        return;
+    }
+
+    if (try_boxfilter_fastpath_f32(src, dst, ddepth, ksize, anchor, normalize, borderType))
     {
         if (is_boxfilter_3x3_candidate(ksize, anchor, normalize))
         {
@@ -3069,7 +5552,163 @@ void gaussianBlur_backend_impl(const Mat& src, Mat& dst, Size ksize, double sigm
         return;
     }
 
+    if (try_gaussian_blur_fastpath_f32(src, dst, ksize, sigmaX, sigmaY, borderType))
+    {
+        int kx = 0;
+        int ky = 0;
+        if (resolve_gaussian_kernel_size(ksize, sigmaX, sigmaY, kx, ky) && kx == 3 && ky == 3)
+        {
+            set_last_gaussianblur_dispatch_path("gauss3x3");
+        }
+        else
+        {
+            set_last_gaussianblur_dispatch_path("gauss_separable");
+        }
+        return;
+    }
+
     gaussian_blur_fallback(src, dst, ksize, sigmaX, sigmaY, borderType);
+}
+
+void sobel_backend_impl(const Mat& src,
+                        Mat& dst,
+                        int ddepth,
+                        int dx,
+                        int dy,
+                        int ksize,
+                        double scale,
+                        double delta,
+                        int borderType)
+{
+    if (try_sobel_fastpath_u8(src, dst, ddepth, dx, dy, ksize, scale, delta, borderType))
+    {
+        return;
+    }
+
+    sobel_fallback(src, dst, ddepth, dx, dy, ksize, scale, delta, borderType);
+}
+
+void canny_image_backend_impl(const Mat& image,
+                              Mat& edges,
+                              double threshold1,
+                              double threshold2,
+                              int apertureSize,
+                              bool L2gradient)
+{
+    if (try_canny_image_fastpath_u8(image, edges, threshold1, threshold2, apertureSize, L2gradient))
+    {
+        return;
+    }
+
+    canny_fallback(image, edges, threshold1, threshold2, apertureSize, L2gradient);
+}
+
+void canny_deriv_backend_impl(const Mat& dx,
+                              const Mat& dy,
+                              Mat& edges,
+                              double threshold1,
+                              double threshold2,
+                              bool L2gradient)
+{
+    if (try_canny_from_derivatives_fastpath_s16(dx, dy, edges, threshold1, threshold2, L2gradient))
+    {
+        return;
+    }
+
+    canny_from_derivatives_fallback(dx, dy, edges, threshold1, threshold2, L2gradient);
+}
+
+void copy_make_border_backend_impl(const Mat& src,
+                                   Mat& dst,
+                                   int top,
+                                   int bottom,
+                                   int left,
+                                   int right,
+                                   int borderType,
+                                   const Scalar& value)
+{
+    if (try_copy_make_border_fastpath_replicate(src, dst, top, bottom, left, right, borderType))
+    {
+        return;
+    }
+
+    copyMakeBorder_fallback(src, dst, top, bottom, left, right, borderType, value);
+}
+
+void filter2d_backend_impl(const Mat& src,
+                           Mat& dst,
+                           int ddepth,
+                           const Mat& kernel,
+                           Point anchor,
+                           double delta,
+                           int borderType)
+{
+    if (try_filter2d_fastpath(src, dst, ddepth, kernel, anchor, delta, borderType))
+    {
+        return;
+    }
+
+    filter2D_fallback(src, dst, ddepth, kernel, anchor, delta, borderType);
+}
+
+void sep_filter2d_backend_impl(const Mat& src,
+                               Mat& dst,
+                               int ddepth,
+                               const Mat& kernelX,
+                               const Mat& kernelY,
+                               Point anchor,
+                               double delta,
+                               int borderType)
+{
+    if (try_sep_filter2d_fastpath(src, dst, ddepth, kernelX, kernelY, anchor, delta, borderType))
+    {
+        return;
+    }
+
+    sepFilter2D_fallback(src, dst, ddepth, kernelX, kernelY, anchor, delta, borderType);
+}
+
+void warp_affine_backend_impl(const Mat& src,
+                              Mat& dst,
+                              const Mat& M,
+                              Size dsize,
+                              int flags,
+                              int borderMode,
+                              const Scalar& borderValue)
+{
+    warpAffine_fallback(src, dst, M, dsize, flags, borderMode, borderValue);
+}
+
+void erode_backend_impl(const Mat& src,
+                        Mat& dst,
+                        const Mat& kernel,
+                        Point anchor,
+                        int iterations,
+                        int borderType,
+                        const Scalar& borderValue)
+{
+    if (try_morph_rect3x3_fastpath(src, dst, kernel, anchor, iterations, borderType, borderValue, true))
+    {
+        return;
+    }
+
+    erode_fallback(src, dst, kernel, anchor, iterations, borderType, borderValue);
+}
+
+void dilate_backend_impl(const Mat& src,
+                         Mat& dst,
+                         const Mat& kernel,
+                         Point anchor,
+                         int iterations,
+                         int borderType,
+                         const Scalar& borderValue)
+{
+    if (try_morph_rect3x3_fastpath(src, dst, kernel, anchor, iterations, borderType, borderValue, false))
+    {
+        return;
+    }
+
+    dilate_fallback(src, dst, kernel, anchor, iterations, borderType, borderValue);
 }
 
 } // namespace detail
@@ -3080,8 +5719,18 @@ void register_all_backends()
         detail::register_resize_backend(&detail::resize_backend_impl);
         detail::register_cvtcolor_backend(&detail::cvtColor_backend_impl);
         detail::register_threshold_backend(&detail::threshold_backend_impl);
+        detail::register_lut_backend(&detail::lut_backend_impl);
         detail::register_boxfilter_backend(&detail::boxFilter_backend_impl);
         detail::register_gaussianblur_backend(&detail::gaussianBlur_backend_impl);
+        detail::register_sobel_backend(&detail::sobel_backend_impl);
+        detail::register_canny_image_backend(&detail::canny_image_backend_impl);
+        detail::register_canny_deriv_backend(&detail::canny_deriv_backend_impl);
+        detail::register_copy_make_border_backend(&detail::copy_make_border_backend_impl);
+        detail::register_filter2d_backend(&detail::filter2d_backend_impl);
+        detail::register_sep_filter2d_backend(&detail::sep_filter2d_backend_impl);
+        detail::register_warp_affine_backend(&detail::warp_affine_backend_impl);
+        detail::register_erode_backend(&detail::erode_backend_impl);
+        detail::register_dilate_backend(&detail::dilate_backend_impl);
         return true;
     }();
     (void)initialized;

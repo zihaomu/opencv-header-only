@@ -56,3 +56,80 @@ TEST(Compare, regression_16F_do_not_crash)
 }
 // END Compare.regression_16F_do_not_crash
 
+// BEGIN Core_LUT.accuracy
+TEST_P(Core_LUT, accuracy)
+{
+    int idx_type = get<0>(GetParam());
+    int value_type = get<1>(GetParam());
+
+    ASSERT_TRUE((idx_type == CV_8U) || (idx_type == CV_8S) || (idx_type == CV_16U ) || (idx_type == CV_16S));
+    const int tableSize = ((idx_type == CV_8U) || (idx_type == CV_8S)) ? 256: 65536;
+
+    cv::Mat input(117, 113, CV_MAKE_TYPE(idx_type, 1));
+    randu(input, getMinVal(idx_type), getMaxVal(idx_type));
+
+    cv::Mat table(1, tableSize, CV_MAKE_TYPE(value_type, 1));
+    randu(table, getMinVal(value_type), getMaxVal(value_type));
+
+    cv::Mat output;
+    ASSERT_NO_THROW(cv::LUT(input, table, output));
+    ASSERT_FALSE(output.empty());
+
+    cv::Mat gt = reference(input, table);
+    ASSERT_FALSE(gt.empty());
+
+    ASSERT_EQ(0, cv::norm(output, gt, cv::NORM_INF));
+}
+// END Core_LUT.accuracy
+
+// BEGIN Core_LUT.accuracy_multi
+TEST_P(Core_LUT, accuracy_multi)
+{
+    int idx_type = get<0>(GetParam());
+    int value_type = get<1>(GetParam());
+
+    ASSERT_TRUE((idx_type == CV_8U) || (idx_type == CV_8S) || (idx_type == CV_16U) || (idx_type == CV_16S));
+    const int tableSize = ((idx_type == CV_8U) || (idx_type == CV_8S) ) ? 256: 65536;
+
+    cv::Mat input(117, 113, CV_MAKE_TYPE(idx_type, 3));
+    randu(input, getMinVal(idx_type), getMaxVal(idx_type));
+
+    cv::Mat table(1, tableSize, CV_MAKE_TYPE(value_type, 1));
+    randu(table, getMinVal(value_type), getMaxVal(value_type));
+
+    cv::Mat output;
+    ASSERT_NO_THROW(cv::LUT(input, table, output));
+    ASSERT_FALSE(output.empty());
+
+    cv::Mat gt = reference<3>(input, table);
+    ASSERT_FALSE(gt.empty());
+
+    ASSERT_EQ(0, cv::norm(output, gt, cv::NORM_INF));
+}
+// END Core_LUT.accuracy_multi
+
+// BEGIN Core_LUT.accuracy_multi2
+TEST_P(Core_LUT, accuracy_multi2)
+{
+    int idx_type = get<0>(GetParam());
+    int value_type = get<1>(GetParam());
+
+    ASSERT_TRUE((idx_type == CV_8U) || (idx_type == CV_8S) || (idx_type == CV_16U) || (idx_type == CV_16S));
+    const int tableSize = ((idx_type == CV_8U) || (idx_type == CV_8S)) ? 256: 65536;
+
+    cv::Mat input(117, 113, CV_MAKE_TYPE(idx_type, 3));
+    randu(input, getMinVal(idx_type), getMaxVal(idx_type));
+
+    cv::Mat table(1, tableSize, CV_MAKE_TYPE(value_type, 3));
+    randu(table, getMinVal(value_type), getMaxVal(value_type));
+
+    cv::Mat output;
+    ASSERT_NO_THROW(cv::LUT(input, table, output));
+    ASSERT_FALSE(output.empty());
+
+    cv::Mat gt = reference<3, true>(input, table);
+    ASSERT_FALSE(gt.empty());
+
+    ASSERT_EQ(0, cv::norm(output, gt, cv::NORM_INF));
+}
+// END Core_LUT.accuracy_multi2

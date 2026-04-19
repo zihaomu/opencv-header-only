@@ -5,12 +5,14 @@ import csv
 import datetime as dt
 import statistics
 from pathlib import Path
+from typing import Optional
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Render cvh vs OpenCV compare CSV to Markdown")
     p.add_argument("--input", required=True, help="Input CSV path")
     p.add_argument("--output", required=True, help="Output Markdown path")
+    p.add_argument("--meta", default="", help="Optional metadata JSON path")
     p.add_argument("--title", default="cvh vs OpenCV Benchmark Report", help="Markdown title")
     return p.parse_args()
 
@@ -40,7 +42,7 @@ def md_table(headers, rows):
     return "\n".join(out)
 
 
-def render_report(rows, title: str, input_path: Path) -> str:
+def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] = None) -> str:
     supported = [r for r in rows if r.get("status", "") == "OK"]
     unsupported = [r for r in rows if r.get("status", "") != "OK"]
 
@@ -59,6 +61,28 @@ def render_report(rows, title: str, input_path: Path) -> str:
     lines.append("")
     lines.append(f"Source CSV: `{input_path}`")
     lines.append("")
+
+    if meta_path and meta_path.exists():
+        import json
+
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        lines.append("## Run Config")
+        lines.append("")
+        lines.append(f"- Profile: `{meta.get('profile', 'unknown')}`")
+        lines.append(
+            f"- Samples: `warmup={meta.get('warmup', 'n/a')}, iters={meta.get('iters', 'n/a')}, repeats={meta.get('repeats', 'n/a')}`"
+        )
+        lines.append(f"- Threads: `{meta.get('threads', 'n/a')}`")
+        lines.append(
+            f"- Runtime: `omp_dynamic={meta.get('omp_dynamic', 'n/a')}, omp_proc_bind={meta.get('omp_proc_bind', 'n/a')}`"
+        )
+        lines.append(f"- Host: `{meta.get('system', 'n/a')} {meta.get('arch', 'n/a')}`")
+        lines.append(f"- CPU: `{meta.get('cpu_model', 'n/a')}`")
+        lines.append(f"- Build type: `{meta.get('build_type', 'n/a')}`")
+        lines.append(f"- Compare mode: `{meta.get('compare_mode', 'n/a')}`")
+        lines.append(f"- Meta JSON: `{meta_path}`")
+        lines.append("")
+
     lines.append("## Summary")
     lines.append("")
     lines.append(f"- Total rows: `{len(rows)}`")
@@ -157,7 +181,8 @@ def main() -> int:
         raise SystemExit(f"input CSV not found: {in_path}")
 
     rows = read_rows(in_path)
-    report = render_report(rows, args.title, in_path)
+    meta_path = Path(args.meta) if args.meta else None
+    report = render_report(rows, args.title, in_path, meta_path)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(report, encoding="utf-8")

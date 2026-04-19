@@ -223,7 +223,14 @@ if(CVH_BUILD_TESTS)
         test/imgproc/imgproc_cvtcolor_contract_test.cpp
         test/imgproc/imgproc_threshold_contract_test.cpp
         test/imgproc/imgproc_pipeline_regression_test.cpp
+        test/imgproc/imgproc_lut_contract_test.cpp
         test/imgproc/imgproc_filter_contract_test.cpp
+        test/imgproc/imgproc_filter2d_contract_test.cpp
+        test/imgproc/imgproc_sep_filter2d_contract_test.cpp
+        test/imgproc/imgproc_copy_make_border_contract_test.cpp
+        test/imgproc/imgproc_morph_gradient_contract_test.cpp
+        test/imgproc/imgproc_canny_contract_test.cpp
+        test/imgproc/imgproc_warp_affine_contract_test.cpp
     )
     target_link_libraries(cvh_test_imgproc PRIVATE cvh::headers gtest_main)
     target_compile_features(cvh_test_imgproc PRIVATE cxx_std_17)
@@ -301,6 +308,7 @@ if(CVH_BUILD_TESTS)
             test/core/mat_scalar_ops_test.cpp
             test/core/mat_submat_test.cpp
             test/core/mat_upstream_channel_port_test.cpp
+            test/core/gemm_pack_contract_test.cpp
             test/core/mat_contract_test.cpp
             test/core/scalar_contract_test.cpp
         )

@@ -9,10 +9,16 @@
 #include "cvh/core/utils.h"
 #include "kernel/gemm_kernel_xsimd.h"
 
+#include <algorithm>
 #include <limits>
 
 namespace cvh
 {
+
+bool GemmPackedB::empty() const
+{
+    return packed_fp32.empty() && packed_fp16.empty();
+}
 
 // GEMM 的输入输出对Mat Shape的要求是：目前只支持单通道的Mat计算，支持多维度，支持广播机制，输出维度为输入维度的广播结果，输入维度必须大于等于2，最后两个维度分别是M和K，K和N，输出维度的最后两个维度分别是M和N。
 static inline
@@ -78,6 +84,91 @@ inline void for_each_gemm_batch(size_t out_loop, int m, int n, int k, Fn&& fn)
             }
         },
         static_cast<double>(out_loop));
+}
+
+template <class Fn>
+inline void for_each_gemm_row(int m, int n, int k, Fn&& fn)
+{
+    if (m <= 0)
+    {
+        return;
+    }
+
+    const bool do_parallel =
+        m > 1 &&
+        cpu::should_parallelize_1d_loop(
+            static_cast<size_t>(m),
+            static_cast<size_t>(std::max(n, 1)) * static_cast<size_t>(std::max(k, 1)),
+            1LL << 16,
+            2);
+    if (!do_parallel)
+    {
+        for (int i = 0; i < m; ++i)
+        {
+            fn(i);
+        }
+        return;
+    }
+
+    cvh::parallel_for_(
+        cvh::Range(0, m),
+        [&](const cvh::Range& range) {
+            for (int i = range.start; i < range.end; ++i)
+            {
+                fn(i);
+            }
+        },
+        static_cast<double>(m));
+}
+
+static inline
+GemmPackedB gemm_pack_b_impl(const Mat& b)
+{
+    MatShape shape_b = b.shape();
+    CV_Assert(shape_b.size() >= 2 && "Mat shape on gemm_pack_b function is miss matching!");
+
+    const int K = shape_b[shape_b.size() - 2];
+    const int N = shape_b[shape_b.size() - 1];
+
+    CV_Assert((b.type() == CV_32F || b.type() == CV_16F) &&
+              "gemm_pack_b currently supports FP32/FP16 weight matrix only!");
+
+    GemmPackedB packed;
+    packed.shape = shape_b;
+    packed.strides = make_strides(shape_b);
+    packed.type = b.type();
+    packed.k = K;
+    packed.n = N;
+    packed.packed_step = cpu::gemm_xsimd_packed_b_elements(N, K);
+
+    const int batch_dims = static_cast<int>(shape_b.size()) - 2;
+    const size_t batch_count = batch_dims > 0 ? total(shape_b, 0, shape_b.size() - 2) : 1;
+    const size_t matrix_elements = static_cast<size_t>(K) * static_cast<size_t>(N);
+
+    if (packed.type == CV_32F)
+    {
+        packed.packed_fp32.resize(batch_count * packed.packed_step);
+        const float* pb = reinterpret_cast<const float*>(b.data);
+        for (size_t i = 0; i < batch_count; ++i)
+        {
+            const float* pbi = pb + i * matrix_elements;
+            float* packed_ptr = packed.packed_fp32.data() + i * packed.packed_step;
+            cpu::gemm_pack_xsimd_nn_fp32(pbi, packed_ptr, N, K);
+        }
+    }
+    else
+    {
+        packed.packed_fp16.resize(batch_count * packed.packed_step);
+        const hfloat* pb = reinterpret_cast<const hfloat*>(b.data);
+        for (size_t i = 0; i < batch_count; ++i)
+        {
+            const hfloat* pbi = pb + i * matrix_elements;
+            hfloat* packed_ptr = packed.packed_fp16.data() + i * packed.packed_step;
+            cpu::gemm_pack_xsimd_nn_fp16(pbi, packed_ptr, N, K);
+        }
+    }
+
+    return packed;
 }
 
 // naive impl, [M x K] x [K x N] = M x N
@@ -157,13 +248,118 @@ void gemm_impl_naive(const Mat& a, const Mat& b, Mat& c)
         {
             const float* pb = reinterpret_cast<const float*>(b.data);
             const float* pbi = lin_b * step_b + pb;
-            cpu::gemm_kernel_xsimd_nn(pai, pbi, pci, M, N, K);
+
+            std::vector<float> packed_b(cpu::gemm_xsimd_packed_b_elements(N, K));
+            cpu::gemm_pack_xsimd_nn_fp32(pbi, packed_b.data(), N, K);
+
+            for_each_gemm_row(M, N, K, [&](int mi) {
+                const float* a_row = pai + static_cast<size_t>(mi) * static_cast<size_t>(K);
+                float* c_row = pci + static_cast<size_t>(mi) * static_cast<size_t>(N);
+                cpu::gemm_kernel_xsimd_row_packed_fp32(a_row, packed_b.data(), c_row, N, K);
+            });
         }
         else
         {
             const hfloat* pb = reinterpret_cast<const hfloat*>(b.data);
             const hfloat* pbi = lin_b * step_b + pb;
-            cpu::gemm_kernel_xsimd_nn_fp16(pai, pbi, pci, M, N, K);
+
+            std::vector<hfloat> packed_b(cpu::gemm_xsimd_packed_b_elements(N, K));
+            cpu::gemm_pack_xsimd_nn_fp16(pbi, packed_b.data(), N, K);
+
+            for_each_gemm_row(M, N, K, [&](int mi) {
+                const float* a_row = pai + static_cast<size_t>(mi) * static_cast<size_t>(K);
+                float* c_row = pci + static_cast<size_t>(mi) * static_cast<size_t>(N);
+                cpu::gemm_kernel_xsimd_row_packed_fp16(a_row, packed_b.data(), c_row, N, K);
+            });
+        }
+    });
+}
+
+// [M x K] x packed_B[K x N] = M x N
+static inline
+void gemm_impl_naive_packed(const Mat& a, const GemmPackedB& packed_b, Mat& c)
+{
+    MatShape shape_a = a.shape();
+    MatShape shape_b = packed_b.shape;
+
+    CV_Assert(shape_a.size() >= 2 && shape_b.size() >= 2 && "Mat shapes on gemm function are miss matching!");
+
+    MatShape shape_c = get_gemm_shape(shape_a, shape_b);
+
+    const int M = shape_a.size() == 1 ? 1 : shape_a[shape_a.size() - 2];
+    const int K = shape_a[shape_a.size() - 1];
+    const int N = shape_b.size() == 1 ? 1 : shape_b[shape_b.size() - 1];
+
+    if (K != shape_b[shape_b.size() - 2])
+    {
+        std::string errorInfo = "Mat shapes on gemm([M,K] x [K,N]) function are miss matching!\n";
+        errorInfo += "shape_a: ";
+        errorInfo += shape_to_str(shape_a);
+        errorInfo += "\n";
+        errorInfo += "packed_b.shape: ";
+        errorInfo += shape_to_str(shape_b);
+        errorInfo += "\n";
+        errorInfo += "Expect gemm K = ";
+        errorInfo += std::to_string(shape_b[shape_b.size() - 2]);
+        errorInfo += ", but got ";
+        errorInfo += std::to_string(K);
+        errorInfo += "\n";
+        CV_Error(NULL, errorInfo.c_str());
+    }
+
+    CV_Assert(a.type() == CV_32F && "Currently only FP32 activation mat is supported!");
+    CV_Assert((packed_b.type == CV_32F || packed_b.type == CV_16F) &&
+              "Packed gemm currently supports FP32/FP16 weights only!");
+    CV_Assert(packed_b.k == K && packed_b.n == N && "Packed gemm metadata does not match shape!");
+    CV_Assert(packed_b.packed_step == cpu::gemm_xsimd_packed_b_elements(N, K) && "Packed gemm metadata is invalid!");
+    CV_Assert(!packed_b.empty() && "Packed gemm requires non-empty packed weights!");
+
+    c = Mat(shape_c, CV_32F);
+
+    const int out_batch_dims = static_cast<int>(shape_c.size()) - 2;
+    const size_t out_loop = out_batch_dims > 0 ? total(shape_c, 0, shape_c.size() - 2) : 1;
+    const size_t step_a = static_cast<size_t>(M) * static_cast<size_t>(K);
+    const size_t step_c = static_cast<size_t>(M) * static_cast<size_t>(N);
+
+    const MatShape stride_a = make_strides(shape_a);
+    const MatShape stride_c = make_strides(shape_c);
+    const MatShape& stride_b = packed_b.strides;
+
+    const float* pa = reinterpret_cast<const float*>(a.data);
+    float* pc = reinterpret_cast<float*>(c.data);
+
+    for_each_gemm_batch(out_loop, M, N, K, [&](size_t i) {
+        size_t tmp = i;
+        std::vector<int> idx_c(out_batch_dims);
+        for (int d = 0; d < out_batch_dims; ++d)
+        {
+            idx_c[d] = static_cast<int>(tmp / stride_c[d]);
+            tmp %= stride_c[d];
+        }
+
+        const size_t lin_a = broadcast_linear_index(shape_a, stride_a, idx_c, out_batch_dims);
+        const size_t lin_b = broadcast_linear_index(shape_b, stride_b, idx_c, out_batch_dims);
+
+        const float* pai = pa + lin_a * step_a;
+        float* pci = pc + i * step_c;
+
+        if (packed_b.type == CV_32F)
+        {
+            const float* packed_ptr = packed_b.packed_fp32.data() + lin_b * packed_b.packed_step;
+            for_each_gemm_row(M, N, K, [&](int mi) {
+                const float* a_row = pai + static_cast<size_t>(mi) * static_cast<size_t>(K);
+                float* c_row = pci + static_cast<size_t>(mi) * static_cast<size_t>(N);
+                cpu::gemm_kernel_xsimd_row_packed_fp32(a_row, packed_ptr, c_row, N, K);
+            });
+        }
+        else
+        {
+            const hfloat* packed_ptr = packed_b.packed_fp16.data() + lin_b * packed_b.packed_step;
+            for_each_gemm_row(M, N, K, [&](int mi) {
+                const float* a_row = pai + static_cast<size_t>(mi) * static_cast<size_t>(K);
+                float* c_row = pci + static_cast<size_t>(mi) * static_cast<size_t>(N);
+                cpu::gemm_kernel_xsimd_row_packed_fp16(a_row, packed_ptr, c_row, N, K);
+            });
         }
     });
 }
@@ -353,6 +549,38 @@ Mat gemm(const Mat& a, const Mat& b, bool transA, bool transB)
         gemm_impl_naive(aT, bT, out);
     }
 
+    return out;
+}
+
+GemmPackedB gemm_pack_b(const Mat& b, bool transB)
+{
+    Mat packed_source;
+    if (transB)
+    {
+        packed_source = transpose(b);
+    }
+    else
+    {
+        packed_source = b;
+    }
+
+    return gemm_pack_b_impl(packed_source);
+}
+
+Mat gemm(const Mat& a, const GemmPackedB& packed_b, bool transA)
+{
+    Mat a_use;
+    if (transA)
+    {
+        a_use = transpose(a);
+    }
+    else
+    {
+        a_use = a;
+    }
+
+    Mat out;
+    gemm_impl_naive_packed(a_use, packed_b, out);
     return out;
 }
 

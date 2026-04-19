@@ -1,5 +1,13 @@
 # Header-Only OpenCV 性能对比设计
 
+## 测试来源（优先复用 OpenCV 官方用例）
+
+- 测试数据来源：`/Users/moo/workssd/my_project/opencv_test/opencv_extra-4.x/testdata`
+- 测试代码来源：`/Users/moo/workssd/my_project/opencv_test/opencv-4.13.0/modules/*/test`
+- 复用策略：
+  - 接口语义对齐优先移植官方 `test` case（contract 子集先行）。
+  - 性能/回归继续使用本仓 benchmark + smoke，与官方 case 并行验证。
+
 ## 1. 背景与目标
 
 项目目标不只是接口对齐，还需要给用户直观看到性能表现。  
@@ -31,6 +39,7 @@
 - `dilate`
 - `sobel`
 - `gaussian`（`GaussianBlur`）
+- `canny`
 
 ### 3.3 维度矩阵
 

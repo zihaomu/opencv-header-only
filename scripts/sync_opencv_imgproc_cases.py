@@ -51,6 +51,20 @@ CASE_SPECS: List[CaseSpec] = [
         reason="Covered by test/imgproc/imgproc_resize_contract_test.cpp (INTER_NEAREST_EXACT).",
     ),
     CaseSpec(
+        source_file="test_imgwarp.cpp",
+        suite="Imgproc_WarpAffine",
+        name="accuracy",
+        status="PASS_NOW",
+        reason="Covered by test/imgproc/imgproc_warp_affine_contract_test.cpp (fixed-parameter subset for geometry, inverse map, border, and argument validation).",
+    ),
+    CaseSpec(
+        source_file="test_imgwarp.cpp",
+        suite="Imgproc_Warp",
+        name="regression_19566",
+        status="PASS_NOW",
+        reason="Covered by test/imgproc/imgproc_warp_affine_contract_test.cpp (constant-border multi-channel subset).",
+    ),
+    CaseSpec(
         source_file="test_thresh.cpp",
         suite="Imgproc_Threshold",
         name="threshold_dryrun",
@@ -72,11 +86,95 @@ CASE_SPECS: List[CaseSpec] = [
         reason="Covered by test/imgproc/imgproc_filter_contract_test.cpp",
     ),
     CaseSpec(
+        source_file="test_filter.cpp",
+        suite="Imgproc_GaussianBlur",
+        name="regression_11303",
+        status="PASS_NOW",
+        reason="Covered by test/imgproc/imgproc_filter_contract_test.cpp (CV_32F constant-image sigma path).",
+    ),
+    CaseSpec(
+        source_file="test_filter.cpp",
+        suite="Imgproc_Filter2D",
+        name="dftFilter2d_regression_13179",
+        status="PASS_NOW",
+        reason="Covered by test/imgproc/imgproc_filter2d_contract_test.cpp (filter2D regression subset).",
+    ),
+    CaseSpec(
+        source_file="test_filter.cpp",
+        suite="Imgproc_sepFilter2D",
+        name="identity",
+        status="PASS_NOW",
+        reason="Covered by test/imgproc/imgproc_sep_filter2d_contract_test.cpp (identity kernel semantics).",
+    ),
+    CaseSpec(
+        source_file="test_contours.cpp",
+        suite="Imgproc_FindContours",
+        name="border",
+        status="PASS_NOW",
+        reason="Covered by test/imgproc/imgproc_copy_make_border_contract_test.cpp (upstream preamble semantics subset).",
+    ),
+    CaseSpec(
         source_file="test_smooth_bitexact.cpp",
         suite="GaussianBlur_Bitexact",
         name="regression_15015",
         status="PASS_NOW",
         reason="Covered by test/imgproc/imgproc_filter_contract_test.cpp (constant-image regression).",
+    ),
+    CaseSpec(
+        source_file="test_filter.cpp",
+        suite="Imgproc_Morphology",
+        name="iterated",
+        status="PASS_NOW",
+        reason="Covered by test/imgproc/imgproc_morph_gradient_contract_test.cpp (iterative morphology equivalence).",
+    ),
+    CaseSpec(
+        source_file="test_filter.cpp",
+        suite="Imgproc",
+        name="filter_empty_src_16857",
+        status="PASS_NOW",
+        reason="Covered by test/imgproc/imgproc_morph_gradient_contract_test.cpp (implemented-op empty input coverage).",
+    ),
+    CaseSpec(
+        source_file="test_filter.cpp",
+        suite="Imgproc",
+        name="morphologyEx_small_input_22893",
+        status="PASS_NOW",
+        reason="Covered by test/imgproc/imgproc_morph_gradient_contract_test.cpp (MORPH_DILATE small input regression).",
+    ),
+    CaseSpec(
+        source_file="test_filter.cpp",
+        suite="Imgproc_MorphEx",
+        name="hitmiss_regression_8957",
+        status="PASS_NOW",
+        reason="Covered by test/imgproc/imgproc_morph_gradient_contract_test.cpp (MORPH_HITMISS regression).",
+    ),
+    CaseSpec(
+        source_file="test_filter.cpp",
+        suite="Imgproc_MorphEx",
+        name="hitmiss_zero_kernel",
+        status="PASS_NOW",
+        reason="Covered by test/imgproc/imgproc_morph_gradient_contract_test.cpp (MORPH_HITMISS zero-kernel behavior).",
+    ),
+    CaseSpec(
+        source_file="test_filter.cpp",
+        suite="Imgproc_Sobel",
+        name="borderTypes",
+        status="PASS_NOW",
+        reason="Covered by test/imgproc/imgproc_morph_gradient_contract_test.cpp (ROI BORDER_ISOLATED semantics).",
+    ),
+    CaseSpec(
+        source_file="test_filter.cpp",
+        suite="Imgproc_Sobel",
+        name="s16_regression_13506",
+        status="PASS_NOW",
+        reason="Covered by test/imgproc/imgproc_morph_gradient_contract_test.cpp (CV_16S ksize=5 regression).",
+    ),
+    CaseSpec(
+        source_file="test_canny.cpp",
+        suite="Canny_Modes",
+        name="accuracy",
+        status="PASS_NOW",
+        reason="Covered by test/imgproc/imgproc_canny_contract_test.cpp (fixed-parameter upstream subset).",
     ),
 ]
 
@@ -98,11 +196,22 @@ def parse_args() -> argparse.Namespace:
 
 
 def run_git_short_head(repo_root: pathlib.Path) -> str:
-    out = subprocess.check_output(
-        ["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
-        text=True,
-    )
-    return out.strip()
+    try:
+        out = subprocess.check_output(
+            ["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
+            text=True,
+            stderr=subprocess.STDOUT,
+        )
+        head = out.strip()
+        if head:
+            return head
+    except Exception:
+        pass
+
+    # Fallback for source trees copied from release archives (no .git).
+    # Keep commit-like directory stable and traceable.
+    stem = repo_root.name.strip().replace(" ", "_")
+    return stem if stem else "opencv-local"
 
 
 def find_case_block(lines: Sequence[str], suite: str, name: str) -> Tuple[int, int]:

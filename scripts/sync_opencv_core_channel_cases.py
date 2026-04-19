@@ -35,32 +35,65 @@ class CaseSpec:
 
 CASE_SPECS: Dict[str, List[CaseSpec]] = {
     "test_mat.cpp": [
-        CaseSpec("Core_Merge", "shape_operations", "PENDING_CHANNEL", "merge/split API not exposed in cvh core yet", "cvh::merge + cvh::split"),
-        CaseSpec("Core_Split", "shape_operations", "PENDING_CHANNEL", "merge/split API not exposed in cvh core yet", "cvh::merge + cvh::split"),
-        CaseSpec("Core_Merge", "hang_12171", "PENDING_CHANNEL", "merge API missing", "cvh::merge + ROI stride safety"),
-        CaseSpec("Core_Split", "hang_12171", "PENDING_CHANNEL", "split API missing", "cvh::split + ROI stride safety"),
-        CaseSpec("Core_Split", "crash_12171", "PENDING_CHANNEL", "split API missing", "cvh::split + ROI stride safety"),
-        CaseSpec("Core_Merge", "bug_13544", "PENDING_CHANNEL", "merge API missing", "cvh::merge channel concatenation semantics"),
-        CaseSpec("Core_Mat", "reinterpret_Mat_8UC3_8SC3", "PENDING_CHANNEL", "Mat::reinterpret not available", "cvh::Mat::reinterpret"),
-        CaseSpec("Core_Mat", "reinterpret_Mat_8UC4_32FC1", "PENDING_CHANNEL", "Mat::reinterpret not available", "cvh::Mat::reinterpret"),
-        CaseSpec("Core_Mat", "reinterpret_OutputArray_8UC3_8SC3", "PENDING_CHANNEL", "OutputArray::reinterpret not available", "cvh OutputArray compatibility"),
-        CaseSpec("Core_Mat", "reinterpret_OutputArray_8UC4_32FC1", "PENDING_CHANNEL", "OutputArray::reinterpret not available", "cvh OutputArray compatibility"),
-        CaseSpec("Core_MatExpr", "issue_16655", "PENDING_CHANNEL", "MatExpr multi-channel compare/type propagation incomplete", "cvh MatExpr channel-preserving compare"),
+        CaseSpec("Core_Merge", "shape_operations", "PASS_NOW", "ported and runnable in test/core/mat_upstream_channel_port_test.cpp", "none"),
+        CaseSpec("Core_Split", "shape_operations", "PASS_NOW", "ported and runnable in test/core/mat_upstream_channel_port_test.cpp", "none"),
+        CaseSpec("Core_Merge", "hang_12171", "PASS_NOW", "ported and runnable in test/core/mat_upstream_channel_port_test.cpp", "none"),
+        CaseSpec("Core_Split", "hang_12171", "PASS_NOW", "ported and runnable in test/core/mat_upstream_channel_port_test.cpp", "none"),
+        CaseSpec("Core_Split", "crash_12171", "PASS_NOW", "ported and runnable in test/core/mat_upstream_channel_port_test.cpp", "none"),
+        CaseSpec("Core_Merge", "bug_13544", "PASS_NOW", "ported and runnable in test/core/mat_upstream_channel_port_test.cpp", "none"),
+        CaseSpec("Core_Mat", "reinterpret_Mat_8UC3_8SC3", "PASS_NOW", "ported and runnable in test/core/mat_upstream_channel_port_test.cpp", "none"),
+        CaseSpec("Core_Mat", "reinterpret_Mat_8UC4_32FC1", "PASS_NOW", "ported and runnable in test/core/mat_upstream_channel_port_test.cpp", "none"),
+        CaseSpec(
+            "Core_Mat",
+            "reinterpret_OutputArray_8UC3_8SC3",
+            "PENDING_CHANNEL",
+            "by-design gap: OutputArray compatibility is out of scope in Mat-only v1",
+            "non-goal (or add thin OutputArray adapter if strategy changes)",
+        ),
+        CaseSpec(
+            "Core_Mat",
+            "reinterpret_OutputArray_8UC4_32FC1",
+            "PENDING_CHANNEL",
+            "by-design gap: OutputArray compatibility is out of scope in Mat-only v1",
+            "non-goal (or add thin OutputArray adapter if strategy changes)",
+        ),
+        CaseSpec("Core_MatExpr", "issue_16655", "PASS_NOW", "ported and runnable in test/core/mat_upstream_channel_port_test.cpp", "none"),
     ],
     "test_arithm.cpp": [
-        CaseSpec("Subtract", "scalarc1_matc3", "PENDING_CHANNEL", "cv::subtract scalar overload missing in cvh", "cvh subtract scalar+multichannel overload"),
-        CaseSpec("Subtract", "scalarc4_matc4", "PENDING_CHANNEL", "cv::subtract scalar overload missing in cvh", "cvh subtract scalar+multichannel overload"),
-        CaseSpec("Compare", "empty", "PENDING_CHANNEL", "compare is currently unimplemented in cvh", "cvh::compare + operator> semantics"),
-        CaseSpec("Compare", "regression_8999", "PENDING_CHANNEL", "compare is currently unimplemented in cvh", "cvh::compare broadcasting/error behavior"),
-        CaseSpec("Compare", "regression_16F_do_not_crash", "PENDING_CHANNEL", "compare is currently unimplemented in cvh", "cvh::compare type handling for 16F"),
+        CaseSpec("Subtract", "scalarc1_matc3", "PASS_NOW", "ported and runnable in test/core/mat_upstream_channel_port_test.cpp", "none"),
+        CaseSpec("Subtract", "scalarc4_matc4", "PASS_NOW", "ported and runnable in test/core/mat_upstream_channel_port_test.cpp", "none"),
+        CaseSpec("Compare", "empty", "PASS_NOW", "ported and runnable in test/core/mat_upstream_channel_port_test.cpp", "none"),
+        CaseSpec("Compare", "regression_8999", "PASS_NOW", "ported and runnable in test/core/mat_upstream_channel_port_test.cpp", "none"),
+        CaseSpec("Compare", "regression_16F_do_not_crash", "PASS_NOW", "ported and runnable in test/core/mat_upstream_channel_port_test.cpp", "none"),
+        CaseSpec(
+            "Core_LUT",
+            "accuracy",
+            "PASS_NOW",
+            "ported and runnable in test/core/mat_upstream_channel_port_test.cpp (fixed-parameter subset)",
+            "none",
+        ),
+        CaseSpec(
+            "Core_LUT",
+            "accuracy_multi",
+            "PASS_NOW",
+            "ported and runnable in test/core/mat_upstream_channel_port_test.cpp (fixed-parameter subset)",
+            "none",
+        ),
+        CaseSpec(
+            "Core_LUT",
+            "accuracy_multi2",
+            "PASS_NOW",
+            "ported and runnable in test/core/mat_upstream_channel_port_test.cpp (fixed-parameter subset)",
+            "none",
+        ),
     ],
     "test_operations.cpp": [
         CaseSpec(
             "Core_Array",
             "expressions",
-            "PENDING_CHANNEL",
-            "covers channel semantics via CV_OperationsTest (mixChannels, typed Mat channel checks) but depends on broader op compatibility",
-            "cvh::mixChannels + MatExpr/bitwise/compare/operator completeness",
+            "PASS_NOW",
+            "ported and runnable in test/core/mat_upstream_channel_port_test.cpp",
+            "none",
         ),
     ],
 }
@@ -93,11 +126,20 @@ def parse_args() -> argparse.Namespace:
 
 
 def run_git_short_head(repo_root: pathlib.Path) -> str:
-    out = subprocess.check_output(
-        ["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
-        text=True,
-    )
-    return out.strip()
+    try:
+        out = subprocess.check_output(
+            ["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
+            text=True,
+            stderr=subprocess.STDOUT,
+        )
+        head = out.strip()
+        if head:
+            return head
+    except Exception:
+        pass
+
+    stem = repo_root.name.strip().replace(" ", "_")
+    return stem if stem else "opencv-local"
 
 
 def find_case_block(lines: Sequence[str], suite: str, name: str) -> Tuple[int, int]:

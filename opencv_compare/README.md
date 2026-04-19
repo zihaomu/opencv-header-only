@@ -9,6 +9,7 @@ This directory is dedicated to **cvh vs official OpenCV** speed comparison.
 - `csv_to_markdown.py`: render compare CSV into Markdown report.
 - `results/`: generated CSV outputs (ignored by git).
 - `opencv-bench-slim/`: shallow clone of the external OpenCV slim repo (ignored by git).
+- `*.meta.json`: runtime metadata/fingerprint generated alongside compare CSV.
 
 ## External OpenCV Source
 
@@ -28,6 +29,17 @@ You can override with environment variables:
 - `CVH_COMPARE_RENDER_MD` (`0` means skip Markdown generation in `run_compare.sh`)
 - `CVH_COMPARE_BUILD_TYPE` (`Release|RelWithDebInfo|Debug`, default `Release`)
 - `CVH_COMPARE_OUTPUT_MD` (override Markdown output path)
+- `CVH_COMPARE_OUTPUT_META` (override metadata JSON output path)
+
+## Compare Profiles
+
+`run_compare.sh` supports three profiles:
+
+- `quick`: `warmup=1, iters=5, repeats=1`
+- `stable`: `warmup=2, iters=20, repeats=5`
+- `full`: `warmup=1, iters=10, repeats=3`
+
+These defaults can be overridden by `CVH_COMPARE_WARMUP/ITERS/REPEATS` or CLI flags.
 
 ## Typical Workflow
 
@@ -43,6 +55,12 @@ You can override with environment variables:
 ./opencv_compare/run_compare.sh --profile quick
 ```
 
+3. Generate/update baseline CSV + Markdown + metadata:
+
+```bash
+./opencv_compare/run_compare.sh --profile stable --baseline
+```
+
 Default CSV path:
 
 - `opencv_compare/results/current_compare_quick.csv`
@@ -50,6 +68,10 @@ Default CSV path:
 Default Markdown path:
 
 - `doc/opencv_compare_quick.md`
+
+Default metadata path:
+
+- `opencv_compare/results/current_compare_quick.csv.meta.json`
 
 ## CMake Switches
 
@@ -64,10 +86,13 @@ When compare is enabled, target `cvh_benchmark_compare` is built.
 
 Current compare benchmark includes:
 
-- `ADD`, `SUB`, `GEMM`
+- `ADD`, `SUB`, `GEMM`, `GEMM_PREPACK` (fixed-`B` pack-once scenario)
 - `GAUSSIAN_3X3`, `GAUSSIAN_5X5`, `GAUSSIAN_11X11`
 - `BOX_3X3`, `BOX_5X5`, `BOX_11X11`
-
-Also outputs OpenCV-only rows for not-yet-implemented cvh operators:
-
-- `SOBEL`, `ERODE`, `DILATE` with status `UNSUPPORTED_CVH`
+- `COPYMAKEBORDER`
+- `LUT`
+- `FILTER2D_3X3`
+- `SEPFILTER2D_3X3`
+- `WARP_AFFINE`
+- `SOBEL`, `ERODE`, `DILATE`（`C1/C3/C4`）
+- `CANNY_A3_L1`, `CANNY_A3_L2`, `CANNY_A5_L1`, `CANNY_A5_L2`（`CV_8UC1`）

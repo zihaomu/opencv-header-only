@@ -1,6 +1,6 @@
 {
-  "upstream_repo": "/home/moo/work/github/opencv",
-  "upstream_commit": "d719c6d",
+  "upstream_repo": "/Volumes/ssd1t/work_ssd/my_project/opencv_test/opencv-4.13.0",
+  "upstream_commit": "opencv-4.13.0",
   "generated_by": "scripts/sync_opencv_imgproc_cases.py",
   "cases": [
     {
@@ -12,7 +12,29 @@
       "status": "PASS_NOW",
       "reason": "Covered by test/imgproc/imgproc_resize_contract_test.cpp",
       "sha256": "10b5747db6d4b055bb0d8c7d3ea04eb3009d78dfcc31ddcc658b947ee310c4a4",
-      "snapshot_file": "test/upstream/opencv/imgproc/d719c6d/test_imgwarp.cases.cpp"
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_imgwarp.cases.cpp"
+    },
+    {
+      "source_file": "modules/imgproc/test/test_imgwarp.cpp",
+      "source_line_start": 1388,
+      "source_line_end": 1388,
+      "suite": "Imgproc_WarpAffine",
+      "name": "accuracy",
+      "status": "PASS_NOW",
+      "reason": "Covered by test/imgproc/imgproc_warp_affine_contract_test.cpp (fixed-parameter subset for geometry, inverse map, border, and argument validation).",
+      "sha256": "68c74023e3f180ddd3275fa2cac6ba3ddf2424c4198324ec134deb6d08e01d8e",
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_imgwarp.cases.cpp"
+    },
+    {
+      "source_file": "modules/imgproc/test/test_imgwarp.cpp",
+      "source_line_start": 1545,
+      "source_line_end": 1561,
+      "suite": "Imgproc_Warp",
+      "name": "regression_19566",
+      "status": "PASS_NOW",
+      "reason": "Covered by test/imgproc/imgproc_warp_affine_contract_test.cpp (constant-border multi-channel subset).",
+      "sha256": "fb985bbb9320cbcdf838ae780b1f98dd15892aa430c7e277b8cbd7b00c6aa5c6",
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_imgwarp.cases.cpp"
     },
     {
       "source_file": "modules/imgproc/test/test_color.cpp",
@@ -23,7 +45,7 @@
       "status": "PASS_NOW",
       "reason": "Covered by test/imgproc/imgproc_cvtcolor_contract_test.cpp",
       "sha256": "50fc6e6f7aeef93f6e944b5aeb8d9f24c7d9e69e32e73e7ca2b9864e7a6c4d96",
-      "snapshot_file": "test/upstream/opencv/imgproc/d719c6d/test_color.cases.cpp"
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_color.cases.cpp"
     },
     {
       "source_file": "modules/imgproc/test/test_resize_bitexact.cpp",
@@ -34,7 +56,7 @@
       "status": "PASS_NOW",
       "reason": "Covered by test/imgproc/imgproc_resize_contract_test.cpp (INTER_NEAREST_EXACT).",
       "sha256": "fd480c26ad5e7769489d70adaa8318eec879351db6d75ab820073a88a54e8af4",
-      "snapshot_file": "test/upstream/opencv/imgproc/d719c6d/test_resize_bitexact.cases.cpp"
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_resize_bitexact.cases.cpp"
     },
     {
       "source_file": "modules/imgproc/test/test_thresh.cpp",
@@ -45,7 +67,7 @@
       "status": "PASS_NOW",
       "reason": "Covered by test/imgproc/imgproc_threshold_contract_test.cpp (THRESH_DRYRUN contract).",
       "sha256": "e0f4ae00e3757f99e475c1982e2e5f5f5c7d277d0b5a0b0bc77d7cc89b99e342",
-      "snapshot_file": "test/upstream/opencv/imgproc/d719c6d/test_thresh.cases.cpp"
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_thresh.cases.cpp"
     },
     {
       "source_file": "modules/imgproc/test/test_filter.cpp",
@@ -56,7 +78,7 @@
       "status": "PASS_NOW",
       "reason": "Covered by test/imgproc/imgproc_filter_contract_test.cpp",
       "sha256": "0efba423016dc9d61dca23d37557a812cf57c9c759d9a86fd37659c825ef172d",
-      "snapshot_file": "test/upstream/opencv/imgproc/d719c6d/test_filter.cases.cpp"
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_filter.cases.cpp"
     },
     {
       "source_file": "modules/imgproc/test/test_filter.cpp",
@@ -67,7 +89,128 @@
       "status": "PASS_NOW",
       "reason": "Covered by test/imgproc/imgproc_filter_contract_test.cpp",
       "sha256": "834b439865fba5552b55323cfbb49d1e623a5e902d4f4d3efcf910cbe946bbab",
-      "snapshot_file": "test/upstream/opencv/imgproc/d719c6d/test_filter.cases.cpp"
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_filter.cases.cpp"
+    },
+    {
+      "source_file": "modules/imgproc/test/test_filter.cpp",
+      "source_line_start": 2330,
+      "source_line_end": 2339,
+      "suite": "Imgproc_GaussianBlur",
+      "name": "regression_11303",
+      "status": "PASS_NOW",
+      "reason": "Covered by test/imgproc/imgproc_filter_contract_test.cpp (CV_32F constant-image sigma path).",
+      "sha256": "12ef7d536035db2429cf0066ebb35b55c75223f5fb3982165d4ed7a30d9749b7",
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_filter.cases.cpp"
+    },
+    {
+      "source_file": "modules/imgproc/test/test_filter.cpp",
+      "source_line_start": 2195,
+      "source_line_end": 2254,
+      "suite": "Imgproc_Filter2D",
+      "name": "dftFilter2d_regression_13179",
+      "status": "PASS_NOW",
+      "reason": "Covered by test/imgproc/imgproc_filter2d_contract_test.cpp (filter2D regression subset).",
+      "sha256": "02cd92d9e3c7c66a52e2db519e6fba6c851b2e1b5d1cce011d75b6463337eb6e",
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_filter.cases.cpp"
+    },
+    {
+      "source_file": "modules/imgproc/test/test_filter.cpp",
+      "source_line_start": 2355,
+      "source_line_end": 2367,
+      "suite": "Imgproc_sepFilter2D",
+      "name": "identity",
+      "status": "PASS_NOW",
+      "reason": "Covered by test/imgproc/imgproc_sep_filter2d_contract_test.cpp (identity kernel semantics).",
+      "sha256": "86bd90d57e52508de6d18a2cc1427981370d8b83eee92f35a357bde9e7f833f6",
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_filter.cases.cpp"
+    },
+    {
+      "source_file": "modules/imgproc/test/test_filter.cpp",
+      "source_line_start": 1996,
+      "source_line_end": 2028,
+      "suite": "Imgproc_Morphology",
+      "name": "iterated",
+      "status": "PASS_NOW",
+      "reason": "Covered by test/imgproc/imgproc_morph_gradient_contract_test.cpp (iterative morphology equivalence).",
+      "sha256": "9793e9450fb5799157fbc589675ed4f9643e57521a76e707daf8573d1f500933",
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_filter.cases.cpp"
+    },
+    {
+      "source_file": "modules/imgproc/test/test_filter.cpp",
+      "source_line_start": 2300,
+      "source_line_end": 2328,
+      "suite": "Imgproc",
+      "name": "filter_empty_src_16857",
+      "status": "PASS_NOW",
+      "reason": "Covered by test/imgproc/imgproc_morph_gradient_contract_test.cpp (implemented-op empty input coverage).",
+      "sha256": "498a418e23a0c419031554aa73ba3788df943cea4c93c01736dcbfe9d1048a10",
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_filter.cases.cpp"
+    },
+    {
+      "source_file": "modules/imgproc/test/test_filter.cpp",
+      "source_line_start": 2341,
+      "source_line_end": 2353,
+      "suite": "Imgproc",
+      "name": "morphologyEx_small_input_22893",
+      "status": "PASS_NOW",
+      "reason": "Covered by test/imgproc/imgproc_morph_gradient_contract_test.cpp (MORPH_DILATE small input regression).",
+      "sha256": "60f72591d669056cd1ce6694a0935eaf0a35e6b94a17aa43e140d7655d22ce95",
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_filter.cases.cpp"
+    },
+    {
+      "source_file": "modules/imgproc/test/test_filter.cpp",
+      "source_line_start": 2080,
+      "source_line_end": 2102,
+      "suite": "Imgproc_MorphEx",
+      "name": "hitmiss_regression_8957",
+      "status": "PASS_NOW",
+      "reason": "Covered by test/imgproc/imgproc_morph_gradient_contract_test.cpp (MORPH_HITMISS regression).",
+      "sha256": "da88d2d89a7094d28ec2accb90d5ec9b5e224fabbd98ca080e71c38d8518d266",
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_filter.cases.cpp"
+    },
+    {
+      "source_file": "modules/imgproc/test/test_filter.cpp",
+      "source_line_start": 2104,
+      "source_line_end": 2117,
+      "suite": "Imgproc_MorphEx",
+      "name": "hitmiss_zero_kernel",
+      "status": "PASS_NOW",
+      "reason": "Covered by test/imgproc/imgproc_morph_gradient_contract_test.cpp (MORPH_HITMISS zero-kernel behavior).",
+      "sha256": "ec8d4b1e7cab7f6a8f220fae2f77ccf2e923c5939129bb84a7ba6cca17d4f05d",
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_filter.cases.cpp"
+    },
+    {
+      "source_file": "modules/imgproc/test/test_filter.cpp",
+      "source_line_start": 2030,
+      "source_line_end": 2078,
+      "suite": "Imgproc_Sobel",
+      "name": "borderTypes",
+      "status": "PASS_NOW",
+      "reason": "Covered by test/imgproc/imgproc_morph_gradient_contract_test.cpp (ROI BORDER_ISOLATED semantics).",
+      "sha256": "5d33bb6c8f8558961eeae4d51d68c6cd5091a82bf6e5b68449270e1714d3771d",
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_filter.cases.cpp"
+    },
+    {
+      "source_file": "modules/imgproc/test/test_filter.cpp",
+      "source_line_start": 2267,
+      "source_line_end": 2288,
+      "suite": "Imgproc_Sobel",
+      "name": "s16_regression_13506",
+      "status": "PASS_NOW",
+      "reason": "Covered by test/imgproc/imgproc_morph_gradient_contract_test.cpp (CV_16S ksize=5 regression).",
+      "sha256": "0e569b6104052c706ebae98a3423ac11841b70f41fb9fdff62d88dce1910d0c4",
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_filter.cases.cpp"
+    },
+    {
+      "source_file": "modules/imgproc/test/test_contours.cpp",
+      "source_line_start": 482,
+      "source_line_end": 497,
+      "suite": "Imgproc_FindContours",
+      "name": "border",
+      "status": "PASS_NOW",
+      "reason": "Covered by test/imgproc/imgproc_copy_make_border_contract_test.cpp (upstream preamble semantics subset).",
+      "sha256": "b6aa452d6445ff0d645e4147aa637941d10800f1460be7f26d0e2af3d8157a75",
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_contours.cases.cpp"
     },
     {
       "source_file": "modules/imgproc/test/test_smooth_bitexact.cpp",
@@ -78,7 +221,18 @@
       "status": "PASS_NOW",
       "reason": "Covered by test/imgproc/imgproc_filter_contract_test.cpp (constant-image regression).",
       "sha256": "9dd3605314c9718786e05f82a2e7748d52ee8eb41993320711a947989b5db084",
-      "snapshot_file": "test/upstream/opencv/imgproc/d719c6d/test_smooth_bitexact.cases.cpp"
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_smooth_bitexact.cases.cpp"
+    },
+    {
+      "source_file": "modules/imgproc/test/test_canny.cpp",
+      "source_line_start": 161,
+      "source_line_end": 220,
+      "suite": "Canny_Modes",
+      "name": "accuracy",
+      "status": "PASS_NOW",
+      "reason": "Covered by test/imgproc/imgproc_canny_contract_test.cpp (fixed-parameter upstream subset).",
+      "sha256": "34d25832fb65dd8bd305f835ce9d1309cbe124c7a0392f4de1a118713d7c4d34",
+      "snapshot_file": "test/upstream/opencv/imgproc/opencv-4.13.0/test_canny.cases.cpp"
     }
   ]
 }

@@ -393,7 +393,23 @@ size_t total(const MatShape shape);
 size_t total(const MatShape shape, int startDim, int endDim = -1);
 
 // for fast gemm
+struct GemmPackedB
+{
+    MatShape shape;
+    MatShape strides;
+    int type = -1;
+    int k = 0;
+    int n = 0;
+    size_t packed_step = 0;
+    std::vector<float> packed_fp32;
+    std::vector<hfloat> packed_fp16;
+
+    bool empty() const;
+};
+
+GemmPackedB gemm_pack_b(const Mat& b, bool transB = false);
 Mat gemm(const Mat& a, const Mat& b, bool transA = false, bool transB = false);
+Mat gemm(const Mat& a, const GemmPackedB& packed_b, bool transA = false);
 Mat gemm(const Mat& a, const Mat& b, const Mat& b_scales, bool transA = false, bool transB = false);
 
 // TODO Mat inv, and other type mat operator.

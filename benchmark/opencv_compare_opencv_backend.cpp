@@ -216,6 +216,19 @@ double bench_opencv_gemm(int m,
         repeats);
 }
 
+double bench_opencv_gemm_prepack(int m,
+                                 int k,
+                                 int n,
+                                 int warmup,
+                                 int iters,
+                                 int repeats,
+                                 std::uint32_t seed_a,
+                                 std::uint32_t seed_b)
+{
+    // OpenCV public API has no explicit B-pack handle; this measures repeated gemm with the same B matrix.
+    return bench_opencv_gemm(m, k, n, warmup, iters, repeats, seed_a, seed_b);
+}
+
 double bench_opencv_gaussian(int rows,
                              int cols,
                              DepthId depth,
@@ -267,6 +280,165 @@ double bench_opencv_box(int rows,
         repeats);
 }
 
+double bench_opencv_lut(int rows,
+                        int cols,
+                        int channels,
+                        int warmup,
+                        int iters,
+                        int repeats,
+                        std::uint32_t seed)
+{
+    cv::Mat src(rows, cols, CV_MAKETYPE(CV_8U, channels));
+    cv::Mat dst;
+    cv::Mat lut(1, 256, CV_8UC1);
+    fill_u8(src, seed);
+
+    for (int i = 0; i < 256; ++i)
+    {
+        lut.at<uchar>(0, i) = static_cast<uchar>(255 - i);
+    }
+
+    return measure_ms(
+        [&]() { cv::LUT(src, lut, dst); },
+        [&]() { return checksum(dst); },
+        warmup,
+        iters,
+        repeats);
+}
+
+double bench_opencv_copy_make_border(int rows,
+                                     int cols,
+                                     DepthId depth,
+                                     int channels,
+                                     int top,
+                                     int bottom,
+                                     int left,
+                                     int right,
+                                     int warmup,
+                                     int iters,
+                                     int repeats,
+                                     std::uint32_t seed)
+{
+    const int type = CV_MAKETYPE(to_cv_depth(depth), channels);
+    cv::Mat src(rows, cols, type);
+    cv::Mat dst;
+    fill_by_depth(src, depth, seed);
+
+    return measure_ms(
+        [&]() {
+            cv::copyMakeBorder(
+                src, dst, top, bottom, left, right, cv::BORDER_REPLICATE, cv::Scalar::all(0.0));
+        },
+        [&]() { return checksum(dst); },
+        warmup,
+        iters,
+        repeats);
+}
+
+double bench_opencv_filter2d(int rows,
+                             int cols,
+                             DepthId depth,
+                             int channels,
+                             int warmup,
+                             int iters,
+                             int repeats,
+                             std::uint32_t seed)
+{
+    const int type = CV_MAKETYPE(to_cv_depth(depth), channels);
+    cv::Mat src(rows, cols, type);
+    cv::Mat dst;
+    fill_by_depth(src, depth, seed);
+
+    cv::Mat kernel(3, 3, CV_32FC1);
+    kernel.at<float>(0, 0) = 0.0f;
+    kernel.at<float>(0, 1) = 0.25f;
+    kernel.at<float>(0, 2) = 0.0f;
+    kernel.at<float>(1, 0) = 0.25f;
+    kernel.at<float>(1, 1) = 0.0f;
+    kernel.at<float>(1, 2) = 0.25f;
+    kernel.at<float>(2, 0) = 0.0f;
+    kernel.at<float>(2, 1) = 0.25f;
+    kernel.at<float>(2, 2) = 0.0f;
+
+    return measure_ms(
+        [&]() { cv::filter2D(src, dst, -1, kernel, cv::Point(-1, -1), 0.0, cv::BORDER_DEFAULT); },
+        [&]() { return checksum(dst); },
+        warmup,
+        iters,
+        repeats);
+}
+
+double bench_opencv_sep_filter2d(int rows,
+                                 int cols,
+                                 DepthId depth,
+                                 int channels,
+                                 int warmup,
+                                 int iters,
+                                 int repeats,
+                                 std::uint32_t seed)
+{
+    const int type = CV_MAKETYPE(to_cv_depth(depth), channels);
+    cv::Mat src(rows, cols, type);
+    cv::Mat dst;
+    fill_by_depth(src, depth, seed);
+
+    cv::Mat kernelX(1, 3, CV_32FC1);
+    kernelX.at<float>(0, 0) = 0.25f;
+    kernelX.at<float>(0, 1) = 0.5f;
+    kernelX.at<float>(0, 2) = 0.25f;
+    cv::Mat kernelY(3, 1, CV_32FC1);
+    kernelY.at<float>(0, 0) = 0.25f;
+    kernelY.at<float>(1, 0) = 0.5f;
+    kernelY.at<float>(2, 0) = 0.25f;
+
+    return measure_ms(
+        [&]() {
+            cv::sepFilter2D(src, dst, -1, kernelX, kernelY, cv::Point(-1, -1), 0.0, cv::BORDER_DEFAULT);
+        },
+        [&]() { return checksum(dst); },
+        warmup,
+        iters,
+        repeats);
+}
+
+double bench_opencv_warp_affine(int rows,
+                                int cols,
+                                DepthId depth,
+                                int channels,
+                                int warmup,
+                                int iters,
+                                int repeats,
+                                std::uint32_t seed)
+{
+    const int type = CV_MAKETYPE(to_cv_depth(depth), channels);
+    cv::Mat src(rows, cols, type);
+    cv::Mat dst;
+    fill_by_depth(src, depth, seed);
+
+    cv::Mat M(2, 3, CV_32FC1);
+    M.at<float>(0, 0) = 1.0f;
+    M.at<float>(0, 1) = 0.0f;
+    M.at<float>(0, 2) = -1.25f;
+    M.at<float>(1, 0) = 0.0f;
+    M.at<float>(1, 1) = 1.0f;
+    M.at<float>(1, 2) = 0.75f;
+
+    return measure_ms(
+        [&]() {
+            cv::warpAffine(src,
+                           dst,
+                           M,
+                           cv::Size(cols, rows),
+                           cv::INTER_LINEAR | cv::WARP_INVERSE_MAP,
+                           cv::BORDER_REPLICATE,
+                           cv::Scalar::all(0.0));
+        },
+        [&]() { return checksum(dst); },
+        warmup,
+        iters,
+        repeats);
+}
+
 double bench_opencv_sobel(int rows,
                           int cols,
                           int channels,
@@ -287,6 +459,29 @@ double bench_opencv_sobel(int rows,
         repeats);
 }
 
+double bench_opencv_canny(int rows,
+                          int cols,
+                          int warmup,
+                          int iters,
+                          int repeats,
+                          std::uint32_t seed,
+                          double threshold1,
+                          double threshold2,
+                          int aperture_size,
+                          bool l2gradient)
+{
+    cv::Mat src(rows, cols, CV_8UC1);
+    cv::Mat dst;
+    fill_u8(src, seed);
+
+    return measure_ms(
+        [&]() { cv::Canny(src, dst, threshold1, threshold2, aperture_size, l2gradient); },
+        [&]() { return checksum(dst); },
+        warmup,
+        iters,
+        repeats);
+}
+
 double bench_opencv_erode(int rows,
                           int cols,
                           int channels,
@@ -301,7 +496,7 @@ double bench_opencv_erode(int rows,
     fill_u8(src, seed);
 
     return measure_ms(
-        [&]() { cv::erode(src, dst, kernel); },
+        [&]() { cv::erode(src, dst, kernel, cv::Point(-1, -1), 1, cv::BORDER_DEFAULT); },
         [&]() { return checksum(dst); },
         warmup,
         iters,
@@ -322,7 +517,7 @@ double bench_opencv_dilate(int rows,
     fill_u8(src, seed);
 
     return measure_ms(
-        [&]() { cv::dilate(src, dst, kernel); },
+        [&]() { cv::dilate(src, dst, kernel, cv::Point(-1, -1), 1, cv::BORDER_DEFAULT); },
         [&]() { return checksum(dst); },
         warmup,
         iters,
