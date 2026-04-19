@@ -42,6 +42,9 @@ PR 中可由管理员通过评论触发 compare 模块：
 /cvh-compare off
 ```
 
+其中 `/cvh-compare on` 会在加上 compare label 的同时，立即触发
+独立的 `CI Compare On Demand` 工作流。
+
 ## 性能对比
 
 对比专区入口：

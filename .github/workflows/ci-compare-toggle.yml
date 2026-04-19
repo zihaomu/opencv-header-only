@@ -5,7 +5,7 @@ on:
     types: [created]
 
 permissions:
-  contents: read
+  contents: write
   issues: write
   pull-requests: write
 
@@ -54,6 +54,22 @@ jobs:
               labels: ['ci/run-opencv-compare']
             });
 
+      - name: Trigger Compare Workflow (repository_dispatch)
+        if: ${{ steps.parse.outputs.action == 'enable' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createDispatchEvent({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              event_type: 'cvh_compare_on',
+              client_payload: {
+                pr_number: Number('${{ steps.parse.outputs.pr_number }}'),
+                requested_by: context.payload.comment?.user?.login || 'unknown',
+                comment_id: context.payload.comment?.id || 0
+              }
+            });
+
       - name: Remove compare label
         if: ${{ steps.parse.outputs.action == 'disable' }}
         uses: actions/github-script@v7
@@ -69,4 +85,3 @@ jobs:
             } catch (err) {
               core.info(`remove label ignored: ${err.message}`);
             }
-

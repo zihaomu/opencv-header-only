@@ -43,6 +43,9 @@ PR admins can toggle compare jobs by comment:
 /cvh-compare off
 ```
 
+`/cvh-compare on` will add the compare label and trigger the dedicated
+`CI Compare On Demand` workflow immediately.
+
 ## Performance Comparison
 
 Compare workspace (entry):
