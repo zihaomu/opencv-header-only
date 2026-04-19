@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPARE_DIR="${ROOT_DIR}/opencv_compare"
+COMPARE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${COMPARE_DIR}/../.." && pwd)"
 SETUP_SCRIPT="${COMPARE_DIR}/setup_opencv_bench_slim.sh"
 
 PROFILE="${CVH_COMPARE_PROFILE:-quick}"
@@ -43,8 +43,8 @@ Environment:
   CVH_COMPARE_RENDER_MD (default: ${RENDER_MD}, set 0 to skip Markdown generation)
   CVH_COMPARE_BUILD_TYPE (default: ${BUILD_TYPE}, e.g. Release|RelWithDebInfo|Debug)
   CVH_COMPARE_BUILD_DIR (default: ${BUILD_DIR})
-  CVH_COMPARE_OUTPUT    (default: opencv_compare/results/current_compare_<profile>.csv, or baseline_* with --baseline)
-  CVH_COMPARE_OUTPUT_MD (default: opencv_compare/opencv_compare_<profile>.md, or baseline_* with --baseline)
+  CVH_COMPARE_OUTPUT    (default: benchmark/opencv_compare/results/current_compare_<profile>.csv, or baseline_* with --baseline)
+  CVH_COMPARE_OUTPUT_MD (default: benchmark/opencv_compare/opencv_compare_<profile>.md, or baseline_* with --baseline)
   CVH_COMPARE_OUTPUT_META (default: <output_csv>.meta.json)
   CVH_OPENCV_DIR        (default: ${OPENCV_DIR})
 USAGE
@@ -335,7 +335,6 @@ mkdir -p "${BUILD_DIR}" "$(dirname "${OUTPUT_CSV}")" "$(dirname "${OUTPUT_META}"
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
   -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
   -DCVH_BUILD_FULL_BACKEND=ON \
-  -DCVH_BUILD_LEGACY_CORE=ON \
   -DCVH_BUILD_BACKEND_KERNEL_SOURCES=ON \
   -DCVH_BUILD_TESTS=OFF \
   -DCVH_BUILD_BENCHMARKS=ON \

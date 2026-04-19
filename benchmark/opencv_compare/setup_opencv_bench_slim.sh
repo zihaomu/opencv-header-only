@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPARE_DIR="${ROOT_DIR}/opencv_compare"
+COMPARE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${COMPARE_DIR}/../.." && pwd)"
 
 OPENCV_REPO="${CVH_OPENCV_REPO:-https://github.com/zihaomu/opencv.git}"
 OPENCV_BRANCH="${CVH_OPENCV_BRANCH:-opencv-bench-slim-v4.13}"

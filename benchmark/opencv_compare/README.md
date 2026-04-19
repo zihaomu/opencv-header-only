@@ -55,47 +55,47 @@ These defaults can be overridden by `CVH_COMPARE_WARMUP/ITERS/REPEATS` or CLI fl
 1. Setup and build slim OpenCV:
 
 ```bash
-./opencv_compare/setup_opencv_bench_slim.sh --build
+./benchmark/opencv_compare/setup_opencv_bench_slim.sh --build
 ```
 
 2. Run compare benchmark and output CSV:
 
 ```bash
-./opencv_compare/run_compare.sh --profile quick
+./benchmark/opencv_compare/run_compare.sh --profile quick
 ```
 
 Run only one implementation mode:
 
 ```bash
-./opencv_compare/run_compare.sh --profile quick --impls full
-./opencv_compare/run_compare.sh --profile quick --impls lite
+./benchmark/opencv_compare/run_compare.sh --profile quick --impls full
+./benchmark/opencv_compare/run_compare.sh --profile quick --impls lite
 ```
 
 3. Generate/update baseline CSV + Markdown + metadata:
 
 ```bash
-./opencv_compare/run_compare.sh --profile stable --baseline
+./benchmark/opencv_compare/run_compare.sh --profile stable --baseline
 ```
 
 Default CSV path:
 
-- `opencv_compare/results/current_compare_quick.csv`
+- `benchmark/opencv_compare/results/current_compare_quick.csv`
   - includes `impl` column to distinguish `full` and `lite` rows.
 
 Default Markdown path:
 
-- `opencv_compare/opencv_compare_quick.md`
+- `benchmark/opencv_compare/opencv_compare_quick.md`
 
 Default metadata path:
 
-- `opencv_compare/results/current_compare_quick.csv.meta.json`
+- `benchmark/opencv_compare/results/current_compare_quick.csv.meta.json`
 
 ## CMake Switches
 
 The main repo adds:
 
 - `CVH_ENABLE_OPENCV_COMPARE` (default `OFF`)
-- `CVH_OPENCV_BENCH_DIR` (default `opencv_compare/opencv-bench-slim`)
+- `CVH_OPENCV_BENCH_DIR` (default `benchmark/opencv_compare/opencv-bench-slim`)
 
 When compare is enabled, targets `cvh_benchmark_compare` (full) and `cvh_benchmark_compare_lite` (lite) are built.
 

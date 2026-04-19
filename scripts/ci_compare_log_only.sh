@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPARE_RUN_SCRIPT="${ROOT_DIR}/opencv_compare/run_compare.sh"
+COMPARE_RUN_SCRIPT="${ROOT_DIR}/benchmark/opencv_compare/run_compare.sh"
 
 PROFILE="${CVH_COMPARE_PROFILE:-quick}"
 IMPLS="${CVH_COMPARE_IMPLS:-full,lite}"
@@ -32,4 +32,3 @@ else
   exit 2
 fi
 echo "opencv_compare_ci_report_end"
-
