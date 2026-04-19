@@ -198,7 +198,19 @@ void transpose2d_kernel_blocked(const unsigned char* src,
 
     const size_t elem_size = elem_size1 * static_cast<size_t>(channels);
     const DispatchMode mode = dispatch_mode();
-    if (mode != DispatchMode::ScalarOnly &&
+
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
+    // Temporary safety switch:
+    // x86 xsimd transpose has shown correctness regressions in CI for several
+    // element sizes/shapes (for example GEMM transposed-pack inputs).
+    // Keep scalar/tiled path on x86 until xsimd lane-transpose path is fixed.
+    const bool allow_xsimd_transpose = false;
+#else
+    const bool allow_xsimd_transpose = true;
+#endif
+
+    if (allow_xsimd_transpose &&
+        mode != DispatchMode::ScalarOnly &&
         try_transpose2d_xsimd_for_element_size(src, dst, rows, cols, elem_size))
     {
         set_last_dispatch_tag(DispatchTag::XSimd);
