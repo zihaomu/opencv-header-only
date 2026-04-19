@@ -2,18 +2,7 @@
 
 include("${CMAKE_CURRENT_LIST_DIR}/opencv_header_onlyTargets.cmake")
 
-# Compatibility targets for installed packages.
-# Preferred target is cvh::full_backend. Keep cvh::legacy_core and cvh::full as convenience aliases.
-if(TARGET cvh::full_backend AND NOT TARGET cvh::legacy_core)
-    add_library(cvh::legacy_core INTERFACE IMPORTED)
-    set_property(TARGET cvh::legacy_core PROPERTY INTERFACE_LINK_LIBRARIES cvh::full_backend)
-endif()
-
-if(TARGET cvh::legacy_core AND NOT TARGET cvh::full_backend)
-    add_library(cvh::full_backend INTERFACE IMPORTED)
-    set_property(TARGET cvh::full_backend PROPERTY INTERFACE_LINK_LIBRARIES cvh::legacy_core)
-endif()
-
+# Convenience target alias for installed packages.
 if(TARGET cvh::full_backend AND NOT TARGET cvh::full)
     add_library(cvh::full INTERFACE IMPORTED)
     set_property(TARGET cvh::full PROPERTY INTERFACE_LINK_LIBRARIES cvh::full_backend)

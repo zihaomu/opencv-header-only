@@ -36,7 +36,6 @@ cmake --build build --target test
 推荐脚本：
 
 ```bash
-./scripts/ci_smoke.sh
 ./scripts/ci_core_basic.sh
 ./scripts/ci_imgproc_quick_gate.sh
 ```
@@ -52,7 +51,6 @@ Trust gate policy 单一配置源位于 `benchmark/gate_policy.json`。
 ## Build Options
 
 - `CVH_BUILD_FULL_BACKEND=ON/OFF`：是否构建 Full backend（默认 `ON`）
-- `CVH_BUILD_LEGACY_CORE=ON/OFF`：`CVH_BUILD_FULL_BACKEND` 的兼容别名（默认 `ON`）
 - `CVH_BUILD_BACKEND_KERNEL_SOURCES=ON/OFF`：兼容保留开关（默认 `ON`）
 - `CVH_BUILD_TESTS=ON/OFF`：是否构建测试目标（默认 `ON`）
 
@@ -75,8 +73,6 @@ target_link_libraries(your_target PRIVATE cvh::headers)
 # target_link_libraries(your_target PRIVATE cvh::full_backend)
 # 或
 # target_link_libraries(your_target PRIVATE cvh::full)
-# legacy 兼容名仍可用：
-# target_link_libraries(your_target PRIVATE cvh::legacy_core)
 ```
 
 ## Mode Semantics

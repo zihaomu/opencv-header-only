@@ -22,15 +22,6 @@ on:
         type: boolean
 
 jobs:
-  smoke:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Configure Build Test (Smoke)
-        run: ./scripts/ci_smoke.sh
-
   core_basic:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_core_basic }}
     runs-on: ubuntu-latest

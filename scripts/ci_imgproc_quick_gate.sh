@@ -188,7 +188,7 @@ run_imgproc_benchmark() {
   mkdir -p "${build_dir}" "$(dirname "${out_csv}")" "$(dirname "${out_meta}")"
 
   cmake -S "${repo_dir}" -B "${build_dir}" \
-    -DCVH_BUILD_LEGACY_CORE=ON \
+    -DCVH_BUILD_FULL_BACKEND=ON \
     -DCVH_BUILD_BACKEND_KERNEL_SOURCES=ON \
     -DCVH_BUILD_TESTS=OFF \
     -DCVH_BUILD_BENCHMARKS=ON \

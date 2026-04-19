@@ -26,7 +26,6 @@ python3 -m unittest discover -s "${ROOT_DIR}/test/scripts" -p 'test_*.py'
 
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
   -DCVH_BUILD_FULL_BACKEND=ON \
-  -DCVH_BUILD_LEGACY_CORE=ON \
   -DCVH_BUILD_BACKEND_KERNEL_SOURCES=ON \
   -DCVH_BUILD_TESTS=ON
 

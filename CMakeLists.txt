@@ -18,7 +18,6 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
 option(CVH_BUILD_FULL_BACKEND "Build src/ backend library (CVH_FULL mode)" ON)
-option(CVH_BUILD_LEGACY_CORE "Deprecated alias of CVH_BUILD_FULL_BACKEND" ON)
 option(CVH_BUILD_BACKEND_KERNEL_SOURCES "Build sources requiring full backend kernels" ON)
 option(CVH_BUILD_TESTS "Build all test targets (smoke + core)" ON)
 option(CVH_BUILD_BENCHMARKS "Build benchmark targets" ON)
@@ -33,7 +32,7 @@ if(APPLE)
 endif()
 
 set(CVH_ENABLE_FULL_BACKEND OFF)
-if(CVH_BUILD_FULL_BACKEND OR CVH_BUILD_LEGACY_CORE)
+if(CVH_BUILD_FULL_BACKEND)
     set(CVH_ENABLE_FULL_BACKEND ON)
 endif()
 
@@ -109,10 +108,7 @@ endif()
 
 if(CVH_ENABLE_FULL_BACKEND)
     add_library(cvh_full_backend STATIC ${CVH_FULL_BACKEND_SOURCES})
-    # Compatibility aliases for existing scripts/docs using legacy naming.
-    add_library(cvh_legacy_core ALIAS cvh_full_backend)
     add_library(cvh::full_backend ALIAS cvh_full_backend)
-    add_library(cvh::legacy_core ALIAS cvh_full_backend)
     add_library(cvh::full ALIAS cvh_full_backend)
     set_target_properties(cvh_full_backend PROPERTIES EXPORT_NAME full_backend)
     target_compile_features(cvh_full_backend PUBLIC cxx_std_17)
