@@ -1,7 +1,11 @@
 #include "cvh.h"
+#include "cvh/core/detail/dispatch_control.h"
+#include "src/core/kernel/transpose_kernel.h"
 #include "gtest/gtest.h"
 
 #include <cstdlib>
+#include <cstring>
+#include <vector>
 
 using namespace cvh;
 
@@ -78,6 +82,93 @@ void expect_transpose_last2_3d_bytes_equal(const Mat& src, const Mat& dst)
                 }
             }
         }
+    }
+}
+
+class DispatchModeGuard
+{
+public:
+    explicit DispatchModeGuard(cpu::DispatchMode mode)
+        : previous_(cpu::dispatch_mode())
+    {
+        cpu::set_dispatch_mode(mode);
+    }
+
+    ~DispatchModeGuard()
+    {
+        cpu::set_dispatch_mode(previous_);
+    }
+
+private:
+    cpu::DispatchMode previous_;
+};
+
+void fill_with_byte_pattern(std::vector<uchar>& bytes)
+{
+    for (size_t i = 0; i < bytes.size(); ++i)
+    {
+        bytes[i] = static_cast<uchar>((i * 131u + 17u) & 0xFFu);
+    }
+}
+
+void transpose2d_reference_bytes(const uchar* src,
+                                 uchar* dst,
+                                 int rows,
+                                 int cols,
+                                 size_t elem_size)
+{
+    for (int row = 0; row < rows; ++row)
+    {
+        for (int col = 0; col < cols; ++col)
+        {
+            std::memcpy(dst + (static_cast<size_t>(col) * rows + row) * elem_size,
+                        src + (static_cast<size_t>(row) * cols + col) * elem_size,
+                        elem_size);
+        }
+    }
+}
+
+void expect_transpose_kernel_bytes_equal(int rows,
+                                         int cols,
+                                         size_t elem_size,
+                                         cpu::DispatchMode mode)
+{
+    const size_t byte_count = static_cast<size_t>(rows) * static_cast<size_t>(cols) * elem_size;
+
+    std::vector<uchar> src(byte_count);
+    std::vector<uchar> dst(byte_count);
+    std::vector<uchar> ref(byte_count);
+    fill_with_byte_pattern(src);
+
+    transpose2d_reference_bytes(src.data(), ref.data(), rows, cols, elem_size);
+
+    DispatchModeGuard guard(mode);
+    cpu::reset_last_dispatch_tag();
+
+    if (mode == cpu::DispatchMode::XSimdOnly)
+    {
+        try
+        {
+            cpu::transpose2d_kernel_blocked(src.data(), dst.data(), rows, cols, elem_size, 1);
+        }
+        catch (const Exception& e)
+        {
+            ASSERT_EQ(e.code, Error::StsNotImplemented)
+                << "unexpected exception code in xsimd-only transpose2d kernel";
+            return;
+        }
+        ASSERT_EQ(cpu::last_dispatch_tag(), cpu::DispatchTag::XSimd);
+    }
+    else
+    {
+        cpu::transpose2d_kernel_blocked(src.data(), dst.data(), rows, cols, elem_size, 1);
+        ASSERT_NE(cpu::last_dispatch_tag(), cpu::DispatchTag::Unknown);
+    }
+
+    ASSERT_EQ(dst.size(), ref.size());
+    for (size_t i = 0; i < byte_count; ++i)
+    {
+        ASSERT_EQ(dst[i], ref[i]) << "byte=" << i;
     }
 }
 
@@ -303,5 +394,53 @@ TEST(MatContract_TEST, transpose3d_last_two_swap_preserves_interleaved_bytes_for
 
         Mat dst = transpose(src);
         expect_transpose_last2_3d_bytes_equal(src, dst);
+    }
+}
+
+TEST(MatContract_TEST, transpose2d_kernel_blocked_matches_reference_for_elem_sizes_and_shapes_in_auto_mode)
+{
+    const int shapes[][2] = {
+        {11, 29},
+        {5, 7},
+        {13, 29},
+        {64, 65},
+    };
+
+    const size_t elem_sizes[] = {1, 2, 4, 8};
+
+    for (const auto& shape : shapes)
+    {
+        for (const size_t elem_size : elem_sizes)
+        {
+            SCOPED_TRACE(::testing::Message()
+                         << "rows=" << shape[0]
+                         << ", cols=" << shape[1]
+                         << ", elem_size=" << elem_size);
+            expect_transpose_kernel_bytes_equal(shape[0], shape[1], elem_size, cpu::DispatchMode::Auto);
+        }
+    }
+}
+
+TEST(MatContract_TEST, transpose2d_kernel_blocked_xsimd_only_mode_is_correct_or_reports_not_implemented)
+{
+    const int shapes[][2] = {
+        {11, 29},
+        {5, 7},
+        {13, 29},
+        {64, 65},
+    };
+
+    const size_t elem_sizes[] = {1, 2, 4, 8};
+
+    for (const auto& shape : shapes)
+    {
+        for (const size_t elem_size : elem_sizes)
+        {
+            SCOPED_TRACE(::testing::Message()
+                         << "rows=" << shape[0]
+                         << ", cols=" << shape[1]
+                         << ", elem_size=" << elem_size);
+            expect_transpose_kernel_bytes_equal(shape[0], shape[1], elem_size, cpu::DispatchMode::XSimdOnly);
+        }
     }
 }

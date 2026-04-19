@@ -9,6 +9,8 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 
@@ -76,11 +78,9 @@ void transpose2d_tiled(const unsigned char* src_raw, unsigned char* dst_raw, int
 template<typename T>
 void transpose2d_xsimd(const unsigned char* src_raw, unsigned char* dst_raw, int rows, int cols)
 {
-    const T* src = reinterpret_cast<const T*>(src_raw);
-    T* dst = reinterpret_cast<T*>(dst_raw);
-
     using batch_type = xsimd::batch<T>;
     constexpr int N = batch_type::size;
+    constexpr size_t lane_bytes = sizeof(T) * static_cast<size_t>(N);
     constexpr int TILE = 64; // Tile should be a multiple of N (which is usually 4, 8, 16)
 
     for_each_row_block(rows, cols, TILE, [&](int row0) {
@@ -98,14 +98,25 @@ void transpose2d_xsimd(const unsigned char* src_raw, unsigned char* dst_raw, int
                     batch_type matrix[N];
                     for (int i = 0; i < N; ++i)
                     {
-                        matrix[i] = batch_type::load_unaligned(src + static_cast<size_t>(row + i) * cols + col);
+                        std::array<T, N> lane {};
+                        const size_t src_byte_offset =
+                            (static_cast<size_t>(row + i) * static_cast<size_t>(cols) +
+                             static_cast<size_t>(col)) * sizeof(T);
+                        std::memcpy(lane.data(), src_raw + src_byte_offset, lane_bytes);
+                        matrix[i] = batch_type::load_unaligned(lane.data());
                     }
-                    
+
                     xsimd::transpose(matrix, matrix + N);
-                    
+
                     for (int i = 0; i < N; ++i)
                     {
-                        matrix[i].store_unaligned(dst + static_cast<size_t>(col + i) * rows + row);
+                        std::array<T, N> lane {};
+                        matrix[i].store_unaligned(lane.data());
+
+                        const size_t dst_byte_offset =
+                            (static_cast<size_t>(col + i) * static_cast<size_t>(rows) +
+                             static_cast<size_t>(row)) * sizeof(T);
+                        std::memcpy(dst_raw + dst_byte_offset, lane.data(), lane_bytes);
                     }
                 }
                 // Handle remaining columns in this block of N rows
@@ -113,7 +124,12 @@ void transpose2d_xsimd(const unsigned char* src_raw, unsigned char* dst_raw, int
                 {
                     for (int i = 0; i < N; ++i)
                     {
-                        dst[static_cast<size_t>(col) * rows + row + i] = src[static_cast<size_t>(row + i) * cols + col];
+                        std::memcpy(
+                            dst_raw + (static_cast<size_t>(col) * static_cast<size_t>(rows) +
+                                       static_cast<size_t>(row + i)) * sizeof(T),
+                            src_raw + (static_cast<size_t>(row + i) * static_cast<size_t>(cols) +
+                                       static_cast<size_t>(col)) * sizeof(T),
+                            sizeof(T));
                     }
                 }
             }
@@ -122,7 +138,12 @@ void transpose2d_xsimd(const unsigned char* src_raw, unsigned char* dst_raw, int
             {
                 for (int col = col0; col < col1; ++col)
                 {
-                    dst[static_cast<size_t>(col) * rows + row] = src[static_cast<size_t>(row) * cols + col];
+                    std::memcpy(
+                        dst_raw + (static_cast<size_t>(col) * static_cast<size_t>(rows) +
+                                   static_cast<size_t>(row)) * sizeof(T),
+                        src_raw + (static_cast<size_t>(row) * static_cast<size_t>(cols) +
+                                   static_cast<size_t>(col)) * sizeof(T),
+                        sizeof(T));
                 }
             }
         }
@@ -144,16 +165,16 @@ inline bool try_transpose2d_xsimd_for_element_size(const unsigned char* src,
     switch (elem_size)
     {
         case 1:
-            transpose2d_xsimd<uint8_t>(src, dst, rows, cols);
+            transpose2d_xsimd<int8_t>(src, dst, rows, cols);
             return true;
         case 2:
-            transpose2d_xsimd<uint16_t>(src, dst, rows, cols);
+            transpose2d_xsimd<int16_t>(src, dst, rows, cols);
             return true;
         case 4:
-            transpose2d_xsimd<uint32_t>(src, dst, rows, cols);
+            transpose2d_xsimd<float>(src, dst, rows, cols);
             return true;
         case 8:
-            transpose2d_xsimd<uint64_t>(src, dst, rows, cols);
+            transpose2d_xsimd<double>(src, dst, rows, cols);
             return true;
         default:
             return false;
@@ -197,29 +218,111 @@ inline int xsimd_probe_index_from_elem_size(size_t elem_size)
     }
 }
 
+inline bool transpose_xsimd_probe_log_enabled()
+{
+    static const bool enabled = [] {
+        const char* env = std::getenv("CVH_TRANSPOSE_XSIMD_PROBE_LOG");
+        if (env == nullptr || env[0] == '\0')
+        {
+            return false;
+        }
+        if (std::strcmp(env, "0") == 0 ||
+            std::strcmp(env, "false") == 0 ||
+            std::strcmp(env, "FALSE") == 0 ||
+            std::strcmp(env, "off") == 0 ||
+            std::strcmp(env, "OFF") == 0)
+        {
+            return false;
+        }
+        return true;
+    }();
+    return enabled;
+}
+
+inline void log_transpose_xsimd_probe(size_t elem_size, const char* stage, const char* result)
+{
+    if (!transpose_xsimd_probe_log_enabled())
+    {
+        return;
+    }
+    std::fprintf(stderr,
+                 "[cvh][transpose][xsimd-probe] elem_size=%zu stage=%s result=%s\n",
+                 elem_size,
+                 stage,
+                 result);
+    std::fflush(stderr);
+}
+
+inline void log_transpose_xsimd_probe_detail(size_t elem_size,
+                                             int rows,
+                                             int cols,
+                                             size_t mismatch_byte,
+                                             unsigned char got,
+                                             unsigned char expected)
+{
+    if (!transpose_xsimd_probe_log_enabled())
+    {
+        return;
+    }
+    std::fprintf(stderr,
+                 "[cvh][transpose][xsimd-probe] elem_size=%zu stage=probe-detail shape=%dx%d mismatch_byte=%zu got=%u expected=%u\n",
+                 elem_size,
+                 rows,
+                 cols,
+                 mismatch_byte,
+                 static_cast<unsigned int>(got),
+                 static_cast<unsigned int>(expected));
+    std::fflush(stderr);
+}
+
 inline bool probe_transpose2d_xsimd_elem_size(size_t elem_size)
 {
-    // Probe on small non-square shape to catch lane/layout issues.
-    constexpr int rows = 11;
-    constexpr int cols = 29;
-    const size_t count = static_cast<size_t>(rows) * static_cast<size_t>(cols) * elem_size;
+    // Probe multiple shapes to catch tail handling and non-square layout issues.
+    constexpr std::array<std::array<int, 2>, 4> kProbeShapes = {{
+        {{11, 29}},
+        {{5, 7}},
+        {{13, 29}},
+        {{64, 65}},
+    }};
 
-    std::vector<unsigned char> src(count);
-    std::vector<unsigned char> dst(count);
-    std::vector<unsigned char> ref(count);
-
-    for (size_t i = 0; i < count; ++i)
+    for (const auto& shape : kProbeShapes)
     {
-        src[i] = static_cast<unsigned char>((i * 131u + 17u) & 0xFFu);
+        const int rows = shape[0];
+        const int cols = shape[1];
+        const size_t count =
+            static_cast<size_t>(rows) * static_cast<size_t>(cols) * elem_size;
+
+        std::vector<unsigned char> src(count);
+        std::vector<unsigned char> dst(count);
+        std::vector<unsigned char> ref(count);
+
+        for (size_t i = 0; i < count; ++i)
+        {
+            src[i] = static_cast<unsigned char>((i * 131u + 17u) & 0xFFu);
+        }
+
+        if (!try_transpose2d_xsimd_for_element_size(src.data(), dst.data(), rows, cols, elem_size))
+        {
+            log_transpose_xsimd_probe_detail(elem_size, rows, cols, 0, 0, 0);
+            return false;
+        }
+
+        transpose2d_memcpy_fallback(src.data(), ref.data(), rows, cols, elem_size);
+        if (std::memcmp(dst.data(), ref.data(), count) != 0)
+        {
+            size_t mismatch_byte = 0;
+            while (mismatch_byte < count && dst[mismatch_byte] == ref[mismatch_byte])
+            {
+                ++mismatch_byte;
+            }
+            const unsigned char got = mismatch_byte < count ? dst[mismatch_byte] : 0;
+            const unsigned char expected = mismatch_byte < count ? ref[mismatch_byte] : 0;
+            log_transpose_xsimd_probe_detail(elem_size, rows, cols, mismatch_byte, got, expected);
+            return false;
+        }
     }
 
-    if (!try_transpose2d_xsimd_for_element_size(src.data(), dst.data(), rows, cols, elem_size))
-    {
-        return false;
-    }
-
-    transpose2d_memcpy_fallback(src.data(), ref.data(), rows, cols, elem_size);
-    return std::memcmp(dst.data(), ref.data(), count) == 0;
+    return true;
 }
 
 inline bool xsimd_transpose_allowed_for_elem_size(size_t elem_size)
@@ -235,25 +338,35 @@ inline bool xsimd_transpose_allowed_for_elem_size(size_t elem_size)
     const int idx = xsimd_probe_index_from_elem_size(elem_size);
     if (idx < 0)
     {
+        log_transpose_xsimd_probe(elem_size, "cache", "unsupported-elem-size");
         return false;
     }
 
     const int cached = states[static_cast<size_t>(idx)].load(std::memory_order_acquire);
     if (cached == 1)
     {
+        log_transpose_xsimd_probe(elem_size, "cache", "pass");
         return true;
     }
     if (cached == 2)
     {
+        log_transpose_xsimd_probe(elem_size, "cache", "fail");
         return false;
     }
 
     const bool ok = probe_transpose2d_xsimd_elem_size(elem_size);
     const int desired = ok ? 1 : 2;
     int expected = 0;
-    states[static_cast<size_t>(idx)].compare_exchange_strong(
+    const bool first_writer = states[static_cast<size_t>(idx)].compare_exchange_strong(
         expected, desired, std::memory_order_acq_rel);
-    return states[static_cast<size_t>(idx)].load(std::memory_order_acquire) == 1;
+
+    const int final_state = first_writer ?
+                            desired :
+                            states[static_cast<size_t>(idx)].load(std::memory_order_acquire);
+    log_transpose_xsimd_probe(elem_size,
+                              first_writer ? "probe" : "cache",
+                              final_state == 1 ? "pass" : "fail");
+    return final_state == 1;
 }
 
 }  // namespace

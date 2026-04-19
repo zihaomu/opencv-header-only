@@ -18,6 +18,13 @@
 - 自检与缓存状态：约 `188-257` 行
 - 分发入口与 xsimd/fallback 决策：约 `261-313` 行
 
+### 2026-04-19（本轮执行进展）
+
+- 已完成 P0：新增 `CVH_TRANSPOSE_XSIMD_PROBE_LOG` 日志开关，可在 CI/本地输出 `elem_size` 的 `probe/cache pass/fail`，并在 probe 失败时输出 `shape + mismatch_byte` 细节。
+- 已完成 P1：新增 kernel 级最小复现测试，直接调用 `transpose2d_kernel_blocked()`，覆盖 `elem_size=1/2/4/8` 与形状 `11x29 / 5x7 / 13x29 / 64x65`，并按字节对比 reference。
+- 已推进 P2：`transpose2d_xsimd` 改为位级安全的 lane 读写（`memcpy`），且按 `elem_size` 使用更稳定的 lane 类型映射（`1->int8_t`, `2->int16_t`, `4->float`, `8->double`）。在当前 x86 机器上，扩展 probe 形状全部通过。
+- 当前运行结果：`cvh_test_core` 全量通过（118 tests: 116 passed, 2 skipped），并且 xsimd probe 在 `elem_size=1/2/4/8` 均为 pass（本机验证）。
+
 ## 2. 当前保护逻辑（已落地）
 
 `transpose2d_kernel_blocked()` 会按 `elem_size = elem_size1 * channels` 做一次 probe：
