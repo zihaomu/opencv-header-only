@@ -33,6 +33,13 @@ def read_rows(path: Path):
     return rows
 
 
+def row_impl(row: dict) -> str:
+    impl = (row.get("impl", "") or "").strip().lower()
+    if not impl:
+        return "full"
+    return impl
+
+
 def md_table(headers, rows):
     out = []
     out.append("| " + " | ".join(headers) + " |")
@@ -45,6 +52,11 @@ def md_table(headers, rows):
 def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] = None) -> str:
     supported = [r for r in rows if r.get("status", "") == "OK"]
     unsupported = [r for r in rows if r.get("status", "") != "OK"]
+    impl_values = []
+    for r in rows:
+        impl = row_impl(r)
+        if impl not in impl_values:
+            impl_values.append(impl)
 
     speedups = [to_float(r.get("speedup", "0")) for r in supported if to_float(r.get("speedup", "0")) > 0.0]
     cvh_faster = sum(1 for x in speedups if x > 1.0)
@@ -69,6 +81,9 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
         lines.append("## Run Config")
         lines.append("")
         lines.append(f"- Profile: `{meta.get('profile', 'unknown')}`")
+        meta_impls = meta.get("impls", [])
+        if isinstance(meta_impls, list) and meta_impls:
+            lines.append(f"- Implementations: `{', '.join(meta_impls)}`")
         lines.append(
             f"- Samples: `warmup={meta.get('warmup', 'n/a')}, iters={meta.get('iters', 'n/a')}, repeats={meta.get('repeats', 'n/a')}`"
         )
@@ -92,13 +107,24 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
     lines.append(f"- Median speedup (`OpenCV/CVH`): `{median_speedup:.4f}`")
     lines.append(f"- Cases where CVH is faster (`OpenCV/CVH > 1`): `{cvh_faster}`")
     lines.append(f"- Cases where OpenCV is faster or equal (`OpenCV/CVH <= 1`): `{opencv_faster_or_equal}`")
+    for impl in impl_values:
+        impl_supported = sum(1 for r in supported if row_impl(r) == impl)
+        impl_unsupported = sum(1 for r in unsupported if row_impl(r) == impl)
+        lines.append(f"- `{impl}`: supported=`{impl_supported}`, unsupported=`{impl_unsupported}`")
     lines.append("")
 
     lines.append("## Supported Cases")
     lines.append("")
-    if supported:
+    has_supported_section = False
+    for impl in impl_values:
+        impl_rows = [r for r in supported if row_impl(r) == impl]
+        if not impl_rows:
+            continue
+        has_supported_section = True
+        lines.append(f"### {impl.upper()}")
+        lines.append("")
         supported_sorted = sorted(
-            supported,
+            impl_rows,
             key=lambda r: (
                 r.get("op", ""),
                 r.get("depth", ""),
@@ -125,15 +151,23 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
                 table_rows,
             )
         )
-    else:
+        lines.append("")
+    if not has_supported_section:
         lines.append("No supported rows.")
     lines.append("")
 
     lines.append("## Unsupported Cases")
     lines.append("")
-    if unsupported:
+    has_unsupported_section = False
+    for impl in impl_values:
+        impl_rows = [r for r in unsupported if row_impl(r) == impl]
+        if not impl_rows:
+            continue
+        has_unsupported_section = True
+        lines.append(f"### {impl.upper()}")
+        lines.append("")
         unsupported_sorted = sorted(
-            unsupported,
+            impl_rows,
             key=lambda r: (
                 r.get("op", ""),
                 r.get("depth", ""),
@@ -160,13 +194,15 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
                 table_rows,
             )
         )
-    else:
+        lines.append("")
+    if not has_unsupported_section:
         lines.append("No unsupported rows.")
     lines.append("")
 
     lines.append("## Notes")
     lines.append("")
     lines.append("- Speedup column is `OpenCV/CVH`; values `< 1` mean OpenCV is faster for that case.")
+    lines.append("- Results are grouped by implementation mode (`FULL` vs `LITE`) using the CSV `impl` column.")
     lines.append("- This report is generated automatically from the compare CSV.")
 
     return "\n".join(lines) + "\n"

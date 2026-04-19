@@ -10,11 +10,11 @@
 
 - `cvh_header_compile_smoke`：验证公开头可编译。
 - `cvh_include_only_smoke`：验证仅 `-Iinclude` 场景可编译运行。
-- `cvh_legacy_core_smoke`：legacy 预留项，待 `CVH_BUILD_LEGACY_CORE` 接线后恢复。
+- `cvh_full_backend_smoke`：验证 Full backend 目标链路可用。
 
 ### P1：主线优先
 
-- 逐步减少对 legacy 目标的依赖。
+- 逐步减少对兼容 legacy 名称的依赖。
 - 增加纯 header-only 路径 smoke。
 
 ### P2：发布门禁

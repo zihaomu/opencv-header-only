@@ -22,6 +22,7 @@ struct Args
     int warmup = 2;
     int iters = 20;
     int repeats = 5;
+    std::string impl;
     std::string output_csv;
 };
 
@@ -53,6 +54,15 @@ struct GemmCase
 };
 
 volatile double g_sink = 0.0;
+
+std::string default_impl_name()
+{
+#if defined(CVH_FULL)
+    return "full";
+#else
+    return "lite";
+#endif
+}
 
 std::string depth_to_name(DepthId depth)
 {
@@ -213,6 +223,7 @@ double safe_speedup(double cvh_ms, double opencv_ms)
 Args parse_args(int argc, char** argv)
 {
     Args args;
+    args.impl = default_impl_name();
     for (int i = 1; i < argc; ++i)
     {
         const std::string token(argv[i]);
@@ -245,10 +256,14 @@ Args parse_args(int argc, char** argv)
         {
             args.output_csv = next_value("--output");
         }
+        else if (token == "--impl")
+        {
+            args.impl = next_value("--impl");
+        }
         else if (token == "--help")
         {
             std::cout << "Usage: cvh_benchmark_compare [--profile quick|stable|full] [--warmup N] [--iters N] "
-                         "[--repeats N] [--output path]\n";
+                         "[--repeats N] [--impl full|lite] [--output path]\n";
             std::exit(0);
         }
         else
@@ -261,6 +276,11 @@ Args parse_args(int argc, char** argv)
     if (args.profile != "quick" && args.profile != "stable" && args.profile != "full")
     {
         std::cerr << "Unsupported profile: " << args.profile << " (expected quick/stable/full)\n";
+        std::exit(2);
+    }
+    if (args.impl.empty())
+    {
+        std::cerr << "impl must not be empty\n";
         std::exit(2);
     }
 
@@ -381,14 +401,14 @@ void append_gemm_rows(const Args& args, std::vector<CompareRow>& rows)
 
     for (const auto& shape : shapes)
     {
+#if defined(CVH_FULL)
         cvh::Mat a_cvh(std::vector<int>{shape.m, shape.k}, CV_32F);
         cvh::Mat b_cvh(std::vector<int>{shape.k, shape.n}, CV_32F);
-        cvh::Mat dst_cvh;
-
         constexpr std::uint32_t seed_a = 0xC3u;
         constexpr std::uint32_t seed_b = 0xD4u;
         fill_f32(a_cvh, seed_a);
         fill_f32(b_cvh, seed_b);
+        cvh::Mat dst_cvh;
 
         const double cvh_ms = measure_ms(
             [&]() { dst_cvh = cvh::gemm(a_cvh, b_cvh, false, false); },
@@ -447,6 +467,53 @@ void append_gemm_rows(const Args& args, std::vector<CompareRow>& rows)
         prepack_row.status = "OK";
         prepack_row.note = "pack_B_once";
         rows.push_back(prepack_row);
+#else
+        constexpr std::uint32_t seed_a = 0xC3u;
+        constexpr std::uint32_t seed_b = 0xD4u;
+        const double opencv_ms = bench_opencv_gemm(shape.m,
+                                                   shape.k,
+                                                   shape.n,
+                                                   args.warmup,
+                                                   args.iters,
+                                                   args.repeats,
+                                                   seed_a,
+                                                   seed_b);
+
+        CompareRow row;
+        row.profile = args.profile;
+        row.op = "GEMM";
+        row.depth = "CV_32F";
+        row.channels = 1;
+        row.shape = gemm_shape_to_string(shape);
+        row.cvh_ms = -1.0;
+        row.opencv_ms = opencv_ms;
+        row.speedup = 0.0;
+        row.status = "UNSUPPORTED";
+        row.note = "requires_CVH_FULL_backend";
+        rows.push_back(row);
+
+        const double opencv_prepack_ms = bench_opencv_gemm_prepack(shape.m,
+                                                                    shape.k,
+                                                                    shape.n,
+                                                                    args.warmup,
+                                                                    args.iters,
+                                                                    args.repeats,
+                                                                    seed_a,
+                                                                    seed_b);
+
+        CompareRow prepack_row;
+        prepack_row.profile = args.profile;
+        prepack_row.op = "GEMM_PREPACK";
+        prepack_row.depth = "CV_32F";
+        prepack_row.channels = 1;
+        prepack_row.shape = gemm_shape_to_string(shape);
+        prepack_row.cvh_ms = -1.0;
+        prepack_row.opencv_ms = opencv_prepack_ms;
+        prepack_row.speedup = 0.0;
+        prepack_row.status = "UNSUPPORTED";
+        prepack_row.note = "requires_CVH_FULL_backend";
+        rows.push_back(prepack_row);
+#endif
     }
 }
 
@@ -955,7 +1022,7 @@ void append_m2_rows(const Args& args, std::vector<CompareRow>& rows)
     }
 }
 
-void write_csv(const std::vector<CompareRow>& rows, const std::string& path)
+void write_csv(const std::vector<CompareRow>& rows, const std::string& path, const std::string& impl)
 {
     std::ofstream out(path);
     if (!out)
@@ -964,11 +1031,12 @@ void write_csv(const std::vector<CompareRow>& rows, const std::string& path)
         std::exit(2);
     }
 
-    out << "profile,op,depth,channels,shape,cvh_ms,opencv_ms,speedup,status,note\n";
+    out << "impl,profile,op,depth,channels,shape,cvh_ms,opencv_ms,speedup,status,note\n";
     out << std::fixed << std::setprecision(6);
     for (const auto& row : rows)
     {
-        out << row.profile << ","
+        out << impl << ","
+            << row.profile << ","
             << row.op << ","
             << row.depth << ","
             << row.channels << ","
@@ -1000,7 +1068,7 @@ int main(int argc, char** argv)
 
     if (!args.output_csv.empty())
     {
-        write_csv(rows, args.output_csv);
+        write_csv(rows, args.output_csv, args.impl);
     }
 
     int supported = 0;
@@ -1017,7 +1085,8 @@ int main(int argc, char** argv)
         }
     }
 
-    std::cout << "cvh_benchmark_compare: profile=" << args.profile
+    std::cout << "cvh_benchmark_compare: impl=" << args.impl
+              << ", profile=" << args.profile
               << ", rows=" << rows.size()
               << ", supported=" << supported
               << ", unsupported=" << unsupported

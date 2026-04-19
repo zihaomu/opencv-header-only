@@ -72,9 +72,11 @@ cmake --install build-release
 find_package(opencv_header_only CONFIG REQUIRED)
 target_link_libraries(your_target PRIVATE cvh::headers)
 # 若构建并安装了 Full backend，可链接：
-# target_link_libraries(your_target PRIVATE cvh::legacy_core)
+# target_link_libraries(your_target PRIVATE cvh::full_backend)
 # 或
 # target_link_libraries(your_target PRIVATE cvh::full)
+# legacy 兼容名仍可用：
+# target_link_libraries(your_target PRIVATE cvh::legacy_core)
 ```
 
 ## Mode Semantics
@@ -92,7 +94,7 @@ target_link_libraries(your_target PRIVATE cvh::headers)
 - `cvh_mode_lite_smoke`
 - `cvh_mode_full_smoke`（仅 Full backend 构建时）
 - `cvh_resize_dispatch_full_smoke`（仅 Full backend 构建时，验证 `resize/cvtColor/threshold` backend 注册生效）
-- `cvh_legacy_core_smoke`（仅 Full backend 构建时）
+- `cvh_full_backend_smoke`（仅 Full backend 构建时）
 - `cvh_test_core`（仅 Full backend 构建时）
 
 

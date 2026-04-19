@@ -7,6 +7,7 @@ COMPARE_DIR="${ROOT_DIR}/opencv_compare"
 SETUP_SCRIPT="${COMPARE_DIR}/setup_opencv_bench_slim.sh"
 
 PROFILE="${CVH_COMPARE_PROFILE:-quick}"
+IMPLS="${CVH_COMPARE_IMPLS:-full,lite}"
 WARMUP=""
 ITERS=""
 REPEATS=""
@@ -27,10 +28,11 @@ REPORT_SCRIPT="${COMPARE_DIR}/csv_to_markdown.py"
 
 usage() {
   cat <<USAGE
-Usage: $(basename "$0") [--profile quick|stable|full] [--warmup N] [--iters N] [--repeats N] [--output path] [--baseline]
+Usage: $(basename "$0") [--profile quick|stable|full] [--impls full|lite|full,lite] [--warmup N] [--iters N] [--repeats N] [--output path] [--baseline]
 
 Environment:
   CVH_COMPARE_PROFILE   (default: ${PROFILE})
+  CVH_COMPARE_IMPLS     (default: ${IMPLS}, values: full|lite|full,lite)
   CVH_COMPARE_WARMUP    (profile default, quick=1 stable=2 full=1)
   CVH_COMPARE_ITERS     (profile default, quick=5 stable=20 full=10)
   CVH_COMPARE_REPEATS   (profile default, quick=1 stable=5 full=3)
@@ -56,6 +58,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --warmup)
       WARMUP="$2"
+      shift 2
+      ;;
+    --impls)
+      IMPLS="$2"
       shift 2
       ;;
     --iters)
@@ -102,6 +108,38 @@ if [[ "${PROFILE}" != "quick" && "${PROFILE}" != "stable" && "${PROFILE}" != "fu
   echo "Unsupported profile: ${PROFILE} (expected quick|stable|full)" >&2
   exit 2
 fi
+
+IFS=',' read -r -a RAW_IMPLS <<< "${IMPLS}"
+REQUESTED_IMPLS=()
+for raw_impl in "${RAW_IMPLS[@]}"; do
+  impl="${raw_impl//[[:space:]]/}"
+  if [[ -z "${impl}" ]]; then
+    continue
+  fi
+
+  if [[ "${impl}" != "full" && "${impl}" != "lite" ]]; then
+    echo "Unsupported impl: ${impl} (expected full|lite)" >&2
+    exit 2
+  fi
+
+  impl_exists=0
+  for existing_impl in "${REQUESTED_IMPLS[@]-}"; do
+    if [[ "${existing_impl}" == "${impl}" ]]; then
+      impl_exists=1
+      break
+    fi
+  done
+  if [[ "${impl_exists}" == "0" ]]; then
+    REQUESTED_IMPLS+=("${impl}")
+  fi
+done
+
+if [[ "${#REQUESTED_IMPLS[@]}" -eq 0 ]]; then
+  echo "No valid impl selected. Use --impls full|lite|full,lite" >&2
+  exit 2
+fi
+
+IMPLS_NORMALIZED="$(IFS=,; echo "${REQUESTED_IMPLS[*]-}")"
 
 case "${PROFILE}" in
   quick)
@@ -192,6 +230,7 @@ write_compare_metadata() {
   env \
     META_OUTPUT="${output_meta}" \
     META_PROFILE="${PROFILE}" \
+    META_IMPLS="${IMPLS_NORMALIZED}" \
     META_WARMUP="${WARMUP}" \
     META_ITERS="${ITERS}" \
     META_REPEATS="${REPEATS}" \
@@ -220,6 +259,7 @@ import pathlib
 
 data = {
     "profile": os.environ["META_PROFILE"],
+    "impls": [s for s in os.environ["META_IMPLS"].split(",") if s],
     "warmup": int(os.environ["META_WARMUP"]),
     "iters": int(os.environ["META_ITERS"]),
     "repeats": int(os.environ["META_REPEATS"]),
@@ -244,6 +284,7 @@ data = {
 }
 data["fingerprint"] = {
     "profile": data["profile"],
+    "impls": data["impls"],
     "warmup": data["warmup"],
     "iters": data["iters"],
     "repeats": data["repeats"],
@@ -302,25 +343,86 @@ cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
   -DCVH_OPENCV_BENCH_DIR="${OPENCV_DIR}" \
   -DOpenCV_DIR="${OPENCV_CONFIG_DIR}"
 
-cmake --build "${BUILD_DIR}" --target cvh_benchmark_compare -j
+BENCH_TARGETS=()
+for impl in "${REQUESTED_IMPLS[@]-}"; do
+  if [[ "${impl}" == "full" ]]; then
+    BENCH_TARGETS+=("cvh_benchmark_compare")
+  else
+    BENCH_TARGETS+=("cvh_benchmark_compare_lite")
+  fi
+done
 
-BENCH_BIN="${BUILD_DIR}/cvh_benchmark_compare"
-if [[ ! -x "${BENCH_BIN}" ]]; then
-  echo "Missing benchmark binary: ${BENCH_BIN}" >&2
-  exit 2
-fi
+cmake --build "${BUILD_DIR}" --target "${BENCH_TARGETS[@]}" -j
 
-echo "opencv_compare: running benchmark (profile=${PROFILE}, warmup=${WARMUP}, iters=${ITERS}, repeats=${REPEATS}, threads=${THREADS}, omp_dynamic=${OMP_DYNAMIC_MODE}, omp_proc_bind=${OMP_PROC_BIND_MODE})"
-echo "opencv_compare: benchmark stage can take several minutes for quick profile with large kernels."
-OMP_NUM_THREADS="${THREADS}" \
-OMP_DYNAMIC="${OMP_DYNAMIC_MODE}" \
-OMP_PROC_BIND="${OMP_PROC_BIND_MODE}" \
-"${BENCH_BIN}" \
-  --profile "${PROFILE}" \
-  --warmup "${WARMUP}" \
-  --iters "${ITERS}" \
-  --repeats "${REPEATS}" \
-  --output "${OUTPUT_CSV}"
+TMP_OUTPUT_CSVS=()
+for impl in "${REQUESTED_IMPLS[@]-}"; do
+  if [[ "${impl}" == "full" ]]; then
+    BENCH_BIN="${BUILD_DIR}/cvh_benchmark_compare"
+  else
+    BENCH_BIN="${BUILD_DIR}/cvh_benchmark_compare_lite"
+  fi
+
+  if [[ ! -x "${BENCH_BIN}" ]]; then
+    echo "Missing benchmark binary for impl=${impl}: ${BENCH_BIN}" >&2
+    exit 2
+  fi
+
+  IMPL_OUTPUT_CSV="${OUTPUT_CSV}.${impl}.tmp.csv"
+  TMP_OUTPUT_CSVS+=("${IMPL_OUTPUT_CSV}")
+
+  echo "opencv_compare: running benchmark (impl=${impl}, profile=${PROFILE}, warmup=${WARMUP}, iters=${ITERS}, repeats=${REPEATS}, threads=${THREADS}, omp_dynamic=${OMP_DYNAMIC_MODE}, omp_proc_bind=${OMP_PROC_BIND_MODE})"
+  echo "opencv_compare: benchmark stage can take several minutes for quick profile with large kernels."
+  OMP_NUM_THREADS="${THREADS}" \
+  OMP_DYNAMIC="${OMP_DYNAMIC_MODE}" \
+  OMP_PROC_BIND="${OMP_PROC_BIND_MODE}" \
+  "${BENCH_BIN}" \
+    --profile "${PROFILE}" \
+    --impl "${impl}" \
+    --warmup "${WARMUP}" \
+    --iters "${ITERS}" \
+    --repeats "${REPEATS}" \
+    --output "${IMPL_OUTPUT_CSV}"
+done
+
+python3 - "${OUTPUT_CSV}" "${TMP_OUTPUT_CSVS[@]}" <<'PY'
+import csv
+import pathlib
+import sys
+
+if len(sys.argv) < 3:
+    raise SystemExit("merge requires output path + at least one input csv")
+
+out_path = pathlib.Path(sys.argv[1])
+in_paths = [pathlib.Path(p) for p in sys.argv[2:]]
+
+header = None
+rows = []
+for in_path in in_paths:
+    with in_path.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.reader(f)
+        try:
+            local_header = next(reader)
+        except StopIteration:
+            continue
+        if header is None:
+            header = local_header
+        elif local_header != header:
+            raise SystemExit(f"CSV header mismatch in {in_path}")
+        rows.extend(reader)
+
+if header is None:
+    raise SystemExit("no rows to merge")
+
+out_path.parent.mkdir(parents=True, exist_ok=True)
+with out_path.open("w", encoding="utf-8", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(header)
+    writer.writerows(rows)
+PY
+
+for impl_csv in "${TMP_OUTPUT_CSVS[@]}"; do
+  rm -f "${impl_csv}"
+done
 
 write_compare_metadata "${OUTPUT_META}" "${OUTPUT_CSV}" "${OUTPUT_MD}" "${OPENCV_CONFIG_DIR}"
 
@@ -337,4 +439,4 @@ if [[ "${RENDER_MD}" != "0" ]]; then
     --title "cvh vs OpenCV Benchmark Report (${PROFILE})"
 fi
 
-echo "opencv_compare_done: output_csv=${OUTPUT_CSV}, output_md=${OUTPUT_MD}, output_meta=${OUTPUT_META}, mode=$([[ "${MARK_AS_BASELINE}" == "1" ]] && printf '%s' baseline || printf '%s' current), profile=${PROFILE}, warmup=${WARMUP}, iters=${ITERS}, repeats=${REPEATS}, threads=${THREADS}, build_type=${BUILD_TYPE}, opencv_dir=${OPENCV_DIR}"
+echo "opencv_compare_done: output_csv=${OUTPUT_CSV}, output_md=${OUTPUT_MD}, output_meta=${OUTPUT_META}, mode=$([[ "${MARK_AS_BASELINE}" == "1" ]] && printf '%s' baseline || printf '%s' current), profile=${PROFILE}, impls=${IMPLS_NORMALIZED}, warmup=${WARMUP}, iters=${ITERS}, repeats=${REPEATS}, threads=${THREADS}, build_type=${BUILD_TYPE}, opencv_dir=${OPENCV_DIR}"
