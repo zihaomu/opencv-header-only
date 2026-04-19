@@ -23,7 +23,7 @@ option(CVH_BUILD_TESTS "Build all test targets (smoke + core)" ON)
 option(CVH_BUILD_BENCHMARKS "Build benchmark targets" ON)
 option(CVH_USE_OPENMP "Enable OpenMP acceleration in backend kernels when available" ON)
 option(CVH_ENABLE_OPENCV_COMPARE "Build cvh vs OpenCV compare benchmark target" OFF)
-set(CVH_OPENCV_BENCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/opencv_compare/opencv-bench-slim" CACHE PATH "Path to opencv-bench-slim source repository")
+set(CVH_OPENCV_BENCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/opencv_compare/opencv-bench-slim" CACHE PATH "Path to opencv-bench-slim source repository")
 
 if(APPLE)
     enable_language(OBJCXX)
