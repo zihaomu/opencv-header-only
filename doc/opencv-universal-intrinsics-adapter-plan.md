@@ -878,7 +878,7 @@ P3.4 决策结果：
 
 #### P3.6：`resize bilinear u8` OpenCV UI 试点
 
-状态：进行中，P3.6.1/P3.6.2/P3.6.3 已完成本机诊断。
+状态：已完成，P3.6.1/P3.6.2/P3.6.3/P3.6.4 已完成本机诊断。
 
 P3.6.1：建立 header-only resize benchmark
 
@@ -975,39 +975,172 @@ P3.6.3 本机 full 观察：
 
 P3.6.4：正确性和性能 gate
 
-状态：待执行。
+状态：已完成。
 
 - 正确性先对齐现有 scalar fallback，ROI/边界尺寸继续由 resize contract test 覆盖。
 - ARM 上记录 scalar vs OpenCV Universal Intrinsics 的 `CV_8UC1` 结果。
 - 若 `resize bilinear u8` 仍无法稳定达到 `>= 1.5x`，暂停 P4，转向 direct NEON header-only 或重新评估 OpenCV Universal Intrinsics adapter 的投入边界。
 
+正确性 gate 补强结果：
+
+- `cvh_resize_opencv_intrin_smoke` 扩展为 exact 2x `CV_8UC1 INTER_LINEAR` fast-path gate，同时验证公共 `cvh::resize` 入口和 direct detail 实现。
+- 正例覆盖纯尾部、小尺寸、刚好一个 SIMD lane、多 lane、lane 后尾部，以及非连续 ROI 输入。
+- 复用错误形状的既有 `dst`，验证 fast-path 会重新创建为正确的 2D 输出。
+- 负例覆盖非 2x `CV_8UC1`、exact 2x `CV_8UC3`、exact 2x `INTER_NEAREST`，要求支持谓词不误命中，公共入口结果继续等于 scalar fallback。
+- 支持谓词补充 `src.dims == 2`，与公共 resize contract 对齐，避免 detail gate 对非 2D Mat 表达错误支持。
+
+性能 gate 补强结果：
+
+- ARM 机器：`arm64 / Apple M5`。
+- benchmark 参数：`--profile full --warmup 5 --iters 30 --repeats 9`。
+- 结果写入：`benchmark/resize_bilinear_header_p364_arm_gate.csv`。
+
+| shape | scalar ms | public OpenCV UI ms | direct OpenCV UI ms | public speedup | direct speedup |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `640x480->320x240` | 0.173210 | 0.007254 | 0.006651 | 23.877275 | 26.041225 |
+| `1280x720->640x360` | 0.280864 | 0.013954 | 0.014176 | 20.127601 | 19.812075 |
+| `1920x1080->960x540` | 0.620665 | 0.030501 | 0.030526 | 20.348748 | 20.332083 |
+| `3840x2160->1920x1080` | 2.476376 | 0.125667 | 0.125619 | 19.705913 | 19.713322 |
+
+非 fast-path case 观察：
+
+- `641x479->321x239`、`1919x1080->961x541`、`1920x1080->853x480`、`3839x2160->1917x1079`、`3840x2160->1280x720` 仍标记为 `opencv_intrin_neon_no_resize_fastpath`。
+- 这些 case 的 public 入口继续走 scalar fallback；reuse 下 speedup 约 `0.91x` 到 `1.00x`，只说明未误覆盖 SIMD，不作为 OpenCV UI 收益样本。
+
+阶段判断：
+
+- exact 2x `CV_8UC1 INTER_LINEAR` 在 ARM 上稳定超过 `>=1.5x` gate，允许作为 P4 的首个受限 fast-path 候选。
+- 该结论不外推到通用比例 resize；通用 resize 仍需要独立设计坐标/权重表与 gather/pack 路径。
+- P4 若启动，应先只把已验证的 exact 2x `CV_8UC1` 路径纳入 `headers_fast`，不扩大到 C3/C4 或任意比例。
+
 P3 总体验收：
 
-- 正确性对齐 scalar。
-- ARM 上给出 scalar / opencv_intrin 的性能对比。
+- 正确性对齐 scalar：通过。
+- ARM 上给出 scalar / opencv_intrin 的性能对比：通过。
 - xsimd 只有在实现真实 `u8` vector path 后才进入该 kernel 的性能矩阵。
-- 至少一个热点证明 OpenCV Universal Intrinsics 有引入价值。
+- 至少一个热点证明 OpenCV Universal Intrinsics 有引入价值：exact 2x `CV_8UC1 INTER_LINEAR` 通过。
 
 ### P4：headers_fast profile
 
-如果 P3 结果成立，增加纯 header-only 加速 profile：
+状态：待启动，先完成 P4.0 再进入实现。
+
+P4 目标是在不改变默认 `cvh::headers` 行为的前提下，增加纯 header-only 加速 profile：
 
 ```cmake
 cvh::headers_fast
 ```
 
-该 target 只传播宏和 include，不编译 `.cpp`：
+项目对外确立三层使用结构：
+
+- `cvh::headers`：默认 header-only baseline，最小依赖、最少平台分支，不默认启用 SIMD 加速实验路径。
+- `cvh::headers_fast`：header-only + 已验证 SIMD fast-path，只传播宏和 include，不编译 `.cpp`，不链接 native backend。
+- `cvh::native`：需要编译 `.cpp` 的扩展层，可包含 native dispatch、OpenMP、xsimd GEMM/通用算子等非 header-only 实现。
+
+P4 明确不让 `cvh::headers_fast` 启用 xsimd。xsimd 保留为 legacy/experimental 手动开关，或留在 native/通用算子评估路径中；除非某个 kernel 有独立 benchmark 证明稳定收益，否则不进入 header-only fast profile。
+
+`cvh::headers_fast` 首轮只传播：
 
 ```cmake
-CVH_ENABLE_XSIMD=1
 CVH_ENABLE_OPENCV_INTRIN=1
 CVH_ENABLE_PLATFORM_INTRINSICS=1
 ```
+
+首批纳入范围只限已通过 gate 的 header-only SIMD fast-path：
+
+- `BGR2GRAY/RGB2GRAY` 的 OpenCV Universal Intrinsics 路径，RGB2GRAY 待补项继续按 P3 记录推进。
+- exact 2x `CV_8UC1 INTER_LINEAR` resize OpenCV Universal Intrinsics 路径。
+
+不纳入首轮 P4：
+
+- xsimd adapter。
+- 通用比例 resize。
+- `resize` 的 C3/C4 路径。
+- direct NEON / AVX 专项实现。
+
+P4.0：封存 P3.6.4
+
+状态：待执行。
+
+- commit P3.6.4 的正确性 gate、ARM benchmark CSV 和文档结论。
+- commit 后再开始 P4 代码修改，避免把 gate 结果和 profile 实现混在同一个变更里。
+
+验收：
+
+- 工作区只剩 P4 相关修改，或干净后再进入 P4.1。
+- P3.6.4 commit 信息能明确说明 exact 2x `CV_8UC1 INTER_LINEAR` 已通过 gate。
+
+P4.1：建立 `cvh::headers_fast` target
+
+状态：待执行。
+
+- 新增 `cvh_headers_fast` `INTERFACE` target 和 `cvh::headers_fast` alias。
+- `cvh_headers_fast` 继承 `cvh::headers` 的 include 和 C++17 要求。
+- `cvh_headers_fast` 只传播 `CVH_ENABLE_OPENCV_INTRIN=1`、`CVH_ENABLE_PLATFORM_INTRINSICS=1`。
+- ARM 构建时传播 OpenCV UI 需要的 NEON 宏；x86 后续按 OpenCV UI adapter 的可用宏扩展。
+- 不传播 `CVH_ENABLE_XSIMD=1`，不链接 `cvh::native`。
+
+验收：
+
+- 用户可以用 `target_link_libraries(app PRIVATE cvh::headers_fast)` 打开已验证 header-only fast-path。
+- `cvh::headers` 默认行为不变。
+- `cvh::headers_fast` 不引入任何 `.cpp` 编译单元。
+
+P4.2：增加 `headers_fast` smoke
+
+状态：待执行。
+
+- 新增或扩展 smoke，专门只链接 `cvh::headers_fast`。
+- 验证 `CVH_ENABLE_OPENCV_INTRIN == 1`。
+- 验证 `CVH_ENABLE_PLATFORM_INTRINSICS == 1`。
+- 验证 `CVH_ENABLE_XSIMD == 0`。
+- 验证不需要 native backend。
+
+验收：
+
+- CTest 增加 `headers_fast` smoke。
+- smoke 在不构建 `cvh::native` 的配置下通过。
+
+P4.3：迁移现有 OpenCV UI smoke/benchmark 到 profile 入口
+
+状态：待执行。
+
+- 将适合代表用户入口的 OpenCV UI smoke 改为链接 `cvh::headers_fast`，减少手写宏。
+- resize/cvtColor header-only benchmark 保留可观测 backend 字段，但优先通过 `cvh::headers_fast` 启用 OpenCV UI。
+- 保留少量显式宏测试，用于验证 adapter 在独立宏开启时仍可编译。
+
+验收：
+
+- `cvh_cvtcolor_opencv_intrin_smoke` 和 `cvh_resize_opencv_intrin_smoke` 至少有一个通过 `cvh::headers_fast` 路径覆盖。
+- benchmark 输出仍能区分 scalar baseline、public `headers_fast` 入口、direct detail 入口。
+
+P4.4：安装导出与用户文档
+
+状态：待执行。
+
+- 确认 install/export 后外部项目能引用 `cvh::headers_fast`。
+- 更新用户文档，明确三层结构和使用方式。
+- 明确 `headers_fast` 是 opt-in，不是默认 `headers`。
+
+验收：
+
+- build-tree 和 install-tree 都能解析 `cvh::headers_fast`。
+- 文档中示例不再建议用户手动组合 `CVH_ENABLE_OPENCV_INTRIN`、`CVH_ENABLE_PLATFORM_INTRINSICS`。
+
+P4.5：P4 验收矩阵
+
+状态：待执行。
+
+- 跑默认 `cvh::headers` smoke，确认 baseline 未变。
+- 跑 `cvh::headers_fast` smoke，确认 profile 宏正确。
+- 跑 OpenCV UI correctness smoke，确认 fast-path 正确。
+- 跑 resize/cvtColor benchmark quick，确认 profile 入口没有性能退化。
 
 验收：
 
 - `cvh::headers` 保持默认纯净。
 - `cvh::headers_fast` 仍然不构建 native backend。
+- `cvh::headers_fast` 不传播 `CVH_ENABLE_XSIMD=1`。
+- 不满足已验证 fast-path 条件的 API 继续回退到 scalar fallback。
 
 ### P5：常态维护
 

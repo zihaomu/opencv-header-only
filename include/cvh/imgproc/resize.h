@@ -36,6 +36,7 @@ inline bool resize_linear_u8c1_downsample2_opencv_intrin_supported(const Mat& sr
                                                                   int interpolation)
 {
     return interpolation == INTER_LINEAR &&
+           src.dims == 2 &&
            src.depth() == CV_8U &&
            src.channels() == 1 &&
            src.size[0] == dst_rows * 2 &&
