@@ -121,7 +121,7 @@ cvh::headers_fast
 - OpenCV Universal Intrinsics 是 `cvh::headers_fast` 的主要 portable SIMD 路径。
 - direct platform intrinsics 只能在 benchmark 证明 OpenCV Universal Intrinsics 不足时进入候选。
 
-xsimd 不再作为图像 kernel 的主性能路线。它会在 P5 中先隔离，再从公开路径和 vendor 中移除。
+xsimd 不再作为图像 kernel 的主性能路线。P5.2 起它只能通过 legacy/experimental 显式 opt-in 参与内部验证；默认 header-only target、`cvh::headers_fast`、安装导出和 header-only CI 都不能依赖它。
 
 ## Documentation Rules
 

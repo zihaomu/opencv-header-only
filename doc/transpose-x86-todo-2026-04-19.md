@@ -3,6 +3,8 @@
 日期：2026-04-19  
 适用场景：你切换到另一台机器（Ubuntu/x86_64）继续排查 `transpose` 的 xsimd 正确性问题。
 
+P5.2 更新：本文件只描述 legacy `.cpp` 实验路径的历史排查，不属于当前纯 header-only 公开 fast profile。xsimd 已进入 quarantine；新的公开性能工作以 `cvh::headers_fast` 的 OpenCV Universal Intrinsics 路径为准。
+
 ## 1. 背景与当前状态
 
 在 GitHub Actions（Ubuntu + x86_64）上曾出现两类失败：

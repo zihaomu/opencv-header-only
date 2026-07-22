@@ -23,6 +23,10 @@
 #error "cvh::headers_fast must not enable xsimd"
 #endif
 
+#if CVH_ENABLE_LEGACY_XSIMD
+#error "cvh::headers_fast must not enable legacy xsimd"
+#endif
+
 int main()
 {
     if (std::strcmp(cvh::detail::simd::backend_name(), "opencv_intrin") != 0)

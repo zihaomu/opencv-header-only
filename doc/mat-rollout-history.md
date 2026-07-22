@@ -2,6 +2,8 @@
 
 更新时间：2026-04-19
 
+P5.2 更新：本文件是历史归档。文中涉及 xsimd 作为性能主线的判断已经被当前 `doc/design.md` 与 P5 路线取代；当前公开 fast profile 只接受 scalar fallback + OpenCV Universal Intrinsics，xsimd 仅保留为隔离的 legacy/experimental 路径，等待 P5.3 移除。
+
 本文件合并了以下重复规划文档：
 
 - `doc/mat-basic-op-acceleration-plan.md`
@@ -14,7 +16,7 @@
 
 1. 语义冻结线：通道语义、shape/dims 合同、layout 边界。
 2. 能力补齐线：`Scalar` 接入、`Mat-Scalar` 运算、compare 路径。
-3. 性能优化线：dispatch 可观测、xsimd 覆盖扩展、平台专项优化。
+3. 性能优化线：dispatch 可观测、历史 xsimd 覆盖扩展、平台专项优化。
 
 三条线当前已可统一理解为：
 
@@ -41,7 +43,7 @@
 
 - 先修 dispatch 与可观测性，再补 kernel 覆盖。
 - 优先 `Mat-Mat`，再复用到 `Mat-Scalar`。
-- `xsimd` 为主线，平台专项优化后置且必须有回归证据。
+- 旧判断曾以 xsimd 为主线；当前路线已改为 OpenCV Universal Intrinsics 优先，平台专项优化必须有 benchmark 与 correctness 证据。
 
 ## 3. 当前文档归一（单一事实来源）
 

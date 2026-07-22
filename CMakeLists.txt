@@ -27,6 +27,7 @@ option(CVH_BUILD_BACKEND_KERNEL_SOURCES "Internal/development-only: include lega
 option(CVH_BUILD_TESTS "Build all test targets (smoke + core)" ON)
 option(CVH_BUILD_BENCHMARKS "Build benchmark targets" ON)
 option(CVH_USE_OPENMP "Internal/development-only: enable OpenMP in legacy .cpp experiments when available" ON)
+option(CVH_BUILD_LEGACY_XSIMD_TESTS "Internal/development-only: build quarantined legacy xsimd adapter smoke" OFF)
 option(CVH_ENABLE_OPENCV_COMPARE "Build cvh vs OpenCV compare benchmark target" OFF)
 set(CVH_OPENCV_BENCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/opencv_compare/opencv-bench-slim" CACHE PATH "Path to opencv-bench-slim source repository")
 
@@ -299,12 +300,14 @@ if(CVH_BUILD_TESTS)
     add_executable(cvh_simd_facade_scalar_smoke test/smoke/cvh_simd_facade_smoke.cpp)
     target_link_libraries(cvh_simd_facade_scalar_smoke PRIVATE cvh::headers)
 
-    add_executable(cvh_simd_facade_xsimd_smoke test/smoke/cvh_simd_facade_smoke.cpp)
-    target_link_libraries(cvh_simd_facade_xsimd_smoke PRIVATE cvh::headers)
-    target_compile_definitions(cvh_simd_facade_xsimd_smoke PRIVATE CVH_ENABLE_XSIMD=1)
-    target_include_directories(cvh_simd_facade_xsimd_smoke PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/cvh/3rdparty/xsimd/include
-    )
+    if(CVH_BUILD_LEGACY_XSIMD_TESTS)
+        add_executable(cvh_legacy_xsimd_facade_smoke test/smoke/cvh_simd_facade_smoke.cpp)
+        target_link_libraries(cvh_legacy_xsimd_facade_smoke PRIVATE cvh::headers)
+        target_compile_definitions(cvh_legacy_xsimd_facade_smoke PRIVATE CVH_ENABLE_XSIMD=1 CVH_ENABLE_LEGACY_XSIMD=1)
+        target_include_directories(cvh_legacy_xsimd_facade_smoke PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/cvh/3rdparty/xsimd/include
+        )
+    endif()
 
     add_executable(cvh_simd_facade_opencv_intrin_smoke test/smoke/cvh_simd_facade_smoke.cpp)
     target_link_libraries(cvh_simd_facade_opencv_intrin_smoke PRIVATE cvh::headers)
@@ -440,7 +443,9 @@ if(CVH_BUILD_TESTS)
         add_test(NAME cvh_resize_dispatch_lite_smoke COMMAND cvh_resize_dispatch_lite_smoke)
         add_test(NAME cvh_opencv_intrin_smoke COMMAND cvh_opencv_intrin_smoke)
         add_test(NAME cvh_simd_facade_scalar_smoke COMMAND cvh_simd_facade_scalar_smoke)
-        add_test(NAME cvh_simd_facade_xsimd_smoke COMMAND cvh_simd_facade_xsimd_smoke)
+        if(CVH_BUILD_LEGACY_XSIMD_TESTS)
+            add_test(NAME cvh_legacy_xsimd_facade_smoke COMMAND cvh_legacy_xsimd_facade_smoke)
+        endif()
         add_test(NAME cvh_simd_facade_opencv_intrin_smoke COMMAND cvh_simd_facade_opencv_intrin_smoke)
         add_test(NAME cvh_cvtcolor_opencv_intrin_smoke COMMAND cvh_cvtcolor_opencv_intrin_smoke)
         add_test(NAME cvh_resize_opencv_intrin_smoke COMMAND cvh_resize_opencv_intrin_smoke)

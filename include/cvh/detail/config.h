@@ -29,6 +29,12 @@
 #define CVH_ENABLE_XSIMD 0
 #endif
 
+// xsimd is quarantined as a legacy/experimental adapter while P5 removes it
+// from the public fast profile. Internal tests must opt in explicitly.
+#ifndef CVH_ENABLE_LEGACY_XSIMD
+#define CVH_ENABLE_LEGACY_XSIMD 0
+#endif
+
 #ifndef CVH_ENABLE_THREADS
 #define CVH_ENABLE_THREADS 0
 #endif

@@ -1,12 +1,20 @@
 #ifndef CVH_CORE_SIMD_XSIMD_ADAPTER_H
 #define CVH_CORE_SIMD_XSIMD_ADAPTER_H
 
+#include "cvh/detail/config.h"
 #include "scalar_adapter.h"
+
+#if !CVH_ENABLE_LEGACY_XSIMD
+#error "xsimd_adapter.h is legacy/experimental; define CVH_ENABLE_LEGACY_XSIMD=1 for internal xsimd checks"
+#endif
 
 #include "cvh/3rdparty/xsimd/include/xsimd/xsimd.hpp"
 
 #include <cstddef>
 #include <cstdint>
+
+// Legacy/experimental adapter kept only for quarantined internal checks.
+// Public header-only acceleration uses OpenCV Universal Intrinsics.
 
 namespace cvh {
 namespace detail {

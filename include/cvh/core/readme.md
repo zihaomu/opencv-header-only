@@ -35,7 +35,8 @@
 
 ### P3：性能层引入
 
-- 在不破坏 API 的前提下引入 `OpenMP`/`xsimd` 可选优化。
+- 在不破坏 API 的前提下引入 OpenCV Universal Intrinsics 和必要的平台专项 header-only 优化。
+- 历史 xsimd 路径只作为隔离实验保留，不再作为本目录的推荐优化方向。
 - 性能路径与标量路径保持统一语义并双向回归测试。
 
 ## 非目标与边界
