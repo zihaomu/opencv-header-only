@@ -255,38 +255,14 @@ if(CVH_BUILD_BENCHMARKS)
     add_executable(cvh_benchmark_cvtcolor_bgr2gray_header
         benchmark/cvtcolor_bgr2gray_header_benchmark.cpp
     )
-    target_link_libraries(cvh_benchmark_cvtcolor_bgr2gray_header PRIVATE cvh::headers)
+    target_link_libraries(cvh_benchmark_cvtcolor_bgr2gray_header PRIVATE cvh::headers_fast)
     target_compile_features(cvh_benchmark_cvtcolor_bgr2gray_header PRIVATE cxx_std_17)
-    target_compile_definitions(cvh_benchmark_cvtcolor_bgr2gray_header PRIVATE
-        CVH_ENABLE_OPENCV_INTRIN=1
-        CVH_ENABLE_PLATFORM_INTRINSICS=1
-    )
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64|ARM64|AARCH64)$")
-        target_compile_definitions(cvh_benchmark_cvtcolor_bgr2gray_header PRIVATE CV_NEON=1)
-    endif()
-    target_include_directories(cvh_benchmark_cvtcolor_bgr2gray_header PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/cvh/3rdparty/opencv_intrin
-    )
 
     add_executable(cvh_benchmark_resize_bilinear_header
         benchmark/resize_bilinear_header_benchmark.cpp
     )
-    target_link_libraries(cvh_benchmark_resize_bilinear_header PRIVATE cvh::headers)
+    target_link_libraries(cvh_benchmark_resize_bilinear_header PRIVATE cvh::headers_fast)
     target_compile_features(cvh_benchmark_resize_bilinear_header PRIVATE cxx_std_17)
-    target_compile_definitions(cvh_benchmark_resize_bilinear_header PRIVATE
-        CVH_ENABLE_OPENCV_INTRIN=1
-        CVH_ENABLE_PLATFORM_INTRINSICS=1
-    )
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64|ARM64|AARCH64)$")
-        target_compile_definitions(cvh_benchmark_resize_bilinear_header PRIVATE CV_NEON=1)
-    endif()
-    target_include_directories(cvh_benchmark_resize_bilinear_header PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/cvh/3rdparty/opencv_intrin
-    )
 endif()
 
 if(CVH_BUILD_TESTS)
@@ -301,6 +277,9 @@ if(CVH_BUILD_TESTS)
 
     add_executable(cvh_mode_lite_smoke test/smoke/cvh_mode_smoke.cpp)
     target_link_libraries(cvh_mode_lite_smoke PRIVATE cvh::headers)
+
+    add_executable(cvh_headers_fast_smoke test/smoke/cvh_headers_fast_smoke.cpp)
+    target_link_libraries(cvh_headers_fast_smoke PRIVATE cvh::headers_fast)
 
     add_executable(cvh_lite_pipeline_smoke test/smoke/cvh_lite_pipeline_smoke.cpp)
     target_link_libraries(cvh_lite_pipeline_smoke PRIVATE cvh::headers)
@@ -333,18 +312,10 @@ if(CVH_BUILD_TESTS)
     )
 
     add_executable(cvh_cvtcolor_opencv_intrin_smoke test/smoke/cvh_cvtcolor_opencv_intrin_smoke.cpp)
-    target_link_libraries(cvh_cvtcolor_opencv_intrin_smoke PRIVATE cvh::headers)
-    target_compile_definitions(cvh_cvtcolor_opencv_intrin_smoke PRIVATE CVH_ENABLE_OPENCV_INTRIN=1 CV_FORCE_SIMD128_CPP=1)
-    target_include_directories(cvh_cvtcolor_opencv_intrin_smoke PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/cvh/3rdparty/opencv_intrin
-    )
+    target_link_libraries(cvh_cvtcolor_opencv_intrin_smoke PRIVATE cvh::headers_fast)
 
     add_executable(cvh_resize_opencv_intrin_smoke test/smoke/cvh_resize_opencv_intrin_smoke.cpp)
-    target_link_libraries(cvh_resize_opencv_intrin_smoke PRIVATE cvh::headers)
-    target_compile_definitions(cvh_resize_opencv_intrin_smoke PRIVATE CVH_ENABLE_OPENCV_INTRIN=1 CV_FORCE_SIMD128_CPP=1)
-    target_include_directories(cvh_resize_opencv_intrin_smoke PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/cvh/3rdparty/opencv_intrin
-    )
+    target_link_libraries(cvh_resize_opencv_intrin_smoke PRIVATE cvh::headers_fast)
 
     add_executable(cvh_test_imgcodecs
         test/imgcodecs/imgcodecs_format_test.cpp
@@ -462,6 +433,7 @@ if(CVH_BUILD_TESTS)
         add_test(NAME cvh_header_compile_smoke COMMAND cvh_header_compile_smoke)
         add_test(NAME cvh_include_only_smoke COMMAND cvh_include_only_smoke)
         add_test(NAME cvh_mode_lite_smoke COMMAND cvh_mode_lite_smoke)
+        add_test(NAME cvh_headers_fast_smoke COMMAND cvh_headers_fast_smoke)
         add_test(NAME cvh_lite_pipeline_smoke COMMAND cvh_lite_pipeline_smoke)
         add_test(NAME cvh_resize_dispatch_lite_smoke COMMAND cvh_resize_dispatch_lite_smoke)
         add_test(NAME cvh_opencv_intrin_smoke COMMAND cvh_opencv_intrin_smoke)
@@ -507,7 +479,7 @@ set(CVH_INSTALL_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/opencv_header_only" CACH
 
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-install(TARGETS cvh_headers
+install(TARGETS cvh_headers cvh_headers_fast
     EXPORT opencv_header_onlyTargets
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )

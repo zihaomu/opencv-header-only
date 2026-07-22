@@ -724,7 +724,7 @@ int main(int argc, char** argv)
                     args,
                     operation.name,
                     cvh_bench::opencv_intrin_backend_name(),
-                    "public_cvtColor",
+                    "public_headers_fast_cvtColor",
                     allocation_mode,
                     shape,
                     public_entry,

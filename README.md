@@ -29,10 +29,11 @@ They often need:
 
 ## Modes
 
-`opencv-header-only` has a header-only default path and one optional compiled backend:
+`opencv-header-only` has two header-only CMake targets and one optional compiled backend:
 
-- **`Lite`** — the strategic path: header-only, lightweight, edge-friendly, and designed for constrained build environments, memory-sensitive deployments, and common CV workloads.
-- **`Native backend`** — optional compiled implementations in `src/`, enabled explicitly for platform integration, dispatch, and selected optimized paths.
+- **`cvh::headers`** — default header-only baseline: minimal dependencies, stable fallback behavior, and no experimental fast paths enabled by default.
+- **`cvh::headers_fast`** — opt-in header-only fast profile: enables validated SIMD fast paths through OpenCV Universal Intrinsics and platform intrinsic toggles, without compiling `.cpp` files or enabling xsimd.
+- **`cvh::native`** — optional compiled implementations in `src/`, enabled explicitly for platform integration, dispatch, and selected optimized paths.
 
 New features should prefer the header-only path first.
 
@@ -108,18 +109,37 @@ PR admins can toggle compare jobs by comment:
 
 ## Usage
 
-### Lite mode
+### Header-only baseline
 
-`Lite` is header-only.
+`cvh::headers` is the default header-only target.
 
-For Lite mode, you only need to include headers from `include/`.  
-No library build step is required.
+For direct include usage, you only need headers from `include/`. No library build step is required.
 
 Example integration:
 
 ```cpp
 #include <cvh/...>
 ```
+
+CMake integration:
+
+```cmake
+find_package(opencv_header_only CONFIG REQUIRED)
+target_link_libraries(app PRIVATE cvh::headers)
+```
+
+### Header-only fast profile
+
+`cvh::headers_fast` is an opt-in header-only profile for validated SIMD paths.
+
+It currently enables OpenCV Universal Intrinsics and platform intrinsic toggles through the target itself. Users should prefer this target over manually combining `CVH_ENABLE_OPENCV_INTRIN`, `CVH_ENABLE_PLATFORM_INTRINSICS`, or vendored OpenCV UI include paths.
+
+```cmake
+find_package(opencv_header_only CONFIG REQUIRED)
+target_link_libraries(app PRIVATE cvh::headers_fast)
+```
+
+`cvh::headers_fast` does not compile or link the native backend, and it does not enable xsimd.
 
 ### Native backend
 

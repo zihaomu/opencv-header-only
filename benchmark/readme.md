@@ -73,7 +73,7 @@
   - `full` profile 额外覆盖非 16 对齐宽度：`63x480`、`641x479`、`1919x1080`、`3839x2160`
   - 输出字段：`profile,op,backend,entry,allocation_mode,shape,width,height,pixels,simd_lanes,tail_pixels,tail_ratio,warmup,iters,repeats,min_ms_per_call,median_ms_per_call,mpix_per_sec,speedup_vs_scalar,checksum`
   - `MICRO_*` 行的 `speedup_vs_scalar=0`，只用于阶段成本诊断，不作为 scalar 加速比
-  - ARM 构建会为该 target 打开 `CV_NEON=1`，用于验证 OpenCV Universal Intrinsics NEON 路径；不链接 OpenCV，也不启用 native backend
+  - target 链接 `cvh::headers_fast`，由 profile 传播 OpenCV Universal Intrinsics 和平台 intrinsic 宏；不链接 OpenCV，也不启用 native backend
 
 - 可执行程序：`cvh_benchmark_resize_bilinear_header`
   - 源码：`benchmark/resize_bilinear_header_benchmark.cpp`
@@ -83,8 +83,8 @@
   - micro rows：`MICRO_RESIZE_LINEAR_TABLES`、`MICRO_RESIZE_LINEAR_U8_C1_PRECOMPUTED_TABLES`
   - `full` profile 额外覆盖非整数缩放和非 16 对齐宽度：`641x479->321x239`、`1919x1080->961x541`、`1920x1080->853x480`、`3839x2160->1917x1079`、`3840x2160->1280x720`
   - 输出字段：`profile,op,backend,entry,allocation_mode,shape,src_width,src_height,dst_width,dst_height,channels,pixels,simd_lanes,tail_pixels,tail_ratio,warmup,iters,repeats,min_ms_per_call,median_ms_per_call,mpix_per_sec,speedup_vs_scalar,checksum`
-  - ARM 构建会为该 target 打开 `CV_NEON=1`；exact 2x downsample case 会标记为 `opencv_intrin_neon`，其他缩放形态标记为 `opencv_intrin_neon_no_resize_fastpath`
-  - target 只链接 `cvh::headers`，不链接 OpenCV，也不启用 native backend
+  - target 链接 `cvh::headers_fast`，由 profile 传播 OpenCV Universal Intrinsics 和平台 intrinsic 宏；exact 2x downsample case 会标记为 `opencv_intrin_neon`，其他缩放形态标记为 `opencv_intrin_neon_no_resize_fastpath`
+  - 不链接 OpenCV，也不启用 native backend
 
 - 回归检查脚本：`scripts/check_imgproc_filter_benchmark_regression.py`
   - 对比 baseline/current CSV
@@ -219,7 +219,7 @@ cmake --build build-opencv-intrin-p3-bench -j --target cvh_benchmark_cvtcolor_bg
   --warmup 3 \
   --iters 10 \
   --repeats 7 \
-  --output benchmark/cvtcolor_bgr_rgb_gray_header_p341.csv
+  --output benchmark/cvtcolor_bgr_rgb_gray_header_p45.csv
 ```
 
 6. 运行 header-only resize bilinear OpenCV Universal Intrinsics 诊断：
@@ -237,7 +237,7 @@ cmake --build build-opencv-intrin-p3-bench -j --target cvh_benchmark_resize_bili
   --warmup 3 \
   --iters 10 \
   --repeats 7 \
-  --output benchmark/resize_bilinear_header_p363.csv
+  --output benchmark/resize_bilinear_header_p45.csv
 ```
 
 ## Imgproc 证据文件保留规则

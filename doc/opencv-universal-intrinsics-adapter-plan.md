@@ -1022,7 +1022,7 @@ P3 总体验收：
 
 ### P4：headers_fast profile
 
-状态：进行中，P4.0/P4.1 已完成，P4.2 待执行。
+状态：已完成，P4.0/P4.1/P4.2/P4.3/P4.4/P4.5 已完成。
 
 P4 目标是在不改变默认 `cvh::headers` 行为的前提下，增加纯 header-only 加速 profile：
 
@@ -1099,7 +1099,7 @@ P4.1：建立 `cvh::headers_fast` target
 
 P4.2：增加 `headers_fast` smoke
 
-状态：待执行。
+状态：已完成。
 
 - 新增或扩展 smoke，专门只链接 `cvh::headers_fast`。
 - 验证 `CVH_ENABLE_OPENCV_INTRIN == 1`。
@@ -1107,52 +1107,91 @@ P4.2：增加 `headers_fast` smoke
 - 验证 `CVH_ENABLE_XSIMD == 0`。
 - 验证不需要 native backend。
 
+落地结果：
+
+- 新增 `test/smoke/cvh_headers_fast_smoke.cpp`。
+- 新增 CTest：`cvh_headers_fast_smoke`。
+- smoke 只链接 `cvh::headers_fast`，不手写 `CVH_ENABLE_OPENCV_INTRIN`、`CVH_ENABLE_PLATFORM_INTRINSICS` 或 OpenCV UI include 路径。
+- 编译期验证 `CVH_LITE`、`CVH_ENABLE_OPENCV_INTRIN == 1`、`CVH_ENABLE_PLATFORM_INTRINSICS == 1`、`CVH_ENABLE_XSIMD == 0`，并禁止 `CVH_NATIVE`。
+- 运行期验证 `cvh::detail::simd::backend_name()` 为 `opencv_intrin`，并跑一个最小 exact 2x `CV_8UC1 INTER_LINEAR` resize。
+
 验收：
 
-- CTest 增加 `headers_fast` smoke。
-- smoke 在不构建 `cvh::native` 的配置下通过。
+- CTest 增加 `headers_fast` smoke：通过。
+- smoke 在不构建 `cvh::native` 的配置下通过：通过。
 
 P4.3：迁移现有 OpenCV UI smoke/benchmark 到 profile 入口
 
-状态：待执行。
+状态：已完成。
 
 - 将适合代表用户入口的 OpenCV UI smoke 改为链接 `cvh::headers_fast`，减少手写宏。
 - resize/cvtColor header-only benchmark 保留可观测 backend 字段，但优先通过 `cvh::headers_fast` 启用 OpenCV UI。
 - 保留少量显式宏测试，用于验证 adapter 在独立宏开启时仍可编译。
 
+落地结果：
+
+- `cvh_cvtcolor_opencv_intrin_smoke` 改为只链接 `cvh::headers_fast`，不再手写 OpenCV UI 宏或 include 路径。
+- `cvh_resize_opencv_intrin_smoke` 改为只链接 `cvh::headers_fast`，不再手写 OpenCV UI 宏或 include 路径。
+- `cvh_benchmark_cvtcolor_bgr2gray_header` 改为链接 `cvh::headers_fast`，由 profile 传播 OpenCV UI 宏、平台 intrinsic 宏和 vendored include root。
+- `cvh_benchmark_resize_bilinear_header` 改为链接 `cvh::headers_fast`，由 profile 传播 OpenCV UI 宏、平台 intrinsic 宏和 vendored include root。
+- `cvh_opencv_intrin_smoke` 和 `cvh_simd_facade_opencv_intrin_smoke` 保留显式宏路径，用于继续验证 adapter 独立开启时可编译。
+- benchmark CSV 的 public 入口名称改为 `public_headers_fast_cvtColor` 和 `public_headers_fast_resize`，继续与 `scalar/direct_detail` 和 OpenCV UI `direct_detail` 区分。
+
 验收：
 
-- `cvh_cvtcolor_opencv_intrin_smoke` 和 `cvh_resize_opencv_intrin_smoke` 至少有一个通过 `cvh::headers_fast` 路径覆盖。
-- benchmark 输出仍能区分 scalar baseline、public `headers_fast` 入口、direct detail 入口。
+- `cvh_cvtcolor_opencv_intrin_smoke` 和 `cvh_resize_opencv_intrin_smoke` 至少有一个通过 `cvh::headers_fast` 路径覆盖：通过，两个 smoke 都已迁移。
+- benchmark 输出仍能区分 scalar baseline、public `headers_fast` 入口、direct detail 入口：通过，entry 字段已显式标记 `public_headers_fast_*`。
 
 P4.4：安装导出与用户文档
 
-状态：待执行。
+状态：已完成。
 
 - 确认 install/export 后外部项目能引用 `cvh::headers_fast`。
 - 更新用户文档，明确三层结构和使用方式。
 - 明确 `headers_fast` 是 opt-in，不是默认 `headers`。
 
+落地结果：
+
+- `install(TARGETS ...)` 同时导出 `cvh_headers` 和 `cvh_headers_fast`。
+- install/export 后外部项目可以通过 `find_package(opencv_header_only CONFIG REQUIRED)` 引用 `cvh::headers` 和 `cvh::headers_fast`。
+- `README.md` 增加三层入口说明：`cvh::headers`、`cvh::headers_fast`、`cvh::native`。
+- `README.md` 明确 `cvh::headers_fast` 是 opt-in header-only fast profile，不启用 xsimd，不编译或链接 native backend。
+- 用户文档不再建议手动组合 `CVH_ENABLE_OPENCV_INTRIN`、`CVH_ENABLE_PLATFORM_INTRINSICS` 或 vendored OpenCV UI include 路径；推荐链接 `cvh::headers_fast`。
+
 验收：
 
-- build-tree 和 install-tree 都能解析 `cvh::headers_fast`。
-- 文档中示例不再建议用户手动组合 `CVH_ENABLE_OPENCV_INTRIN`、`CVH_ENABLE_PLATFORM_INTRINSICS`。
+- build-tree 和 install-tree 都能解析 `cvh::headers_fast`：通过。
+- 文档中示例不再建议用户手动组合 `CVH_ENABLE_OPENCV_INTRIN`、`CVH_ENABLE_PLATFORM_INTRINSICS`：通过。
 
 P4.5：P4 验收矩阵
 
-状态：待执行。
+状态：已完成。
 
 - 跑默认 `cvh::headers` smoke，确认 baseline 未变。
 - 跑 `cvh::headers_fast` smoke，确认 profile 宏正确。
 - 跑 OpenCV UI correctness smoke，确认 fast-path 正确。
 - 跑 resize/cvtColor benchmark quick，确认 profile 入口没有性能退化。
 
+落地结果：
+
+- 构建配置：`CVH_BUILD_NATIVE_BACKEND=OFF`、`CVH_BUILD_TESTS=ON`、`CVH_BUILD_BENCHMARKS=ON`。
+- `ctest --test-dir build-opencv-intrin-p3-bench --output-on-failure`：`16/16` 通过。
+- `scripts/sync_opencv_intrin.py --check`：通过，当前 vendored OpenCV UI 对齐 `4.13.0-457-gd48bf69f65 d48bf69f65444a13f8a34b8982b083c1b78fa0e8`。
+- 默认 `cvh::headers` smoke 的编译 flags 无 `CVH_ENABLE_OPENCV_INTRIN`、`CVH_ENABLE_PLATFORM_INTRINSICS`、`CVH_ENABLE_XSIMD` 或 `CVH_NATIVE`。
+- `cvh::headers_fast` smoke 的编译 flags 只包含 `CVH_ENABLE_OPENCV_INTRIN=1`、`CVH_ENABLE_PLATFORM_INTRINSICS=1` 和 ARM 下的 `CV_NEON=1`；无 `CVH_ENABLE_XSIMD`，无 `CVH_NATIVE`。
+- 新增 P4.5 quick benchmark CSV：`benchmark/cvtcolor_bgr_rgb_gray_header_p45.csv`。
+- 新增 P4.5 quick benchmark CSV：`benchmark/resize_bilinear_header_p45.csv`。
+- `public_headers_fast_cvtColor` 共 16 行，最小 `speedup_vs_scalar=1.175953`，无低于 scalar 的行。
+- `public_headers_fast_resize` 共 8 行，最小 `speedup_vs_scalar=19.605797`，无低于 scalar 的行。
+- `cvh_resize_opencv_intrin_smoke` 继续覆盖非 exact-2x、C3、`INTER_NEAREST`、tensor-like 输入等非 fast-path 条件的 public fallback，并通过。
+- `benchmark/readme.md` 已同步为 `cvh::headers_fast` profile 语义，不再把 header benchmark 描述为手写宏或只链接 `cvh::headers`。
+
 验收：
 
-- `cvh::headers` 保持默认纯净。
-- `cvh::headers_fast` 仍然不构建 native backend。
-- `cvh::headers_fast` 不传播 `CVH_ENABLE_XSIMD=1`。
-- 不满足已验证 fast-path 条件的 API 继续回退到 scalar fallback。
+- `cvh::headers` 保持默认纯净：通过。
+- `cvh::headers_fast` 仍然不构建 native backend：通过。
+- `cvh::headers_fast` 不传播 `CVH_ENABLE_XSIMD=1`：通过。
+- 不满足已验证 fast-path 条件的 API 继续回退到 scalar fallback：通过。
 
 ### P5：常态维护
 

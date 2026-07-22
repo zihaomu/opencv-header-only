@@ -704,7 +704,7 @@ int main(int argc, char** argv)
                 args,
                 "RESIZE_LINEAR_U8_C1",
                 cvh_bench::public_resize_backend_name(shape),
-                "public_resize",
+                "public_headers_fast_resize",
                 cvh_bench::allocation_mode_name(allocation_mode),
                 shape,
                 public_entry,
