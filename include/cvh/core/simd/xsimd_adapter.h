@@ -53,6 +53,16 @@ inline u16 setall_u16(std::uint16_t value)
     return scalar::setall_u16(value);
 }
 
+inline u8 load_u8(const std::uint8_t* src)
+{
+    return scalar::load_u8(src);
+}
+
+inline void load_deinterleave2_u8(const std::uint8_t* src, u8& c0, u8& c1)
+{
+    scalar::load_deinterleave2_u8(src, c0, c1);
+}
+
 inline void load_deinterleave3_u8(const std::uint8_t* src, u8& c0, u8& c1, u8& c2)
 {
     scalar::load_deinterleave3_u8(src, c0, c1, c2);
@@ -81,6 +91,11 @@ inline u32 expand_high_u16(const u16& value)
 inline f32 add(const f32& lhs, const f32& rhs)
 {
     return lhs + rhs;
+}
+
+inline u16 add(const u16& lhs, const u16& rhs)
+{
+    return scalar::add(lhs, rhs);
 }
 
 inline u32 add(const u32& lhs, const u32& rhs)
@@ -132,6 +147,12 @@ template <int shift>
 inline u16 rshr_pack_u32_to_u16(const u32& low, const u32& high)
 {
     return scalar::rshr_pack_u32_to_u16<shift>(low, high);
+}
+
+template <int shift>
+inline u8 rshr_pack_u16_to_u8(const u16& low, const u16& high)
+{
+    return scalar::rshr_pack_u16_to_u8<shift>(low, high);
 }
 
 inline u8 pack_u16_to_u8(const u16& low, const u16& high)

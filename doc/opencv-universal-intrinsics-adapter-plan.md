@@ -740,7 +740,7 @@ P3.1 当时未直接落地 `RGB2GRAY` 的原因：
 
 #### P3.4：`BGR/RGB2GRAY` 性能诊断与优化决策
 
-状态：待做。
+状态：已完成，结论是不进入 P4，进入 P3.5 选择第二个热点 kernel。
 
 目标：
 
@@ -755,6 +755,31 @@ P3.1 当时未直接落地 `RGB2GRAY` 的原因：
 - 将 `RGB2GRAY` 加入同一个 header-only benchmark，记录 BGR/RGB 两条编译期 `rgb_order` 路径的耗时差异。
 - 输出继续保留 `ms/call`、`MPix/s`、speedup、checksum、shape、backend。
 
+P3.4.1 落地结果：
+
+- `benchmark/cvtcolor_bgr2gray_header_benchmark.cpp` 扩展为 `BGR2GRAY/RGB2GRAY` 同测。
+- CSV schema 新增 `entry`、`allocation_mode`、`simd_lanes`、`tail_pixels`、`tail_ratio`。
+- `entry` 包含 `public_cvtColor` 和 `direct_detail`，用于区分公共 API 入口和直接 SIMD helper。
+- `allocation_mode` 包含 `reuse` 和 `recreate`，其中 `recreate` 每次调用前 `dst.release()`，用于强制暴露输出重建成本。
+- quick 结果写入 `benchmark/cvtcolor_bgr_rgb_gray_header_p341.csv`。
+
+P3.4.1 本机 quick 观察：
+
+| op | shape | scalar reuse median ms | public reuse median ms | direct SIMD reuse median ms | public/direct |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `BGR2GRAY` | `1920x1080` | 0.240967 | 0.203238 | 0.202137 | 1.0054 |
+| `BGR2GRAY` | `3840x2160` | 0.962138 | 0.817408 | 0.819667 | 0.9972 |
+| `RGB2GRAY` | `1920x1080` | 0.241138 | 0.201179 | 0.203350 | 0.9893 |
+| `RGB2GRAY` | `3840x2160` | 0.970117 | 0.818017 | 0.818233 | 0.9997 |
+
+阶段判断：
+
+- 1080p 和 4K 下 `public_cvtColor` 与 `direct_detail` 基本等价，公共入口不是 4K speedup 下降的主因。
+- 1080p 和 4K 下 `reuse` 与 `recreate` 基本等价，输出 `Mat` 重建不是 4K speedup 下降的主因。
+- 4K 下 `BGR2GRAY` 和 `RGB2GRAY` 的 direct SIMD median 分别为 `0.819667 ms` 和 `0.818233 ms`，P3.3 共享路径没有暴露额外成本。
+- quick 尺寸宽度均可被 16 整除，`tail_pixels=0`；尾部成本需要在后续 full/非对齐尺寸中继续确认。
+- 当前证据更指向内核指令序列或内存层面，需要进入步骤 2 拆 `v_load_deinterleave`、widen/mul/pack 和读写带宽。
+
 步骤 2：拆内核成本
 
 - 单独测 `v_load_deinterleave` 成本。
@@ -762,11 +787,53 @@ P3.1 当时未直接落地 `RGB2GRAY` 的原因：
 - 记录每个 shape 的主循环像素数、尾部像素数和尾部比例，重点覆盖非 16 对齐宽度。
 - 增加足够大的输入矩阵观察 4K 行为，判断是否已经转为内存带宽、cache 或写回主导。
 
+P3.4.2 落地结果：
+
+- `cvh::detail::simd` facade 新增 `load_u8`，同步实现 scalar / xsimd / opencv_intrin adapter，并加入 `cvh_simd_facade_smoke` 覆盖。
+- header-only benchmark 增加 micro rows：`MICRO_STORE_U8`、`MICRO_SCALAR_READ3_WRITE1_U8`、`MICRO_LOAD_DEINTERLEAVE_STORE_U8`、`MICRO_PLANAR_LOAD3_WIDEN_MUL_PACK_STORE_U8`。
+- `full` profile 增加尾部压力尺寸：`63x480`、`1919x1080`、`3839x2160`。
+- full 结果写入 `benchmark/cvtcolor_bgr_rgb_gray_header_p342.csv`。
+
+P3.4.2 本机 full 观察：
+
+| case | shape | tail ratio | median ms | MPix/s | speedup |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `BGR2GRAY direct SIMD` | `63x480` | 0.238095 | 0.007896 | 3829.88 | 0.965703 |
+| `BGR2GRAY direct SIMD` | `1919x1080` | 0.007817 | 0.204683 | 10125.50 | 1.192371 |
+| `BGR2GRAY direct SIMD` | `3839x2160` | 0.003907 | 0.822471 | 10082.11 | 1.186724 |
+| `BGR2GRAY direct SIMD` | `3840x2160` | 0.000000 | 0.824250 | 10062.97 | 1.178769 |
+| `BGR2GRAY direct SIMD` | `4096x2160` | 0.000000 | 0.879483 | 10059.72 | 1.180603 |
+
+4K micro cost：
+
+| micro row | `3840x2160` median ms | MPix/s | observation |
+| --- | ---: | ---: | --- |
+| `MICRO_STORE_U8` | 0.140338 | 59103.23 | write-only 成本明显小于完整 kernel |
+| `MICRO_LOAD_DEINTERLEAVE_STORE_U8` | 0.306550 | 27057.25 | `v_load_deinterleave + store` 不是唯一瓶颈 |
+| `MICRO_PLANAR_LOAD3_WIDEN_MUL_PACK_STORE_U8` | 0.728500 | 11385.59 | widen/mul/pack 相关路径占主要成本 |
+| `BGR2GRAY direct SIMD` | 0.824250 | 10062.97 | 与 planar arithmetic micro 同量级 |
+
+阶段判断：
+
+- 4K 附近 `3839x2160`、`3840x2160`、`4096x2160` 的 SIMD 吞吐都约 `10.0` GPix/s，`3839x2160` 非 16 对齐并没有明显退化；常规尾部不是 4K speedup 下降主因。
+- `63x480` 的尾部比例达到 `23.8%`，SIMD speedup 掉到 `0.965703`，说明高尾部比例的小宽度场景不适合当前 16-lane 主循环。
+- `MICRO_STORE_U8` 远快于完整 kernel，写回不是主因。
+- `MICRO_LOAD_DEINTERLEAVE_STORE_U8` 明显快于完整 kernel，单独的 `v_load_deinterleave` 也不是主因。
+- `MICRO_PLANAR_LOAD3_WIDEN_MUL_PACK_STORE_U8` 与完整 SIMD kernel 同量级，当前瓶颈更偏向 widen / multiply / accumulate / pack 指令序列，而不是外层入口、`Mat` 分配、尾部或纯内存写回。
+- 本轮 full 中 1080p 与 4K 的 direct SIMD speedup 都约 `1.18x`，P3.2 中 `1920x1080` 的 `1.46x` 更像 benchmark 运行波动或 scalar baseline 状态差异，不应作为 P4 gate 的唯一依据。
+
 步骤 3：给决策
 
 - 如果主要成本在 `cvh::cvtColor` 公共入口或 `dst.create`，优先优化 header-only 公共路径。
 - 如果主要成本在 OpenCV Universal Intrinsics 生成的 ARM 指令序列，考虑增加 header-only direct NEON 特化；该特化仍属于 header-only 加速层，不进入 native。
 - 如果 `BGR/RGB2GRAY` 仍无法稳定达到 `>= 1.5x`，暂停 P4，不继续扩大 kernel 迁移面，进入 P3.5 选择第二个热点验证 OpenCV UI 是否仍有引入价值。
+
+P3.4 决策结果：
+
+- `BGR/RGB2GRAY u8` 继续保留当前 OpenCV Universal Intrinsics header-only 路径，但不足以作为进入 P4 的依据。
+- 4K speedup 下降的主要原因不是公共入口、`Mat` 分配、常规尾部或单纯写回，更接近当前 widen / multiply / accumulate / pack 指令序列的成本。
+- 暂不为 `BGR/RGB2GRAY u8` 追加 direct NEON header-only 特化；该方向保留为后续平台专项优化备选。
+- 进入 P3.5，用第二个热点 kernel 验证 OpenCV Universal Intrinsics 是否在另一类图像处理模式中仍有价值。
 
 验收：
 
@@ -776,7 +843,7 @@ P3.1 当时未直接落地 `RGB2GRAY` 的原因：
 
 #### P3.5：选择第二个热点 kernel
 
-状态：待 P3.4 诊断结果决定。
+状态：已完成，选择 `resize bilinear u8`。
 
 候选：
 
@@ -789,6 +856,130 @@ P3.1 当时未直接落地 `RGB2GRAY` 的原因：
 - 如果 P3.4 证明收益不足但原因是该 kernel 特性不适合 UI，选择第二个热点继续验证，优先迁移 `resize bilinear u8`。
 - 如果 P3.4 证明 UI 路径在 ARM 上没有足够性价比，暂停 P4，不继续扩大 kernel 迁移面。
 - direct NEON 仍作为后续平台特化备选，不进入当前 header-only OpenCV UI adapter 的默认路径。
+
+选择结果：
+
+- 第二个热点选择 `cvh::resize(..., INTER_LINEAR)` 的 `CV_8U` 路径，首轮只做 `CV_8UC1`。
+- 不选择 `normalize + HWC to CHW` 作为当前第二热点，因为项目当前没有稳定的 normalize/layout-conversion 公共 API；先做 benchmark-only kernel 会绕开现有 `cvh` 兼容 surface，不能直接回答 OpenCV Universal Intrinsics 是否值得进入正式 header-only imgproc 路径。
+- 不继续扩大 `BGR/RGB2GRAY` 面，避免在单个低算术强度 kernel 上过度优化后误判 OpenCV Universal Intrinsics 的整体价值。
+
+选择 `resize bilinear u8` 的理由：
+
+- 它已经是公开 API，位于 `include/cvh/imgproc/resize.h`，并已有 `test/imgproc/imgproc_resize_contract_test.cpp` 覆盖。
+- 当前 header-only fallback 对 `INTER_LINEAR` 使用逐像素浮点坐标计算和插值，存在明确的算法层与 SIMD 层拆解空间。
+- 它能验证不同于 `BGR/RGB2GRAY` 的模式：坐标/权重表、4-tap 插值、边界处理、saturate/pack，以及 C1/C3/C4 通道扩展。
+- 旧有 imgproc benchmark 已覆盖 `RESIZE_LINEAR CV_8U`，但该 benchmark 链接 native；P3.5 后续必须新增只链接 `cvh::headers` 的专用 benchmark，避免混入 native 后端结果。
+
+边界：
+
+- 本轮仍只关注 CPU header-only，不启用 native backend。
+- P3.5 的结论只决定第二热点，不承诺进入 P4。
+- `resize` 的 direct NEON 特化仍是后续备选，不能抢在 OpenCV Universal Intrinsics 试点之前进入默认路径。
+
+#### P3.6：`resize bilinear u8` OpenCV UI 试点
+
+状态：进行中，P3.6.1/P3.6.2/P3.6.3 已完成本机诊断。
+
+P3.6.1：建立 header-only resize benchmark
+
+状态：已完成。
+
+- 新增专用 benchmark，对比当前 scalar fallback、公共 `cvh::resize` 入口和后续 direct detail 入口。
+- 输出 `ms/call`、`MPix/s`、输入尺寸、输出尺寸、通道数、dtype、allocation mode、checksum。
+- 尺寸至少覆盖 `640x480->320x240`、`1280x720->640x360`、`1920x1080->960x540`、`3840x2160->1920x1080`。
+- 额外覆盖非整数缩放和非 16 对齐宽度，避免只验证 2x downsample 的理想路径。
+- benchmark target 必须只链接 `cvh::headers`，不链接 OpenCV，也不链接 `cvh::native`。
+
+落地结果：
+
+- 新增 target：`cvh_benchmark_resize_bilinear_header`。
+- 新增源码：`benchmark/resize_bilinear_header_benchmark.cpp`。
+- target 只链接 `cvh::headers`，并显式打开 `CVH_ENABLE_OPENCV_INTRIN=1`、`CVH_ENABLE_PLATFORM_INTRINSICS=1`；ARM 构建打开 `CV_NEON=1`。
+- P3.6.1/P3.6.2 阶段尚未有 OpenCV Universal Intrinsics fast-path，因此当时 CSV 中公共入口 backend 标记为 `opencv_intrin_neon_no_resize_fastpath`，避免误读。
+- quick 结果写入 `benchmark/resize_bilinear_header_p361.csv`。
+- full 结果写入 `benchmark/resize_bilinear_header_p362.csv`。
+
+P3.6.2：拆算法层成本
+
+状态：已完成。
+
+- 单独记录坐标/权重计算成本，避免把当前 fallback 的逐像素 `floor/clamp` 成本误计为 SIMD 收益。
+- 将坐标/权重预计算和像素插值内核分开计时。
+- 先用 `CV_8UC1` 做基线；只有 C1 路径收益明确，再扩展 C3/C4。
+
+落地结果：
+
+- benchmark 增加 `MICRO_RESIZE_LINEAR_TABLES`，只测 `x/y` 坐标和 `wx/wy` 权重表构建。
+- benchmark 增加 `MICRO_RESIZE_LINEAR_U8_C1_PRECOMPUTED_TABLES`，只测复用预计算表后的 `CV_8UC1` scalar bilinear 像素内核。
+- 每个 case 启动前做 correctness self-check：`detail::resize_fallback`、`cvh::resize`、预计算表像素内核三者输出必须一致。
+
+P3.6.1/P3.6.2 本机 full 观察：
+
+| shape | direct scalar ms | public resize ms | precomputed scalar pixel ms | table build ms | precomputed speedup |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `640x480->320x240` | 0.123125 | 0.113563 | 0.081450 | 0.002004 | 1.511664 |
+| `1280x720->640x360` | 0.280046 | 0.281296 | 0.217896 | 0.003450 | 1.285229 |
+| `1920x1080->960x540` | 0.626088 | 0.630283 | 0.462958 | 0.005162 | 1.352363 |
+| `3840x2160->1920x1080` | 2.526583 | 2.531487 | 2.003046 | 0.010621 | 1.261371 |
+| `641x479->321x239` | 0.096400 | 0.096462 | 0.069792 | 0.002075 | 1.381253 |
+| `1920x1080->853x480` | 0.511246 | 0.513825 | 0.374946 | 0.004712 | 1.363519 |
+| `3839x2160->1917x1079` | 2.600571 | 2.598050 | 1.958304 | 0.010625 | 1.327971 |
+
+阶段判断：
+
+- `public_resize` 与 `detail::resize_fallback` 在主要尺寸上基本等价，公共入口不是 resize 当前成本主因。
+- 坐标/权重表构建成本很小，4K half resize 中约 `0.010621 ms`，远小于完整 scalar 的 `2.526583 ms`。
+- 预计算表后的 scalar 像素内核已经有 `1.24x` 到 `1.51x` 收益，说明当前 fallback 的逐像素坐标/权重计算是明确可优化点。
+- 后续评估 OpenCV Universal Intrinsics resize 时，不能只拿当前 naive scalar fallback 当唯一 baseline；应同时对比预计算表 scalar pixel kernel，否则会高估 SIMD adapter 的贡献。
+
+P3.6.3：实现最小 OpenCV Universal Intrinsics resize 路径
+
+状态：已完成。
+
+- 只覆盖 `INTER_LINEAR + CV_8UC1`。
+- 优先复用 `cvh::detail::simd` facade，业务 kernel 不直接写 `cv::v_*`。
+- 如需新增 facade API，限制在 resize 必需的 load/convert/mul/pack/store 操作。
+- scalar fallback 保持可用；不满足 fast-path 条件时回退到现有实现。
+
+落地结果：
+
+- `cvh::detail::simd` facade 新增 `load_deinterleave2_u8`、`add(u16)`、`rshr_pack_u16_to_u8<shift>`，同步实现 scalar / xsimd / opencv_intrin adapter。
+- `include/cvh/imgproc/resize.h` 新增 `resize_linear_u8c1_downsample2_opencv_intrin_impl`。
+- fast-path 条件严格限定为 `INTER_LINEAR + CV_8UC1 + exact 2x downsample`，即 `src_cols == dst_cols * 2` 且 `src_rows == dst_rows * 2`。
+- 2x half-resize 下现有 scalar 浮点公式等价为四个源像素平均，OpenCV UI 路径使用 `(p00 + p01 + p10 + p11 + 2) >> 2`，与当前 `saturate_cast<uchar>(round(...))` 语义 bit-exact。
+- 不满足 exact 2x 的 `CV_8UC1 INTER_LINEAR` 仍回退到原有 scalar fallback，避免用不完整 SIMD 路径覆盖通用 resize。
+- 新增 `cvh_resize_opencv_intrin_smoke`，覆盖 16-lane 主循环和尾部像素。
+- `benchmark/cvtcolor_bgr2gray_header_benchmark.cpp` 不受影响；resize 专用 benchmark 更新 scalar baseline，避免 fast-path 接入后污染 scalar direct 行。
+- quick 结果写入 `benchmark/resize_bilinear_header_p363.csv`。
+- full 结果写入 `benchmark/resize_bilinear_header_p364.csv`。
+
+P3.6.3 本机 full 观察：
+
+| shape | scalar ms | public OpenCV UI ms | direct OpenCV UI ms | public speedup | direct speedup |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `640x480->320x240` | 0.123079 | 0.005750 | 0.005733 | 21.405078 | 21.467427 |
+| `1280x720->640x360` | 0.294254 | 0.013792 | 0.013421 | 21.335755 | 21.925235 |
+| `1920x1080->960x540` | 0.624621 | 0.029467 | 0.029771 | 21.197518 | 20.980991 |
+| `3840x2160->1920x1080` | 2.521854 | 0.120996 | 0.122037 | 20.842476 | 20.664583 |
+
+非 fast-path case 观察：
+
+- `641x479->321x239`、`1919x1080->961x541`、`1920x1080->853x480`、`3839x2160->1917x1079`、`3840x2160->1280x720` 都标记为 `opencv_intrin_neon_no_resize_fastpath`。
+- 这些 case 的 `public_resize` 与 scalar direct 基本等价，说明 fast-path 条件没有误覆盖非 2x resize。
+
+阶段判断：
+
+- OpenCV Universal Intrinsics 对 exact 2x `CV_8UC1` bilinear downsample 明确有效，远超 P4 gate 的 `>= 1.5x` 门槛。
+- 该结论不能外推到任意比例 bilinear resize；通用 resize 仍是 gather/权重表问题，后续需要单独设计。
+- public 入口与 direct detail 基本等价，当前 fast-path 接入点没有明显额外开销。
+
+P3.6.4：正确性和性能 gate
+
+状态：待执行。
+
+- 正确性先对齐现有 scalar fallback，ROI/边界尺寸继续由 resize contract test 覆盖。
+- ARM 上记录 scalar vs OpenCV Universal Intrinsics 的 `CV_8UC1` 结果。
+- 若 `resize bilinear u8` 仍无法稳定达到 `>= 1.5x`，暂停 P4，转向 direct NEON header-only 或重新评估 OpenCV Universal Intrinsics adapter 的投入边界。
 
 P3 总体验收：
 

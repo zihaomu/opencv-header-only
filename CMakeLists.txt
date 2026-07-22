@@ -251,6 +251,24 @@ if(CVH_BUILD_BENCHMARKS)
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/include/cvh/3rdparty/opencv_intrin
     )
+
+    add_executable(cvh_benchmark_resize_bilinear_header
+        benchmark/resize_bilinear_header_benchmark.cpp
+    )
+    target_link_libraries(cvh_benchmark_resize_bilinear_header PRIVATE cvh::headers)
+    target_compile_features(cvh_benchmark_resize_bilinear_header PRIVATE cxx_std_17)
+    target_compile_definitions(cvh_benchmark_resize_bilinear_header PRIVATE
+        CVH_ENABLE_OPENCV_INTRIN=1
+        CVH_ENABLE_PLATFORM_INTRINSICS=1
+    )
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64|ARM64|AARCH64)$")
+        target_compile_definitions(cvh_benchmark_resize_bilinear_header PRIVATE CV_NEON=1)
+    endif()
+    target_include_directories(cvh_benchmark_resize_bilinear_header PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/cvh/3rdparty/opencv_intrin
+    )
 endif()
 
 if(CVH_BUILD_TESTS)
@@ -300,6 +318,13 @@ if(CVH_BUILD_TESTS)
     target_link_libraries(cvh_cvtcolor_opencv_intrin_smoke PRIVATE cvh::headers)
     target_compile_definitions(cvh_cvtcolor_opencv_intrin_smoke PRIVATE CVH_ENABLE_OPENCV_INTRIN=1 CV_FORCE_SIMD128_CPP=1)
     target_include_directories(cvh_cvtcolor_opencv_intrin_smoke PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/cvh/3rdparty/opencv_intrin
+    )
+
+    add_executable(cvh_resize_opencv_intrin_smoke test/smoke/cvh_resize_opencv_intrin_smoke.cpp)
+    target_link_libraries(cvh_resize_opencv_intrin_smoke PRIVATE cvh::headers)
+    target_compile_definitions(cvh_resize_opencv_intrin_smoke PRIVATE CVH_ENABLE_OPENCV_INTRIN=1 CV_FORCE_SIMD128_CPP=1)
+    target_include_directories(cvh_resize_opencv_intrin_smoke PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include/cvh/3rdparty/opencv_intrin
     )
 
@@ -426,6 +451,7 @@ if(CVH_BUILD_TESTS)
         add_test(NAME cvh_simd_facade_xsimd_smoke COMMAND cvh_simd_facade_xsimd_smoke)
         add_test(NAME cvh_simd_facade_opencv_intrin_smoke COMMAND cvh_simd_facade_opencv_intrin_smoke)
         add_test(NAME cvh_cvtcolor_opencv_intrin_smoke COMMAND cvh_cvtcolor_opencv_intrin_smoke)
+        add_test(NAME cvh_resize_opencv_intrin_smoke COMMAND cvh_resize_opencv_intrin_smoke)
         add_test(NAME cvh_test_imgcodecs COMMAND cvh_test_imgcodecs)
         add_test(NAME cvh_test_imgproc COMMAND cvh_test_imgproc)
         add_test(NAME cvh_test_highgui COMMAND cvh_test_highgui)

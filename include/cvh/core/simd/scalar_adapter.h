@@ -85,6 +85,26 @@ inline u16 setall_u16(std::uint16_t value)
     return result;
 }
 
+inline u8 load_u8(const std::uint8_t* src)
+{
+    u8 result;
+    for (std::size_t lane = 0; lane < u8::lanes; ++lane)
+    {
+        result.values[lane] = src[lane];
+    }
+    return result;
+}
+
+inline void load_deinterleave2_u8(const std::uint8_t* src, u8& c0, u8& c1)
+{
+    for (std::size_t lane = 0; lane < u8::lanes; ++lane)
+    {
+        const std::size_t offset = lane * 2;
+        c0.values[lane] = src[offset + 0];
+        c1.values[lane] = src[offset + 1];
+    }
+}
+
 inline void load_deinterleave3_u8(const std::uint8_t* src, u8& c0, u8& c1, u8& c2)
 {
     for (std::size_t lane = 0; lane < u8::lanes; ++lane)
@@ -139,6 +159,16 @@ inline f32 add(const f32& lhs, const f32& rhs)
     for (std::size_t lane = 0; lane < f32::lanes; ++lane)
     {
         result.values[lane] = lhs.values[lane] + rhs.values[lane];
+    }
+    return result;
+}
+
+inline u16 add(const u16& lhs, const u16& rhs)
+{
+    u16 result;
+    for (std::size_t lane = 0; lane < u16::lanes; ++lane)
+    {
+        result.values[lane] = static_cast<std::uint16_t>(lhs.values[lane] + rhs.values[lane]);
     }
     return result;
 }
@@ -244,6 +274,25 @@ inline u16 rshr_pack_u32_to_u16(const u32& low, const u32& high)
             std::min(low_value, static_cast<std::uint32_t>(std::numeric_limits<std::uint16_t>::max())));
         result.values[lane + u32::lanes] = static_cast<std::uint16_t>(
             std::min(high_value, static_cast<std::uint32_t>(std::numeric_limits<std::uint16_t>::max())));
+    }
+    return result;
+}
+
+template <int shift>
+inline u8 rshr_pack_u16_to_u8(const u16& low, const u16& high)
+{
+    static_assert(shift > 0, "rounding right shift requires a positive shift");
+
+    u8 result;
+    constexpr std::uint16_t round = std::uint16_t{1} << (shift - 1);
+    for (std::size_t lane = 0; lane < u16::lanes; ++lane)
+    {
+        const std::uint16_t low_value = static_cast<std::uint16_t>((low.values[lane] + round) >> shift);
+        const std::uint16_t high_value = static_cast<std::uint16_t>((high.values[lane] + round) >> shift);
+        result.values[lane] = static_cast<std::uint8_t>(
+            std::min(low_value, static_cast<std::uint16_t>(std::numeric_limits<std::uint8_t>::max())));
+        result.values[lane + u16::lanes] = static_cast<std::uint8_t>(
+            std::min(high_value, static_cast<std::uint16_t>(std::numeric_limits<std::uint8_t>::max())));
     }
     return result;
 }

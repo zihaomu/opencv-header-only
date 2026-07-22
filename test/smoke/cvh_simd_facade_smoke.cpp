@@ -46,13 +46,52 @@ int main()
     }
 
     constexpr std::size_t u8_lanes = simd::u8_lanes();
+    std::array<std::uint8_t, u8_lanes * 2> interleaved2 {};
     std::array<std::uint8_t, u8_lanes * 3> interleaved {};
+    std::array<std::uint8_t, u8_lanes> packed {};
     std::array<std::uint8_t, u8_lanes> channel0 {};
     for (std::size_t lane = 0; lane < u8_lanes; ++lane)
     {
+        interleaved2[lane * 2 + 0] = static_cast<std::uint8_t>(lane * 4 + 1);
+        interleaved2[lane * 2 + 1] = static_cast<std::uint8_t>(lane * 6 + 3);
         interleaved[lane * 3 + 0] = static_cast<std::uint8_t>(lane * 7 + 3);
         interleaved[lane * 3 + 1] = static_cast<std::uint8_t>(lane * 5 + 11);
         interleaved[lane * 3 + 2] = static_cast<std::uint8_t>(lane * 3 + 19);
+        packed[lane] = static_cast<std::uint8_t>(lane * 9 + 5);
+    }
+
+    simd::store_u8(channel0.data(), simd::load_u8(packed.data()));
+    for (std::size_t lane = 0; lane < u8_lanes; ++lane)
+    {
+        if (channel0[lane] != packed[lane])
+        {
+            return 3;
+        }
+    }
+
+    simd::u8 d0;
+    simd::u8 d1;
+    simd::load_deinterleave2_u8(interleaved2.data(), d0, d1);
+    simd::u16 d0_low;
+    simd::u16 d0_high;
+    simd::u16 d1_low;
+    simd::u16 d1_high;
+    simd::expand_u8(d0, d0_low, d0_high);
+    simd::expand_u8(d1, d1_low, d1_high);
+    simd::store_u8(
+        channel0.data(),
+        simd::rshr_pack_u16_to_u8<1>(
+            simd::add(d0_low, d1_low),
+            simd::add(d0_high, d1_high)));
+    for (std::size_t lane = 0; lane < u8_lanes; ++lane)
+    {
+        const int expected = (static_cast<int>(interleaved2[lane * 2]) +
+                              static_cast<int>(interleaved2[lane * 2 + 1]) +
+                              1) >> 1;
+        if (channel0[lane] != static_cast<std::uint8_t>(expected))
+        {
+            return 4;
+        }
     }
 
     simd::u8 c0;
@@ -83,9 +122,9 @@ int main()
     {
         if (channel0[lane] != interleaved[lane * 3])
         {
-            return 3;
+            return 5;
         }
     }
 
-    return simd::backend_name()[0] != '\0' ? 0 : 4;
+    return simd::backend_name()[0] != '\0' ? 0 : 6;
 }

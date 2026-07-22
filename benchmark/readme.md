@@ -66,10 +66,25 @@
 
 - 可执行程序：`cvh_benchmark_cvtcolor_bgr2gray_header`
   - 源码：`benchmark/cvtcolor_bgr2gray_header_benchmark.cpp`
-  - 覆盖：header-only `CV_8UC3 BGR2GRAY`
-  - 对比：同一输入下的 scalar helper 与 `CVH_ENABLE_OPENCV_INTRIN=1` 路径
-  - 输出字段：`profile,op,backend,shape,width,height,pixels,warmup,iters,repeats,min_ms_per_call,median_ms_per_call,mpix_per_sec,speedup_vs_scalar,checksum`
+  - 覆盖：header-only `CV_8UC3 BGR2GRAY/RGB2GRAY`
+  - 对比：同一输入下的 scalar direct helper、`cvh::cvtColor` 公共入口、`detail::*_simd_impl` 直接入口
+  - 分配模式：`reuse` 预分配并复用输出 `Mat`，`recreate` 每次调用前 `dst.release()` 强制重建输出 buffer
+  - micro rows：`MICRO_STORE_U8`、`MICRO_SCALAR_READ3_WRITE1_U8`、`MICRO_LOAD_DEINTERLEAVE_STORE_U8`、`MICRO_PLANAR_LOAD3_WIDEN_MUL_PACK_STORE_U8`
+  - `full` profile 额外覆盖非 16 对齐宽度：`63x480`、`641x479`、`1919x1080`、`3839x2160`
+  - 输出字段：`profile,op,backend,entry,allocation_mode,shape,width,height,pixels,simd_lanes,tail_pixels,tail_ratio,warmup,iters,repeats,min_ms_per_call,median_ms_per_call,mpix_per_sec,speedup_vs_scalar,checksum`
+  - `MICRO_*` 行的 `speedup_vs_scalar=0`，只用于阶段成本诊断，不作为 scalar 加速比
   - ARM 构建会为该 target 打开 `CV_NEON=1`，用于验证 OpenCV Universal Intrinsics NEON 路径；不链接 OpenCV，也不启用 native backend
+
+- 可执行程序：`cvh_benchmark_resize_bilinear_header`
+  - 源码：`benchmark/resize_bilinear_header_benchmark.cpp`
+  - 覆盖：header-only `CV_8UC1 resize INTER_LINEAR`
+  - 对比：同一输入下的 scalar `detail::resize_fallback_impl_typed<uchar>` 直接入口、`cvh::resize` 公共入口、OpenCV Universal Intrinsics direct detail 入口、预计算坐标/权重表后的 scalar 像素内核
+  - 分配模式：`reuse` 预分配并复用输出 `Mat`，`recreate` 每次调用前 `dst.release()` 强制重建输出 buffer
+  - micro rows：`MICRO_RESIZE_LINEAR_TABLES`、`MICRO_RESIZE_LINEAR_U8_C1_PRECOMPUTED_TABLES`
+  - `full` profile 额外覆盖非整数缩放和非 16 对齐宽度：`641x479->321x239`、`1919x1080->961x541`、`1920x1080->853x480`、`3839x2160->1917x1079`、`3840x2160->1280x720`
+  - 输出字段：`profile,op,backend,entry,allocation_mode,shape,src_width,src_height,dst_width,dst_height,channels,pixels,simd_lanes,tail_pixels,tail_ratio,warmup,iters,repeats,min_ms_per_call,median_ms_per_call,mpix_per_sec,speedup_vs_scalar,checksum`
+  - ARM 构建会为该 target 打开 `CV_NEON=1`；exact 2x downsample case 会标记为 `opencv_intrin_neon`，其他缩放形态标记为 `opencv_intrin_neon_no_resize_fastpath`
+  - target 只链接 `cvh::headers`，不链接 OpenCV，也不启用 native backend
 
 - 回归检查脚本：`scripts/check_imgproc_filter_benchmark_regression.py`
   - 对比 baseline/current CSV
@@ -189,7 +204,7 @@ taskset -c <stable-cpu> env OMP_NUM_THREADS=1 OMP_DYNAMIC=false OMP_PROC_BIND=cl
 ./scripts/ci_compare_log_only.sh
 ```
 
-5. 运行 header-only BGR2GRAY OpenCV Universal Intrinsics gate：
+5. 运行 header-only BGR/RGB2GRAY OpenCV Universal Intrinsics 诊断：
 
 ```bash
 cmake -S . -B build-opencv-intrin-p3-bench \
@@ -204,14 +219,33 @@ cmake --build build-opencv-intrin-p3-bench -j --target cvh_benchmark_cvtcolor_bg
   --warmup 3 \
   --iters 10 \
   --repeats 7 \
-  --output benchmark/cvtcolor_bgr2gray_header_current.csv
+  --output benchmark/cvtcolor_bgr_rgb_gray_header_p341.csv
+```
+
+6. 运行 header-only resize bilinear OpenCV Universal Intrinsics 诊断：
+
+```bash
+cmake -S . -B build-opencv-intrin-p3-bench \
+  -DCVH_BUILD_TESTS=ON \
+  -DCVH_BUILD_BENCHMARKS=ON \
+  -DCVH_BUILD_NATIVE_BACKEND=OFF
+
+cmake --build build-opencv-intrin-p3-bench -j --target cvh_benchmark_resize_bilinear_header
+
+./build-opencv-intrin-p3-bench/cvh_benchmark_resize_bilinear_header \
+  --profile quick \
+  --warmup 3 \
+  --iters 10 \
+  --repeats 7 \
+  --output benchmark/resize_bilinear_header_p363.csv
 ```
 
 ## Imgproc 证据文件保留规则
 
-- 版本库内仅保留 4 个最终证据 CSV：
+- 常规 imgproc ops 对比仅保留 4 个最终证据 CSV：
   - `benchmark/baseline_imgproc_quick.csv`
   - `benchmark/current_imgproc_quick.csv`
   - `benchmark/baseline_imgproc_full.csv`
   - `benchmark/current_imgproc_full.csv`
+- OpenCV Universal Intrinsics adapter 计划引用的 header-only 诊断 CSV 可随计划阶段单独保留。
 - 阶段性中间产物（如 `*_b2.csv`、`*_d1.csv`、`*_e3.csv`、`*_ci_*.csv`）用于开发期验证，收口后应清理。

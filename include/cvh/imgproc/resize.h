@@ -1,7 +1,11 @@
 #ifndef CVH_IMGPROC_RESIZE_H
 #define CVH_IMGPROC_RESIZE_H
 
+#include "../detail/config.h"
 #include "detail/common.h"
+#if CVH_ENABLE_OPENCV_INTRIN
+#include "../core/simd/simd.h"
+#endif
 
 #include <cstdint>
 #include <type_traits>
@@ -24,6 +28,102 @@ inline T resize_interpolate_cast(float v)
         return static_cast<T>(v);
     }
 }
+
+#if CVH_ENABLE_OPENCV_INTRIN
+inline bool resize_linear_u8c1_downsample2_opencv_intrin_supported(const Mat& src,
+                                                                  int dst_rows,
+                                                                  int dst_cols,
+                                                                  int interpolation)
+{
+    return interpolation == INTER_LINEAR &&
+           src.depth() == CV_8U &&
+           src.channels() == 1 &&
+           src.size[0] == dst_rows * 2 &&
+           src.size[1] == dst_cols * 2;
+}
+
+inline uchar resize_linear_u8c1_downsample2_pixel(uchar p00, uchar p01, uchar p10, uchar p11)
+{
+    return static_cast<uchar>(
+        (static_cast<int>(p00) +
+         static_cast<int>(p01) +
+         static_cast<int>(p10) +
+         static_cast<int>(p11) +
+         2) >> 2);
+}
+
+inline void resize_linear_u8c1_downsample2_opencv_intrin_impl(const Mat& src, Mat& dst)
+{
+    CV_Assert(src.depth() == CV_8U);
+    CV_Assert(src.channels() == 1);
+    CV_Assert(src.dims == 2);
+
+    const int dst_rows = src.size[0] / 2;
+    const int dst_cols = src.size[1] / 2;
+    dst.create(std::vector<int>{dst_rows, dst_cols}, CV_8UC1);
+
+    const size_t src_step = src.step(0);
+    const size_t dst_step = dst.step(0);
+    const int lanes = static_cast<int>(simd::u8_lanes());
+
+    for (int y = 0; y < dst_rows; ++y)
+    {
+        const uchar* src_row0 = src.data + static_cast<size_t>(y * 2) * src_step;
+        const uchar* src_row1 = src.data + static_cast<size_t>(y * 2 + 1) * src_step;
+        uchar* dst_row = dst.data + static_cast<size_t>(y) * dst_step;
+
+        int x = 0;
+        for (; x + lanes <= dst_cols; x += lanes)
+        {
+            simd::u8 r0_even;
+            simd::u8 r0_odd;
+            simd::u8 r1_even;
+            simd::u8 r1_odd;
+            simd::load_deinterleave2_u8(
+                reinterpret_cast<const std::uint8_t*>(src_row0 + static_cast<size_t>(x) * 2),
+                r0_even,
+                r0_odd);
+            simd::load_deinterleave2_u8(
+                reinterpret_cast<const std::uint8_t*>(src_row1 + static_cast<size_t>(x) * 2),
+                r1_even,
+                r1_odd);
+
+            simd::u16 r0_even_lo;
+            simd::u16 r0_even_hi;
+            simd::u16 r0_odd_lo;
+            simd::u16 r0_odd_hi;
+            simd::u16 r1_even_lo;
+            simd::u16 r1_even_hi;
+            simd::u16 r1_odd_lo;
+            simd::u16 r1_odd_hi;
+            simd::expand_u8(r0_even, r0_even_lo, r0_even_hi);
+            simd::expand_u8(r0_odd, r0_odd_lo, r0_odd_hi);
+            simd::expand_u8(r1_even, r1_even_lo, r1_even_hi);
+            simd::expand_u8(r1_odd, r1_odd_lo, r1_odd_hi);
+
+            const simd::u16 sum_lo = simd::add(
+                simd::add(r0_even_lo, r0_odd_lo),
+                simd::add(r1_even_lo, r1_odd_lo));
+            const simd::u16 sum_hi = simd::add(
+                simd::add(r0_even_hi, r0_odd_hi),
+                simd::add(r1_even_hi, r1_odd_hi));
+            simd::store_u8(
+                reinterpret_cast<std::uint8_t*>(dst_row + x),
+                simd::rshr_pack_u16_to_u8<2>(sum_lo, sum_hi));
+        }
+
+        for (; x < dst_cols; ++x)
+        {
+            const int sx = x * 2;
+            dst_row[x] = resize_linear_u8c1_downsample2_pixel(
+                src_row0[sx],
+                src_row0[sx + 1],
+                src_row1[sx],
+                src_row1[sx + 1]);
+        }
+    }
+}
+#endif
 
 template <typename T>
 inline void resize_fallback_impl_typed(const Mat& src, Mat& dst, int interpolation)
@@ -155,6 +255,14 @@ inline void resize_fallback(const Mat& src, Mat& dst, Size dsize, double fx, dou
     {
         CV_Error_(Error::StsBadArg, ("resize: unsupported src depth=%d", src_depth));
     }
+
+#if CVH_ENABLE_OPENCV_INTRIN
+    if (resize_linear_u8c1_downsample2_opencv_intrin_supported(src, dst_rows, dst_cols, interpolation))
+    {
+        resize_linear_u8c1_downsample2_opencv_intrin_impl(src, dst);
+        return;
+    }
+#endif
 
     dst.create(std::vector<int>{dst_rows, dst_cols}, src.type());
 

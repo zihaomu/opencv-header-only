@@ -54,6 +54,16 @@ inline u16 setall_u16(std::uint16_t value)
     return cv::v_setall_u16(static_cast<ushort>(value));
 }
 
+inline u8 load_u8(const std::uint8_t* src)
+{
+    return cv::v_load(reinterpret_cast<const uchar*>(src));
+}
+
+inline void load_deinterleave2_u8(const std::uint8_t* src, u8& c0, u8& c1)
+{
+    cv::v_load_deinterleave(reinterpret_cast<const uchar*>(src), c0, c1);
+}
+
 inline void load_deinterleave3_u8(const std::uint8_t* src, u8& c0, u8& c1, u8& c2)
 {
     cv::v_load_deinterleave(reinterpret_cast<const uchar*>(src), c0, c1, c2);
@@ -80,6 +90,11 @@ inline u32 expand_high_u16(const u16& value)
 }
 
 inline f32 add(const f32& lhs, const f32& rhs)
+{
+    return cv::v_add(lhs, rhs);
+}
+
+inline u16 add(const u16& lhs, const u16& rhs)
 {
     return cv::v_add(lhs, rhs);
 }
@@ -131,6 +146,12 @@ inline constexpr std::size_t f32_lanes()
 
 template <int shift>
 inline u16 rshr_pack_u32_to_u16(const u32& low, const u32& high)
+{
+    return cv::v_rshr_pack<shift>(low, high);
+}
+
+template <int shift>
+inline u8 rshr_pack_u16_to_u8(const u16& low, const u16& high)
 {
     return cv::v_rshr_pack<shift>(low, high);
 }
