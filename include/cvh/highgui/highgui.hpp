@@ -7,7 +7,7 @@
 
 namespace cvh {
 
-#if defined(CVH_FULL)
+#if defined(CVH_NATIVE)
 CV_EXPORTS void register_highgui_backends();
 #endif
 
@@ -27,14 +27,14 @@ inline void imshow_fallback(const std::string& winname, const Mat& mat)
     (void)winname;
     (void)mat;
     CV_Error(Error::StsNotImplemented,
-             "imshow requires CVH_FULL backend. Use imwrite(\"out.png\", mat) as temporary replacement.");
+             "imshow requires CVH_NATIVE backend. Use imwrite(\"out.png\", mat) as temporary replacement.");
 }
 
 inline int waitkey_fallback(int delay)
 {
     (void)delay;
     CV_Error(Error::StsNotImplemented,
-             "waitKey requires CVH_FULL backend. Use your app event loop or avoid waitKey in CVH_LITE.");
+             "waitKey requires CVH_NATIVE backend. Use your app event loop or avoid waitKey in CVH_LITE.");
     return -1;
 }
 
@@ -76,7 +76,7 @@ inline bool is_waitkey_backend_registered()
 
 inline void ensure_highgui_backends_registered_once()
 {
-#if defined(CVH_FULL)
+#if defined(CVH_NATIVE)
     static bool initialized = []() {
         cvh::register_highgui_backends();
         return true;

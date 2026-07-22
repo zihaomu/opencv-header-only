@@ -57,8 +57,8 @@ volatile double g_sink = 0.0;
 
 std::string default_impl_name()
 {
-#if defined(CVH_FULL)
-    return "full";
+#if defined(CVH_NATIVE)
+    return "native";
 #else
     return "lite";
 #endif
@@ -263,7 +263,7 @@ Args parse_args(int argc, char** argv)
         else if (token == "--help")
         {
             std::cout << "Usage: cvh_benchmark_compare [--profile quick|stable|full] [--warmup N] [--iters N] "
-                         "[--repeats N] [--impl full|lite] [--output path]\n";
+                         "[--repeats N] [--impl native|lite] [--output path]\n";
             std::exit(0);
         }
         else
@@ -401,7 +401,7 @@ void append_gemm_rows(const Args& args, std::vector<CompareRow>& rows)
 
     for (const auto& shape : shapes)
     {
-#if defined(CVH_FULL)
+#if defined(CVH_NATIVE)
         cvh::Mat a_cvh(std::vector<int>{shape.m, shape.k}, CV_32F);
         cvh::Mat b_cvh(std::vector<int>{shape.k, shape.n}, CV_32F);
         constexpr std::uint32_t seed_a = 0xC3u;
@@ -489,7 +489,7 @@ void append_gemm_rows(const Args& args, std::vector<CompareRow>& rows)
         row.opencv_ms = opencv_ms;
         row.speedup = 0.0;
         row.status = "UNSUPPORTED";
-        row.note = "requires_CVH_FULL_backend";
+        row.note = "requires_CVH_NATIVE_backend";
         rows.push_back(row);
 
         const double opencv_prepack_ms = bench_opencv_gemm_prepack(shape.m,
@@ -511,7 +511,7 @@ void append_gemm_rows(const Args& args, std::vector<CompareRow>& rows)
         prepack_row.opencv_ms = opencv_prepack_ms;
         prepack_row.speedup = 0.0;
         prepack_row.status = "UNSUPPORTED";
-        prepack_row.note = "requires_CVH_FULL_backend";
+        prepack_row.note = "requires_CVH_NATIVE_backend";
         rows.push_back(prepack_row);
 #endif
     }

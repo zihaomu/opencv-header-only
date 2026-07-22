@@ -8,7 +8,7 @@
 
 - **Long-term direction:** pure header-only
 - **Strategic path:** `Lite`
-- **Legacy transition path:** `Full`
+- **Optional compiled path:** `Native backend`
 - **Primary focus:** edge deployment and faster CV model preprocessing/postprocessing than OpenCV on important hot paths
 
 This project is **not** a full replacement for OpenCV. It focuses on a smaller, high-value subset for constrained deployment and CV model input/output pipelines.
@@ -29,10 +29,10 @@ They often need:
 
 ## Modes
 
-`opencv-header-only` currently has two modes:
+`opencv-header-only` has a header-only default path and one optional compiled backend:
 
 - **`Lite`** — the strategic path: header-only, lightweight, edge-friendly, and designed for constrained build environments, memory-sensitive deployments, and common CV workloads.
-- **`Full`** — the legacy transition path: compiled implementations in `src/`, kept for broader historical coverage and migration, but no longer the long-term focus of the project.
+- **`Native backend`** — optional compiled implementations in `src/`, enabled explicitly for platform integration, dispatch, and selected optimized paths.
 
 New features should prefer the header-only path first.
 
@@ -81,7 +81,7 @@ The long-term performance goal is not just API compatibility, but to provide **f
 Current performance work should be interpreted as follows:
 
 - `Lite` prioritizes header-only usability, portability, and correctness-first evolution
-- `Full` reflects legacy compiled implementations and broader historical optimization coverage
+- `Native backend` reflects optional compiled implementations and broader historical optimization coverage
 - the long-term optimization focus is **CV model preprocessing/postprocessing hot paths**, where the project aims to become faster than OpenCV on important real-world pipelines
 
 Compare workspace:
@@ -121,12 +121,19 @@ Example integration:
 #include <cvh/...>
 ```
 
-### Full mode
+### Native backend
 
-Full is the legacy compiled transition path.
+The native backend is optional and must be enabled explicitly.
 
-Build is only required for Full mode:
+Build is only required when using the native backend:
 #### 1. Build
+
+```bash
+cmake -S . -B build-native -DCVH_BUILD_NATIVE_BACKEND=ON
+cmake --build build-native -j
+```
+
+The default build keeps native disabled:
 
 ```bash
 cmake -S . -B build
@@ -139,8 +146,8 @@ cmake --build build -j
 # Lite suite (core-lite + imgproc)
 ./scripts/ci_lite_all.sh
 
-# Full suite (core-full + imgproc)
-./scripts/ci_full_all.sh
+# Native suite (core-native + imgproc)
+./scripts/ci_native_all.sh
 ```
 
 #### 3. Run cvh / OpenCV comparison
@@ -153,7 +160,7 @@ cmake --build build -j
 ## Repository Layout
 
 - `include/` — public headers and the header-only / header-first implementation path
-- `src/` — legacy compiled implementations used by the `Full` transition path
+- `src/` — optional compiled implementations used by the `Native backend`
 - `test/` — correctness and regression tests
 - `benchmark/` — performance benchmarks, including `benchmark/opencv_compare/`
 - `example/` — usage examples

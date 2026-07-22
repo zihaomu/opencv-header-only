@@ -10,7 +10,7 @@
 
 - `cvh_header_compile_smoke`：验证公开头可编译。
 - `cvh_include_only_smoke`：验证仅 `-Iinclude` 场景可编译运行。
-- `cvh_full_backend_smoke`：验证 Full backend 目标链路可用。
+- `cvh_native_backend_smoke`：验证 native backend 目标链路可用。
 
 ### P1：主线优先
 

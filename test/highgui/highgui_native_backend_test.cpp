@@ -83,7 +83,7 @@ struct ScopedEnvVar
 
 }  // namespace
 
-TEST(HighguiFull_TEST, register_full_backends_enables_dispatch)
+TEST(HighguiNative_TEST, register_native_backends_enables_dispatch)
 {
     const ScopedBackendGuard guard;
 
@@ -98,7 +98,7 @@ TEST(HighguiFull_TEST, register_full_backends_enables_dispatch)
 }
 
 #if defined(__linux__) && !defined(__ANDROID__)
-TEST(HighguiFull_TEST, framebuffer_force_fail_open_throws_runtime_hint)
+TEST(HighguiNative_TEST, framebuffer_force_fail_open_throws_runtime_hint)
 {
     const ScopedBackendGuard guard;
     const ScopedEnvVar mode("CVH_FB_TEST_MODE", "force_fail_open");
@@ -121,7 +121,7 @@ TEST(HighguiFull_TEST, framebuffer_force_fail_open_throws_runtime_hint)
     }
 }
 
-TEST(HighguiFull_TEST, framebuffer_mock_success_path_returns_without_throw)
+TEST(HighguiNative_TEST, framebuffer_mock_success_path_returns_without_throw)
 {
     const ScopedBackendGuard guard;
     const ScopedEnvVar mode("CVH_FB_TEST_MODE", "mock_success");
@@ -136,7 +136,7 @@ TEST(HighguiFull_TEST, framebuffer_mock_success_path_returns_without_throw)
     EXPECT_NO_THROW(imshow("fb_mock_success", img));
 }
 #else
-TEST(HighguiFull_TEST, framebuffer_branch_tests_skipped_on_non_linux)
+TEST(HighguiNative_TEST, framebuffer_branch_tests_skipped_on_non_linux)
 {
     GTEST_SKIP() << "Linux framebuffer branch is only available on Linux non-Android targets.";
 }

@@ -6,7 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPARE_RUN_SCRIPT="${ROOT_DIR}/benchmark/opencv_compare/run_compare.sh"
 
 PROFILE="${CVH_COMPARE_PROFILE:-quick}"
-IMPLS="${CVH_COMPARE_IMPLS:-full,lite}"
+IMPLS="${CVH_COMPARE_IMPLS:-native,lite}"
 
 TMP_BASE="${RUNNER_TEMP:-$(mktemp -d)}"
 WORK_DIR="$(mktemp -d "${TMP_BASE%/}/cvh-compare.XXXXXX")"

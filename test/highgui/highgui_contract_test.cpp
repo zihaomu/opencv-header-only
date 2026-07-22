@@ -30,7 +30,7 @@ int test_waitkey_backend(int delay)
 
 }  // namespace
 
-TEST(Highgui_TEST, imshow_requires_full_or_imwrite_hint_in_lite)
+TEST(Highgui_TEST, imshow_requires_native_or_imwrite_hint_in_lite)
 {
     Mat img({2, 2}, CV_8UC3);
     img = 0;
@@ -43,12 +43,12 @@ TEST(Highgui_TEST, imshow_requires_full_or_imwrite_hint_in_lite)
     catch (const Exception& e)
     {
         const std::string msg = e.what();
-        EXPECT_NE(msg.find("CVH_FULL"), std::string::npos);
+        EXPECT_NE(msg.find("CVH_NATIVE"), std::string::npos);
         EXPECT_NE(msg.find("imwrite"), std::string::npos);
     }
 }
 
-TEST(Highgui_TEST, waitkey_requires_full_in_lite)
+TEST(Highgui_TEST, waitkey_requires_native_in_lite)
 {
     try
     {
@@ -58,7 +58,7 @@ TEST(Highgui_TEST, waitkey_requires_full_in_lite)
     catch (const Exception& e)
     {
         const std::string msg = e.what();
-        EXPECT_NE(msg.find("CVH_FULL"), std::string::npos);
+        EXPECT_NE(msg.find("CVH_NATIVE"), std::string::npos);
     }
 }
 

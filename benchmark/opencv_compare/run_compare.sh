@@ -7,7 +7,7 @@ ROOT_DIR="$(cd "${COMPARE_DIR}/../.." && pwd)"
 SETUP_SCRIPT="${COMPARE_DIR}/setup_opencv_bench_slim.sh"
 
 PROFILE="${CVH_COMPARE_PROFILE:-quick}"
-IMPLS="${CVH_COMPARE_IMPLS:-full,lite}"
+IMPLS="${CVH_COMPARE_IMPLS:-native,lite}"
 WARMUP=""
 ITERS=""
 REPEATS=""
@@ -28,11 +28,11 @@ REPORT_SCRIPT="${COMPARE_DIR}/csv_to_markdown.py"
 
 usage() {
   cat <<USAGE
-Usage: $(basename "$0") [--profile quick|stable|full] [--impls full|lite|full,lite] [--warmup N] [--iters N] [--repeats N] [--output path] [--baseline]
+Usage: $(basename "$0") [--profile quick|stable|full] [--impls native|lite|native,lite] [--warmup N] [--iters N] [--repeats N] [--output path] [--baseline]
 
 Environment:
   CVH_COMPARE_PROFILE   (default: ${PROFILE})
-  CVH_COMPARE_IMPLS     (default: ${IMPLS}, values: full|lite|full,lite)
+  CVH_COMPARE_IMPLS     (default: ${IMPLS}, values: native|lite|native,lite; full is a deprecated alias for native)
   CVH_COMPARE_WARMUP    (profile default, quick=1 stable=2 full=1)
   CVH_COMPARE_ITERS     (profile default, quick=5 stable=20 full=10)
   CVH_COMPARE_REPEATS   (profile default, quick=1 stable=5 full=3)
@@ -117,8 +117,13 @@ for raw_impl in "${RAW_IMPLS[@]}"; do
     continue
   fi
 
-  if [[ "${impl}" != "full" && "${impl}" != "lite" ]]; then
-    echo "Unsupported impl: ${impl} (expected full|lite)" >&2
+  if [[ "${impl}" == "full" ]]; then
+    echo "Impl name 'full' is deprecated; using 'native'." >&2
+    impl="native"
+  fi
+
+  if [[ "${impl}" != "native" && "${impl}" != "lite" ]]; then
+    echo "Unsupported impl: ${impl} (expected native|lite)" >&2
     exit 2
   fi
 
@@ -135,7 +140,7 @@ for raw_impl in "${RAW_IMPLS[@]}"; do
 done
 
 if [[ "${#REQUESTED_IMPLS[@]}" -eq 0 ]]; then
-  echo "No valid impl selected. Use --impls full|lite|full,lite" >&2
+  echo "No valid impl selected. Use --impls native|lite|native,lite" >&2
   exit 2
 fi
 
@@ -334,7 +339,7 @@ mkdir -p "${BUILD_DIR}" "$(dirname "${OUTPUT_CSV}")" "$(dirname "${OUTPUT_META}"
 
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
   -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
-  -DCVH_BUILD_FULL_BACKEND=ON \
+  -DCVH_BUILD_NATIVE_BACKEND=ON \
   -DCVH_BUILD_BACKEND_KERNEL_SOURCES=ON \
   -DCVH_BUILD_TESTS=OFF \
   -DCVH_BUILD_BENCHMARKS=ON \
@@ -344,7 +349,7 @@ cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
 
 BENCH_TARGETS=()
 for impl in "${REQUESTED_IMPLS[@]-}"; do
-  if [[ "${impl}" == "full" ]]; then
+  if [[ "${impl}" == "native" ]]; then
     BENCH_TARGETS+=("cvh_benchmark_compare")
   else
     BENCH_TARGETS+=("cvh_benchmark_compare_lite")
@@ -355,7 +360,7 @@ cmake --build "${BUILD_DIR}" --target "${BENCH_TARGETS[@]}" -j
 
 TMP_OUTPUT_CSVS=()
 for impl in "${REQUESTED_IMPLS[@]-}"; do
-  if [[ "${impl}" == "full" ]]; then
+  if [[ "${impl}" == "native" ]]; then
     BENCH_BIN="${BUILD_DIR}/cvh_benchmark_compare"
   else
     BENCH_BIN="${BUILD_DIR}/cvh_benchmark_compare_lite"

@@ -39,7 +39,7 @@
 先确认当前行为稳定，不回归：
 
 ```bash
-cmake -S . -B build-x86 -DCVH_BUILD_FULL_BACKEND=ON -DCVH_BUILD_TESTS=ON -DCVH_BUILD_BENCHMARKS=OFF
+cmake -S . -B build-x86 -DCVH_BUILD_NATIVE_BACKEND=ON -DCVH_BUILD_TESTS=ON -DCVH_BUILD_BENCHMARKS=OFF
 cmake --build build-x86 --target cvh_test_core -j
 ./build-x86/cvh_test_core --gtest_filter='GemmPackContract_TEST.*:MatContract_TEST.transpose2d_preserves_interleaved_bytes_for_multi_type_multi_channel:MatContract_TEST.transpose3d_last_two_swap_preserves_interleaved_bytes_for_multichannel_types'
 ```

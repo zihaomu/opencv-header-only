@@ -40,7 +40,9 @@ def read_rows(path: Path):
 def row_impl(row: dict) -> str:
     impl = (row.get("impl", "") or "").strip().lower()
     if not impl:
-        return "full"
+        return "native"
+    if impl == "full":
+        return "native"
     return impl
 
 
@@ -207,8 +209,8 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
     lines.append("")
     lines.append("- Speedup column is `OpenCV/CVH`; values `< 1` mean OpenCV is faster for that case.")
     lines.append("- 加速比列为 `OpenCV/CVH`；当值 `< 1` 时表示该用例中 OpenCV 更快。")
-    lines.append("- Results are grouped by implementation mode (`FULL` vs `LITE`) using the CSV `impl` column.")
-    lines.append("- 结果按实现模式（`FULL`/`LITE`）分组，依据 CSV 中的 `impl` 列。")
+    lines.append("- Results are grouped by implementation mode (`NATIVE` vs `LITE`) using the CSV `impl` column.")
+    lines.append("- 结果按实现模式（`NATIVE`/`LITE`）分组，依据 CSV 中的 `impl` 列。")
     lines.append("- This report is generated automatically from the compare CSV.")
     lines.append("- 本报告由 compare CSV 自动生成。")
 

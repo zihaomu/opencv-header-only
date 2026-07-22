@@ -38,7 +38,7 @@ You can override with environment variables:
 - `CVH_COMPARE_BUILD_TYPE` (`Release|RelWithDebInfo|Debug`, default `Release`)
 - `CVH_COMPARE_OUTPUT_MD` (override Markdown output path)
 - `CVH_COMPARE_OUTPUT_META` (override metadata JSON output path)
-- `CVH_COMPARE_IMPLS` (`full|lite|full,lite`, default `full,lite`)
+- `CVH_COMPARE_IMPLS` (`native|lite|native,lite`, default `native,lite`; `full` is a deprecated alias for `native`)
 
 ## Compare Profiles
 
@@ -67,7 +67,7 @@ These defaults can be overridden by `CVH_COMPARE_WARMUP/ITERS/REPEATS` or CLI fl
 Run only one implementation mode:
 
 ```bash
-./benchmark/opencv_compare/run_compare.sh --profile quick --impls full
+./benchmark/opencv_compare/run_compare.sh --profile quick --impls native
 ./benchmark/opencv_compare/run_compare.sh --profile quick --impls lite
 ```
 
@@ -80,7 +80,7 @@ Run only one implementation mode:
 Default CSV path:
 
 - `benchmark/opencv_compare/results/current_compare_quick.csv`
-  - includes `impl` column to distinguish `full` and `lite` rows.
+  - includes `impl` column to distinguish `native` and `lite` rows.
 
 Default Markdown path:
 
@@ -97,7 +97,7 @@ The main repo adds:
 - `CVH_ENABLE_OPENCV_COMPARE` (default `OFF`)
 - `CVH_OPENCV_BENCH_DIR` (default `benchmark/opencv_compare/opencv-bench-slim`)
 
-When compare is enabled, targets `cvh_benchmark_compare` (full) and `cvh_benchmark_compare_lite` (lite) are built.
+When compare is enabled, targets `cvh_benchmark_compare` (native) and `cvh_benchmark_compare_lite` (lite) are built.
 
 ## Bench Scope
 

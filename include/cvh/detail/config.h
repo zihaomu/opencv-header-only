@@ -3,15 +3,19 @@
 
 // Mode contract:
 // - CVH_LITE: header-only fallback mode
-// - CVH_FULL: linked backend-enhanced mode
+// - CVH_NATIVE: linked native backend-enhanced mode
 //
 // If neither is provided by build flags, default to LITE so plain header users
 // get a runnable baseline contract by default.
-#if defined(CVH_LITE) && defined(CVH_FULL)
-#error "CVH_LITE and CVH_FULL cannot be enabled at the same time"
+#if defined(CVH_FULL) && !defined(CVH_NATIVE)
+#define CVH_NATIVE 1
 #endif
 
-#if !defined(CVH_LITE) && !defined(CVH_FULL)
+#if defined(CVH_LITE) && defined(CVH_NATIVE)
+#error "CVH_LITE and CVH_NATIVE cannot be enabled at the same time"
+#endif
+
+#if !defined(CVH_LITE) && !defined(CVH_NATIVE)
 #define CVH_LITE 1
 #endif
 

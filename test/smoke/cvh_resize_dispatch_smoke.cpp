@@ -79,7 +79,7 @@ int main()
         }
     }
 
-#if defined(CVH_EXPECT_FULL)
+#if defined(CVH_EXPECT_NATIVE)
     if (!cvh::detail::is_resize_backend_registered())
     {
         return 7;
@@ -182,7 +182,7 @@ int main()
     cvh::Mat blur_dst;
     cvh::blur(src_gray, blur_dst, cvh::Size(3, 3), cvh::Point(-1, -1), cvh::BORDER_REPLICATE);
     const char* expected_box_path =
-#if defined(CVH_EXPECT_FULL)
+#if defined(CVH_EXPECT_NATIVE)
         "box3x3";
 #else
         "fallback";
@@ -195,7 +195,7 @@ int main()
     cvh::Mat blur5_dst;
     cvh::blur(src_gray, blur5_dst, cvh::Size(5, 5), cvh::Point(-1, -1), cvh::BORDER_REPLICATE);
     const char* expected_box5_path =
-#if defined(CVH_EXPECT_FULL)
+#if defined(CVH_EXPECT_NATIVE)
         "box_generic";
 #else
         "fallback";
@@ -208,7 +208,7 @@ int main()
     cvh::Mat gauss_dst;
     cvh::GaussianBlur(src_gray, gauss_dst, cvh::Size(5, 5), 0.0, 0.0, cvh::BORDER_REPLICATE);
     const char* expected_gauss_path =
-#if defined(CVH_EXPECT_FULL)
+#if defined(CVH_EXPECT_NATIVE)
         "gauss_separable";
 #else
         "fallback";
@@ -221,7 +221,7 @@ int main()
     cvh::Mat gauss3_dst;
     cvh::GaussianBlur(src_gray, gauss3_dst, cvh::Size(3, 3), 0.0, 0.0, cvh::BORDER_REPLICATE);
     const char* expected_gauss3_path =
-#if defined(CVH_EXPECT_FULL)
+#if defined(CVH_EXPECT_NATIVE)
         "gauss3x3";
 #else
         "fallback";

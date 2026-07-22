@@ -132,13 +132,13 @@ enum BorderTypes
     BORDER_ISOLATED = 16,
 };
 
-#if defined(CVH_FULL)
+#if defined(CVH_NATIVE)
 CV_EXPORTS void register_all_backends();
 #endif
 
 namespace detail {
 
-#if defined(CVH_FULL)
+#if defined(CVH_NATIVE)
 CV_EXPORTS const char* last_boxfilter_dispatch_path();
 CV_EXPORTS const char* last_gaussianblur_dispatch_path();
 #else
@@ -282,7 +282,7 @@ inline std::vector<float> build_gaussian_kernel_1d(int ksize, double sigma)
 
 inline void ensure_backends_registered_once()
 {
-#if defined(CVH_FULL)
+#if defined(CVH_NATIVE)
     static bool initialized = []() {
         cvh::register_all_backends();
         return true;
