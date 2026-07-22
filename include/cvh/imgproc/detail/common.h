@@ -91,6 +91,7 @@ enum ColorConversionCodes
     COLOR_RGB2YUV_I420 = 67,
     COLOR_BGR2YUV_YV12 = 68,
     COLOR_RGB2YUV_YV12 = 69,
+    COLOR_RGB2GRAY = 70,
 };
 
 enum ThresholdTypes

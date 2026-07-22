@@ -64,6 +64,13 @@
   - `dispatch_path` 典型值：`fallback / box3x3 / box_generic / gauss3x3 / gauss_separable`
   - 支持 `--dispatch auto|optimized-only|fallback-only`（用于 A/B 对照）
 
+- 可执行程序：`cvh_benchmark_cvtcolor_bgr2gray_header`
+  - 源码：`benchmark/cvtcolor_bgr2gray_header_benchmark.cpp`
+  - 覆盖：header-only `CV_8UC3 BGR2GRAY`
+  - 对比：同一输入下的 scalar helper 与 `CVH_ENABLE_OPENCV_INTRIN=1` 路径
+  - 输出字段：`profile,op,backend,shape,width,height,pixels,warmup,iters,repeats,min_ms_per_call,median_ms_per_call,mpix_per_sec,speedup_vs_scalar,checksum`
+  - ARM 构建会为该 target 打开 `CV_NEON=1`，用于验证 OpenCV Universal Intrinsics NEON 路径；不链接 OpenCV，也不启用 native backend
+
 - 回归检查脚本：`scripts/check_imgproc_filter_benchmark_regression.py`
   - 对比 baseline/current CSV
   - 支持全局阈值 `--max-slowdown`
@@ -180,6 +187,24 @@ taskset -c <stable-cpu> env OMP_NUM_THREADS=1 OMP_DYNAMIC=false OMP_PROC_BIND=cl
 
 ```bash
 ./scripts/ci_compare_log_only.sh
+```
+
+5. 运行 header-only BGR2GRAY OpenCV Universal Intrinsics gate：
+
+```bash
+cmake -S . -B build-opencv-intrin-p3-bench \
+  -DCVH_BUILD_TESTS=ON \
+  -DCVH_BUILD_BENCHMARKS=ON \
+  -DCVH_BUILD_NATIVE_BACKEND=OFF
+
+cmake --build build-opencv-intrin-p3-bench -j --target cvh_benchmark_cvtcolor_bgr2gray_header
+
+./build-opencv-intrin-p3-bench/cvh_benchmark_cvtcolor_bgr2gray_header \
+  --profile quick \
+  --warmup 3 \
+  --iters 10 \
+  --repeats 7 \
+  --output benchmark/cvtcolor_bgr2gray_header_current.csv
 ```
 
 ## Imgproc 证据文件保留规则

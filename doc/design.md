@@ -150,6 +150,8 @@ Native backend 不能破坏 Lite 已定义的核心语义
 CVH_ENABLE_XSIMD
 CVH_ENABLE_THREADS
 CVH_ENABLE_FAST_MATH
+CVH_ENABLE_OPENCV_INTRIN
+CVH_ENABLE_PLATFORM_INTRINSICS
 
 这些宏不决定项目模式，而只控制特定增强能力。
 
@@ -158,6 +160,8 @@ CVH_LITE 不自动开启任何增强能力
 CVH_NATIVE 可以按需开启能力开关
 即使 header 中存在 SIMD 实现，Lite 也不应默认依赖它
 任一能力开关缺失，都不得导致公开 API 不可运行
+OpenCV Universal Intrinsics 只能作为 header-only SIMD adapter，不引入 OpenCV 完整 HAL
+平台 intrinsic 只能作为 header 内可选优化，不进入 native backend 语义
 7. 总体目录结构
 
 推荐目录如下：
@@ -516,7 +520,37 @@ simd/ 目录中封装 xsimd 的薄包装
 业务层不要直接依赖 xsimd 细节
 通过 CVH_ENABLE_XSIMD 显式启用 SIMD 路径
 不定义该宏时，自动退回 scalar 实现
-13.5 优先优化路径
+13.5 OpenCV Universal Intrinsics adapter 策略
+
+OpenCV Universal Intrinsics 是 header-only CPU 加速层的可选 adapter。
+
+基本约束：
+
+不复用 OpenCV 完整 HAL 函数接口层
+不引入 OpenCV binary 依赖
+不要求用户安装 OpenCV
+不依赖 Native backend
+不把 cv::v_* 作为 cvh 公开 API
+
+推荐方式：
+
+通过 CVH_ENABLE_OPENCV_INTRIN 显式启用
+通过 cvh::detail::simd facade 间接使用
+业务 kernel 不直接包含 vendored OpenCV intrin 头文件
+OpenCV upstream 版本必须固定，并记录导入文件、license、local patches
+
+13.6 平台 intrinsic 策略
+
+平台 intrinsic 是 header-only 层的可选最高性能路径。
+
+基本约束：
+
+通过 CVH_ENABLE_PLATFORM_INTRINSICS 显式启用
+由项目内部根据编译器宏判断 NEON / AVX / AVX2 等能力
+用户不应直接定义 CVH_ARCH_* 平台宏
+任一平台 intrinsic 不可用时，必须回退到 OpenCV intrin、xsimd 或 scalar
+
+13.7 优先优化路径
 
 SIMD 优先覆盖：
 

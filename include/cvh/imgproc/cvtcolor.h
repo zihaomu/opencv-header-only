@@ -1,8 +1,13 @@
 #ifndef CVH_IMGPROC_CVTCOLOR_H
 #define CVH_IMGPROC_CVTCOLOR_H
 
+#include "../detail/config.h"
 #include "detail/common.h"
+#if CVH_ENABLE_OPENCV_INTRIN
+#include "../core/simd/simd.h"
+#endif
 
+#include <cstdint>
 #include <type_traits>
 #include <vector>
 
@@ -11,10 +16,173 @@ namespace detail {
 
 using CvtColorFn = void (*)(const Mat&, Mat&, int);
 
-template <typename T>
-inline void cvtcolor_bgr2gray_fallback_impl(const Mat& src, Mat& dst)
+inline uchar cvtcolor_bgr2gray_pixel_u8(int bb, int gg, int rr)
 {
-    CV_Assert(src.channels() == 3 && "cvtColor(BGR2GRAY): source must have 3 channels");
+    constexpr int kB = 7471;
+    constexpr int kG = 38470;
+    constexpr int kR = 19595;
+    constexpr int kRound = 1 << 15;
+
+    return static_cast<uchar>((kB * bb + kG * gg + kR * rr + kRound) >> 16);
+}
+
+template <bool rgb_order>
+inline void cvtcolor_color3_to_gray_u8_scalar_impl(const Mat& src, Mat& dst)
+{
+    CV_Assert(src.channels() == 3 && "cvtColor(BGR/RGB2GRAY): source must have 3 channels");
+
+    const int rows = src.size[0];
+    const int cols = src.size[1];
+    const size_t src_step = src.step(0);
+
+    dst.create(std::vector<int>{rows, cols}, CV_8UC1);
+    const size_t dst_step = dst.step(0);
+    constexpr int b_index = rgb_order ? 2 : 0;
+    constexpr int r_index = rgb_order ? 0 : 2;
+
+    for (int y = 0; y < rows; ++y)
+    {
+        const uchar* src_row = src.data + static_cast<size_t>(y) * src_step;
+        uchar* dst_row = dst.data + static_cast<size_t>(y) * dst_step;
+        for (int x = 0; x < cols; ++x)
+        {
+            const uchar* px = src_row + static_cast<size_t>(x) * 3;
+            dst_row[x] = cvtcolor_bgr2gray_pixel_u8(
+                static_cast<int>(px[b_index]),
+                static_cast<int>(px[1]),
+                static_cast<int>(px[r_index]));
+        }
+    }
+}
+
+inline void cvtcolor_bgr2gray_u8_scalar_impl(const Mat& src, Mat& dst)
+{
+    cvtcolor_color3_to_gray_u8_scalar_impl<false>(src, dst);
+}
+
+inline void cvtcolor_rgb2gray_u8_scalar_impl(const Mat& src, Mat& dst)
+{
+    cvtcolor_color3_to_gray_u8_scalar_impl<true>(src, dst);
+}
+
+#if CVH_ENABLE_OPENCV_INTRIN
+inline simd::u16 cvtcolor_bgr2gray_u8_wide_simd(const simd::u16& bb,
+                                                const simd::u16& gg,
+                                                const simd::u16& rr,
+                                                const simd::u16& weight_b,
+                                                const simd::u16& weight_g,
+                                                const simd::u16& weight_r)
+{
+    simd::u32 b0;
+    simd::u32 b1;
+    simd::u32 g0;
+    simd::u32 g1;
+    simd::u32 r0;
+    simd::u32 r1;
+    simd::mul_expand_u16(bb, weight_b, b0, b1);
+    simd::mul_expand_u16(gg, weight_g, g0, g1);
+    simd::mul_expand_u16(rr, weight_r, r0, r1);
+
+    const simd::u32 y0 = simd::add(simd::add(b0, g0), r0);
+    const simd::u32 y1 = simd::add(simd::add(b1, g1), r1);
+
+    return simd::rshr_pack_u32_to_u16<16>(y0, y1);
+}
+
+template <bool rgb_order>
+inline void cvtcolor_color3_to_gray_u8_simd_impl(const Mat& src, Mat& dst)
+{
+    CV_Assert(src.channels() == 3 && "cvtColor(BGR/RGB2GRAY): source must have 3 channels");
+
+    const int rows = src.size[0];
+    const int cols = src.size[1];
+    const size_t src_step = src.step(0);
+
+    dst.create(std::vector<int>{rows, cols}, CV_8UC1);
+    const size_t dst_step = dst.step(0);
+
+    const simd::u16 weight_b = simd::setall_u16(7471);
+    const simd::u16 weight_g = simd::setall_u16(38470);
+    const simd::u16 weight_r = simd::setall_u16(19595);
+    const int lanes = static_cast<int>(simd::u8_lanes());
+    constexpr int b_index = rgb_order ? 2 : 0;
+    constexpr int r_index = rgb_order ? 0 : 2;
+
+    for (int y = 0; y < rows; ++y)
+    {
+        const uchar* src_row = src.data + static_cast<size_t>(y) * src_step;
+        uchar* dst_row = dst.data + static_cast<size_t>(y) * dst_step;
+
+        int x = 0;
+        for (; x + lanes <= cols; x += lanes)
+        {
+            simd::u8 c0;
+            simd::u8 c1;
+            simd::u8 c2;
+            simd::load_deinterleave3_u8(
+                reinterpret_cast<const std::uint8_t*>(src_row + static_cast<size_t>(x) * 3),
+                c0,
+                c1,
+                c2);
+
+            const simd::u8& b8 = rgb_order ? c2 : c0;
+            const simd::u8& g8 = c1;
+            const simd::u8& r8 = rgb_order ? c0 : c2;
+
+            simd::u16 b16_lo;
+            simd::u16 b16_hi;
+            simd::u16 g16_lo;
+            simd::u16 g16_hi;
+            simd::u16 r16_lo;
+            simd::u16 r16_hi;
+            simd::expand_u8(b8, b16_lo, b16_hi);
+            simd::expand_u8(g8, g16_lo, g16_hi);
+            simd::expand_u8(r8, r16_lo, r16_hi);
+
+            const simd::u16 y16_lo = cvtcolor_bgr2gray_u8_wide_simd(
+                b16_lo, g16_lo, r16_lo, weight_b, weight_g, weight_r);
+            const simd::u16 y16_hi = cvtcolor_bgr2gray_u8_wide_simd(
+                b16_hi, g16_hi, r16_hi, weight_b, weight_g, weight_r);
+            const simd::u8 y8 = simd::pack_u16_to_u8(y16_lo, y16_hi);
+            simd::store_u8(reinterpret_cast<std::uint8_t*>(dst_row + x), y8);
+        }
+
+        for (; x < cols; ++x)
+        {
+            const uchar* px = src_row + static_cast<size_t>(x) * 3;
+            dst_row[x] = cvtcolor_bgr2gray_pixel_u8(
+                static_cast<int>(px[b_index]),
+                static_cast<int>(px[1]),
+                static_cast<int>(px[r_index]));
+        }
+    }
+}
+
+inline void cvtcolor_bgr2gray_u8_simd_impl(const Mat& src, Mat& dst)
+{
+    cvtcolor_color3_to_gray_u8_simd_impl<false>(src, dst);
+}
+
+inline void cvtcolor_rgb2gray_u8_simd_impl(const Mat& src, Mat& dst)
+{
+    cvtcolor_color3_to_gray_u8_simd_impl<true>(src, dst);
+}
+#endif
+
+template <typename T, bool rgb_order>
+inline void cvtcolor_color3_to_gray_fallback_impl(const Mat& src, Mat& dst)
+{
+    CV_Assert(src.channels() == 3 && "cvtColor(BGR/RGB2GRAY): source must have 3 channels");
+
+    if constexpr (std::is_same_v<T, uchar>)
+    {
+#if CVH_ENABLE_OPENCV_INTRIN
+        cvtcolor_color3_to_gray_u8_simd_impl<rgb_order>(src, dst);
+#else
+        cvtcolor_color3_to_gray_u8_scalar_impl<rgb_order>(src, dst);
+#endif
+        return;
+    }
 
     const int rows = src.size[0];
     const int cols = src.size[1];
@@ -23,30 +191,8 @@ inline void cvtcolor_bgr2gray_fallback_impl(const Mat& src, Mat& dst)
     const int dst_type = std::is_same_v<T, uchar> ? CV_8UC1 : CV_32FC1;
     dst.create(std::vector<int>{rows, cols}, dst_type);
     const size_t dst_step = dst.step(0);
-
-    if constexpr (std::is_same_v<T, uchar>)
-    {
-        constexpr int kB = 7471;
-        constexpr int kG = 38470;
-        constexpr int kR = 19595;
-        constexpr int kRound = 1 << 15;
-
-        for (int y = 0; y < rows; ++y)
-        {
-            const uchar* src_row = src.data + static_cast<size_t>(y) * src_step;
-            uchar* dst_row = dst.data + static_cast<size_t>(y) * dst_step;
-            for (int x = 0; x < cols; ++x)
-            {
-                const uchar* px = src_row + static_cast<size_t>(x) * 3;
-                dst_row[x] = static_cast<uchar>(
-                    (kB * static_cast<int>(px[0]) +
-                     kG * static_cast<int>(px[1]) +
-                     kR * static_cast<int>(px[2]) +
-                     kRound) >> 16);
-            }
-        }
-        return;
-    }
+    constexpr int b_index = rgb_order ? 2 : 0;
+    constexpr int r_index = rgb_order ? 0 : 2;
 
     for (int y = 0; y < rows; ++y)
     {
@@ -56,11 +202,23 @@ inline void cvtcolor_bgr2gray_fallback_impl(const Mat& src, Mat& dst)
         {
             const int sx = x * 3;
             dst_row[x] = static_cast<T>(
-                0.114f * static_cast<float>(src_row[sx + 0]) +
+                0.114f * static_cast<float>(src_row[sx + b_index]) +
                 0.587f * static_cast<float>(src_row[sx + 1]) +
-                0.299f * static_cast<float>(src_row[sx + 2]));
+                0.299f * static_cast<float>(src_row[sx + r_index]));
         }
     }
+}
+
+template <typename T>
+inline void cvtcolor_bgr2gray_fallback_impl(const Mat& src, Mat& dst)
+{
+    cvtcolor_color3_to_gray_fallback_impl<T, false>(src, dst);
+}
+
+template <typename T>
+inline void cvtcolor_rgb2gray_fallback_impl(const Mat& src, Mat& dst)
+{
+    cvtcolor_color3_to_gray_fallback_impl<T, true>(src, dst);
 }
 
 template <typename T>
@@ -1002,15 +1160,30 @@ inline void cvtColor_fallback(const Mat& src, Mat& dst, int code)
     CV_Assert(src.dims == 2 && "cvtColor: only 2D Mat is supported");
     CV_Assert((src.depth() == CV_8U || src.depth() == CV_32F) && "cvtColor: supports CV_8U/CV_32F");
 
-    if (code == COLOR_BGR2GRAY)
+    if (code == COLOR_BGR2GRAY || code == COLOR_RGB2GRAY)
     {
+        const bool rgb_order = (code == COLOR_RGB2GRAY);
         if (src.depth() == CV_8U)
         {
-            cvtcolor_bgr2gray_fallback_impl<uchar>(src, dst);
+            if (rgb_order)
+            {
+                cvtcolor_color3_to_gray_fallback_impl<uchar, true>(src, dst);
+            }
+            else
+            {
+                cvtcolor_color3_to_gray_fallback_impl<uchar, false>(src, dst);
+            }
         }
         else
         {
-            cvtcolor_bgr2gray_fallback_impl<float>(src, dst);
+            if (rgb_order)
+            {
+                cvtcolor_color3_to_gray_fallback_impl<float, true>(src, dst);
+            }
+            else
+            {
+                cvtcolor_color3_to_gray_fallback_impl<float, false>(src, dst);
+            }
         }
         return;
     }

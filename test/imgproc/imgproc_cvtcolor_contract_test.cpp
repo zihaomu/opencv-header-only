@@ -49,7 +49,7 @@ float max_abs_diff_f32(const Mat& a, const Mat& b)
     return max_diff;
 }
 
-Mat bgr2gray_reference_u8(const Mat& src)
+Mat color3_to_gray_reference_u8(const Mat& src, bool rgb_order)
 {
     CV_Assert(src.dims == 2);
     CV_Assert(src.depth() == CV_8U);
@@ -65,16 +65,26 @@ Mat bgr2gray_reference_u8(const Mat& src)
     {
         for (int x = 0; x < src.size[1]; ++x)
         {
-            const int b = src.at<uchar>(y, x, 0);
+            const int b = src.at<uchar>(y, x, rgb_order ? 2 : 0);
             const int g = src.at<uchar>(y, x, 1);
-            const int r = src.at<uchar>(y, x, 2);
+            const int r = src.at<uchar>(y, x, rgb_order ? 0 : 2);
             out.at<uchar>(y, x) = static_cast<uchar>((kB * b + kG * g + kR * r + kRound) >> 16);
         }
     }
     return out;
 }
 
-Mat bgr2gray_reference_f32(const Mat& src)
+Mat bgr2gray_reference_u8(const Mat& src)
+{
+    return color3_to_gray_reference_u8(src, false);
+}
+
+Mat rgb2gray_reference_u8(const Mat& src)
+{
+    return color3_to_gray_reference_u8(src, true);
+}
+
+Mat color3_to_gray_reference_f32(const Mat& src, bool rgb_order)
 {
     CV_Assert(src.dims == 2);
     CV_Assert(src.depth() == CV_32F);
@@ -85,13 +95,23 @@ Mat bgr2gray_reference_f32(const Mat& src)
     {
         for (int x = 0; x < src.size[1]; ++x)
         {
-            const float b = src.at<float>(y, x, 0);
+            const float b = src.at<float>(y, x, rgb_order ? 2 : 0);
             const float g = src.at<float>(y, x, 1);
-            const float r = src.at<float>(y, x, 2);
+            const float r = src.at<float>(y, x, rgb_order ? 0 : 2);
             out.at<float>(y, x) = 0.114f * b + 0.587f * g + 0.299f * r;
         }
     }
     return out;
+}
+
+Mat bgr2gray_reference_f32(const Mat& src)
+{
+    return color3_to_gray_reference_f32(src, false);
+}
+
+Mat rgb2gray_reference_f32(const Mat& src)
+{
+    return color3_to_gray_reference_f32(src, true);
 }
 
 Mat gray2bgr_reference_u8(const Mat& src)
@@ -1093,6 +1113,26 @@ TEST(ImgprocCvtColor_TEST, bgr2gray_matches_known_values)
     }
 }
 
+TEST(ImgprocCvtColor_TEST, rgb2gray_matches_reference)
+{
+    Mat src({3, 5}, CV_8UC3);
+    for (int y = 0; y < src.size[0]; ++y)
+    {
+        for (int x = 0; x < src.size[1]; ++x)
+        {
+            src.at<uchar>(y, x, 0) = static_cast<uchar>((y * 31 + x * 17 + 3) & 0xff);
+            src.at<uchar>(y, x, 1) = static_cast<uchar>((y * 13 + x * 29 + 7) & 0xff);
+            src.at<uchar>(y, x, 2) = static_cast<uchar>((y * 19 + x * 11 + 23) & 0xff);
+        }
+    }
+
+    Mat expected = rgb2gray_reference_u8(src);
+    Mat actual;
+    cvtColor(src, actual, COLOR_RGB2GRAY);
+    ASSERT_EQ(actual.type(), CV_8UC1);
+    EXPECT_EQ(max_abs_diff_u8(expected, actual), 0);
+}
+
 TEST(ImgprocCvtColor_TEST, gray2bgr_replicates_channels)
 {
     Mat gray({2, 3}, CV_8UC1);
@@ -1960,6 +2000,7 @@ TEST(ImgprocCvtColor_TEST, throws_on_invalid_input_channels_or_code)
     Mat dst;
 
     EXPECT_THROW(cvtColor(src_gray, dst, COLOR_BGR2GRAY), Exception);
+    EXPECT_THROW(cvtColor(src_gray, dst, COLOR_RGB2GRAY), Exception);
     EXPECT_THROW(cvtColor(src_bgr, dst, COLOR_GRAY2BGR), Exception);
     EXPECT_THROW(cvtColor(src_gray, dst, COLOR_BGR2RGB), Exception);
     EXPECT_THROW(cvtColor(src_gray, dst, COLOR_BGR2BGRA), Exception);
@@ -2003,6 +2044,7 @@ TEST(ImgprocCvtColor_TEST, throws_on_invalid_input_channels_or_code)
 
     Mat src_u16({8, 8}, CV_16UC3);
     EXPECT_THROW(cvtColor(src_u16, dst, COLOR_BGR2GRAY), Exception);
+    EXPECT_THROW(cvtColor(src_u16, dst, COLOR_RGB2GRAY), Exception);
 }
 
 TEST(ImgprocCvtColor_TEST, non_contiguous_roi_matches_reference)
@@ -2024,6 +2066,11 @@ TEST(ImgprocCvtColor_TEST, non_contiguous_roi_matches_reference)
     Mat gray_actual;
     cvtColor(bgr_roi, gray_actual, COLOR_BGR2GRAY);
     EXPECT_EQ(max_abs_diff_u8(gray_expected, gray_actual), 0);
+
+    Mat rgb_gray_expected = rgb2gray_reference_u8(bgr_roi);
+    Mat rgb_gray_actual;
+    cvtColor(bgr_roi, rgb_gray_actual, COLOR_RGB2GRAY);
+    EXPECT_EQ(max_abs_diff_u8(rgb_gray_expected, rgb_gray_actual), 0);
 
     Mat base_gray({6, 12}, CV_8UC1);
     for (int y = 0; y < base_gray.size[0]; ++y)
@@ -3010,6 +3057,12 @@ TEST(ImgprocCvtColor_TEST, supports_cv32f_bgr2gray_and_gray2bgr)
     ASSERT_EQ(gray_actual.type(), CV_32FC1);
     EXPECT_LE(max_abs_diff_f32(gray_expected, gray_actual), 1e-6f);
 
+    Mat rgb_gray_expected = rgb2gray_reference_f32(src);
+    Mat rgb_gray_actual;
+    cvtColor(src, rgb_gray_actual, COLOR_RGB2GRAY);
+    ASSERT_EQ(rgb_gray_actual.type(), CV_32FC1);
+    EXPECT_LE(max_abs_diff_f32(rgb_gray_expected, rgb_gray_actual), 1e-6f);
+
     Mat bgr_expected = gray2bgr_reference_f32(gray_actual);
     Mat bgr_actual;
     cvtColor(gray_actual, bgr_actual, COLOR_GRAY2BGR);
@@ -3036,6 +3089,11 @@ TEST(ImgprocCvtColor_TEST, cv32f_non_contiguous_roi_matches_reference)
     Mat gray_actual;
     cvtColor(bgr_roi, gray_actual, COLOR_BGR2GRAY);
     EXPECT_LE(max_abs_diff_f32(gray_expected, gray_actual), 1e-6f);
+
+    Mat rgb_gray_expected = rgb2gray_reference_f32(bgr_roi);
+    Mat rgb_gray_actual;
+    cvtColor(bgr_roi, rgb_gray_actual, COLOR_RGB2GRAY);
+    EXPECT_LE(max_abs_diff_f32(rgb_gray_expected, rgb_gray_actual), 1e-6f);
 
     Mat base_gray({7, 11}, CV_32FC1);
     for (int y = 0; y < base_gray.size[0]; ++y)

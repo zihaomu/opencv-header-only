@@ -239,6 +239,14 @@ STBIWDEF void stbi_flip_vertically_on_write(int flip_boolean);
 #define STBIW_MEMMOVE(a,b,sz) memmove(a,b,sz)
 #endif
 
+#ifndef STBIW_SNPRINTF
+#if defined(_MSC_VER) && _MSC_VER < 1900
+#define STBIW_SNPRINTF _snprintf
+#else
+#define STBIW_SNPRINTF snprintf
+#endif
+#endif
+
 
 #ifndef STBIW_ASSERT
 #include <assert.h>
@@ -773,8 +781,12 @@ static int stbi_write_hdr_core(stbi__write_context *s, int x, int y, int comp, f
 #ifdef __STDC_LIB_EXT1__
       len = sprintf_s(buffer, sizeof(buffer), "EXPOSURE=          1.0000000000000\n\n-Y %d +X %d\n", y, x);
 #else
-      len = sprintf(buffer, "EXPOSURE=          1.0000000000000\n\n-Y %d +X %d\n", y, x);
+      len = STBIW_SNPRINTF(buffer, sizeof(buffer), "EXPOSURE=          1.0000000000000\n\n-Y %d +X %d\n", y, x);
 #endif
+      if (len < 0 || len >= (int) sizeof(buffer)) {
+         STBIW_FREE(scratch);
+         return 0;
+      }
       s->func(s->context, buffer, len);
 
       for(i=0; i < y; i++)
