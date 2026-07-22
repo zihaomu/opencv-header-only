@@ -54,6 +54,24 @@ target_include_directories(cvh_headers INTERFACE
 )
 target_compile_features(cvh_headers INTERFACE cxx_std_17)
 
+set(CVH_OPENCV_INTRIN_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include/cvh/3rdparty/opencv_intrin")
+
+add_library(cvh_headers_fast INTERFACE)
+add_library(cvh::headers_fast ALIAS cvh_headers_fast)
+set_target_properties(cvh_headers_fast PROPERTIES EXPORT_NAME headers_fast)
+target_link_libraries(cvh_headers_fast INTERFACE cvh_headers)
+target_include_directories(cvh_headers_fast INTERFACE
+    $<BUILD_INTERFACE:${CVH_OPENCV_INTRIN_INCLUDE_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/cvh/3rdparty/opencv_intrin>
+)
+target_compile_definitions(cvh_headers_fast INTERFACE
+    CVH_ENABLE_OPENCV_INTRIN=1
+    CVH_ENABLE_PLATFORM_INTRINSICS=1
+)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64|ARM64|AARCH64)$")
+    target_compile_definitions(cvh_headers_fast INTERFACE CV_NEON=1)
+endif()
+
 set(CVH_NATIVE_BACKEND_SOURCES
     src/core/basic_op_scalar.cpp
     src/core/kernel/binary_kernel_xsimd.cpp

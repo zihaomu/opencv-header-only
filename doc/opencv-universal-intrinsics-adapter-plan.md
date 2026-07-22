@@ -1022,7 +1022,7 @@ P3 总体验收：
 
 ### P4：headers_fast profile
 
-状态：待启动，先完成 P4.0 再进入实现。
+状态：进行中，P4.0/P4.1 已完成，P4.2 待执行。
 
 P4 目标是在不改变默认 `cvh::headers` 行为的前提下，增加纯 header-only 加速 profile：
 
@@ -1059,19 +1059,23 @@ CVH_ENABLE_PLATFORM_INTRINSICS=1
 
 P4.0：封存 P3.6.4
 
-状态：待执行。
+状态：已完成。
 
 - commit P3.6.4 的正确性 gate、ARM benchmark CSV 和文档结论。
 - commit 后再开始 P4 代码修改，避免把 gate 结果和 profile 实现混在同一个变更里。
 
+落地结果：
+
+- P3.6.4 已提交：`11bd27a Complete resize intrinsics gate`。
+
 验收：
 
-- 工作区只剩 P4 相关修改，或干净后再进入 P4.1。
+- 工作区只剩 P4 相关修改，或干净后再进入 P4.1：通过。
 - P3.6.4 commit 信息能明确说明 exact 2x `CV_8UC1 INTER_LINEAR` 已通过 gate。
 
 P4.1：建立 `cvh::headers_fast` target
 
-状态：待执行。
+状态：已完成。
 
 - 新增 `cvh_headers_fast` `INTERFACE` target 和 `cvh::headers_fast` alias。
 - `cvh_headers_fast` 继承 `cvh::headers` 的 include 和 C++17 要求。
@@ -1079,11 +1083,19 @@ P4.1：建立 `cvh::headers_fast` target
 - ARM 构建时传播 OpenCV UI 需要的 NEON 宏；x86 后续按 OpenCV UI adapter 的可用宏扩展。
 - 不传播 `CVH_ENABLE_XSIMD=1`，不链接 `cvh::native`。
 
+落地结果：
+
+- `CMakeLists.txt` 新增 `cvh_headers_fast` `INTERFACE` target。
+- build-tree alias 为 `cvh::headers_fast`。
+- `EXPORT_NAME` 设置为 `headers_fast`，为 P4.4 的 install/export 验收预留稳定名称。
+- build-tree 下额外传播 vendored OpenCV UI include root：`include/cvh/3rdparty/opencv_intrin`。
+- install-tree include root 暂按 `$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/cvh/3rdparty/opencv_intrin>` 写入 target；P4.4 继续验证外部项目解析。
+
 验收：
 
-- 用户可以用 `target_link_libraries(app PRIVATE cvh::headers_fast)` 打开已验证 header-only fast-path。
-- `cvh::headers` 默认行为不变。
-- `cvh::headers_fast` 不引入任何 `.cpp` 编译单元。
+- 用户可以用 `target_link_libraries(app PRIVATE cvh::headers_fast)` 打开已验证 header-only fast-path：build-tree target 已建立。
+- `cvh::headers` 默认行为不变：未修改 `cvh_headers` target。
+- `cvh::headers_fast` 不引入任何 `.cpp` 编译单元：通过，target 类型为 `INTERFACE`。
 
 P4.2：增加 `headers_fast` smoke
 
