@@ -717,7 +717,7 @@ Args parse_args(int argc, char** argv)
         {
             std::cout
                 << "Usage: cvh_benchmark_core_ops [--profile quick|full] [--bench matmat|matscalar|transpose|all] "
-                   "[--dispatch auto|scalar-only|xsimd-only] "
+                   "[--dispatch auto|scalar-only] "
                    "[--scalar-pattern uniform|nonuniform|both] [--scalar-order mat_first|scalar_first|both] "
                    "[--warmup N] [--iters N] [--repeats N] [--output path]\n";
             std::exit(0);
@@ -762,11 +762,10 @@ Args parse_args(int argc, char** argv)
     }
 
     if (args.dispatch_mode != "auto" &&
-        args.dispatch_mode != "scalar-only" &&
-        args.dispatch_mode != "xsimd-only")
+        args.dispatch_mode != "scalar-only")
     {
         std::cerr << "Unsupported dispatch mode: " << args.dispatch_mode
-                  << " (expected auto/scalar-only/xsimd-only)\n";
+                  << " (expected auto/scalar-only)\n";
         std::exit(2);
     }
 
@@ -897,10 +896,6 @@ int main(int argc, char** argv)
     if (args.dispatch_mode == "scalar-only")
     {
         cvh::cpu::set_dispatch_mode(cvh::cpu::DispatchMode::ScalarOnly);
-    }
-    else if (args.dispatch_mode == "xsimd-only")
-    {
-        cvh::cpu::set_dispatch_mode(cvh::cpu::DispatchMode::XSimdOnly);
     }
     else
     {

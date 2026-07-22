@@ -2,7 +2,7 @@
 
 更新时间：2026-04-19
 
-P5.2 更新：本文件是历史归档。文中涉及 xsimd 作为性能主线的判断已经被当前 `doc/design.md` 与 P5 路线取代；当前公开 fast profile 只接受 scalar fallback + OpenCV Universal Intrinsics，xsimd 仅保留为隔离的 legacy/experimental 路径，等待 P5.3 移除。
+P5.3.5 更新：本文件是历史归档。文中涉及 xsimd 作为性能主线的判断已经被当前 `doc/design.md` 与 P5 路线取代；当前公开 fast profile 只接受 scalar fallback + OpenCV Universal Intrinsics，xsimd public adapter、legacy runtime、测试入口和 vendor 目录已在 P5.3 移除。
 
 本文件合并了以下重复规划文档：
 

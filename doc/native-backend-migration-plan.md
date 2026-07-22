@@ -10,7 +10,7 @@
 - `cvh::headers_fast`：纯 header-only + 已验证 SIMD fast-path。
 - 历史 `.cpp` 实现只作为 legacy/experimental 代码存在。
 - 安装包和公开文档只推荐 `cvh::headers` / `cvh::headers_fast`。
-- xsimd 进入 P5.2 quarantine 和 P5.3 removal，不再作为公开 fast profile 路线。
+- xsimd 已进入 P5.2 quarantine，并在 P5.3 移除 public adapter、legacy runtime、测试入口和 vendor 目录，不再作为公开 fast profile 路线。
 
 ## 为什么归档
 

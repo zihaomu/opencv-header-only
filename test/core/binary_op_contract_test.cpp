@@ -181,10 +181,10 @@ TEST(BinaryOpContract_TEST, add_supports_all_declared_depths)
     }
 }
 
-TEST(BinaryOpContract_TEST, mat_mat_add_sub_mul_int32_and_uint32_support_xsimd_only_mode)
+TEST(BinaryOpContract_TEST, mat_mat_add_sub_mul_int32_and_uint32_support_scalar_only_mode)
 {
     const auto previous_mode = cpu::dispatch_mode();
-    cpu::set_dispatch_mode(cpu::DispatchMode::XSimdOnly);
+    cpu::set_dispatch_mode(cpu::DispatchMode::ScalarOnly);
 
     Mat out;
 
@@ -210,10 +210,10 @@ TEST(BinaryOpContract_TEST, mat_mat_add_sub_mul_int32_and_uint32_support_xsimd_o
     cpu::set_dispatch_mode(previous_mode);
 }
 
-TEST(BinaryOpContract_TEST, mat_mat_add_sub_u8_s8_u16_s16_support_xsimd_only_with_saturation)
+TEST(BinaryOpContract_TEST, mat_mat_add_sub_u8_s8_u16_s16_support_scalar_only_with_saturation)
 {
     const auto previous_mode = cpu::dispatch_mode();
-    cpu::set_dispatch_mode(cpu::DispatchMode::XSimdOnly);
+    cpu::set_dispatch_mode(cpu::DispatchMode::ScalarOnly);
 
     Mat out;
 
@@ -251,10 +251,10 @@ TEST(BinaryOpContract_TEST, mat_mat_add_sub_u8_s8_u16_s16_support_xsimd_only_wit
     cpu::set_dispatch_mode(previous_mode);
 }
 
-TEST(BinaryOpContract_TEST, mat_scalar_add_sub_mul_int32_and_uint32_support_xsimd_only_mode)
+TEST(BinaryOpContract_TEST, mat_scalar_add_sub_mul_int32_and_uint32_support_scalar_only_mode)
 {
     const auto previous_mode = cpu::dispatch_mode();
-    cpu::set_dispatch_mode(cpu::DispatchMode::XSimdOnly);
+    cpu::set_dispatch_mode(cpu::DispatchMode::ScalarOnly);
 
     Mat out;
 
@@ -302,10 +302,10 @@ TEST(BinaryOpContract_TEST, mat_scalar_add_sub_mul_int32_and_uint32_support_xsim
     cpu::set_dispatch_mode(previous_mode);
 }
 
-TEST(BinaryOpContract_TEST, mat_scalar_add_sub_u8_s8_u16_s16_support_xsimd_only_with_saturation)
+TEST(BinaryOpContract_TEST, mat_scalar_add_sub_u8_s8_u16_s16_support_scalar_only_with_saturation)
 {
     const auto previous_mode = cpu::dispatch_mode();
-    cpu::set_dispatch_mode(cpu::DispatchMode::XSimdOnly);
+    cpu::set_dispatch_mode(cpu::DispatchMode::ScalarOnly);
 
     Mat out;
 
@@ -373,10 +373,10 @@ TEST(BinaryOpContract_TEST, mat_scalar_add_sub_u8_s8_u16_s16_support_xsimd_only_
     cpu::set_dispatch_mode(previous_mode);
 }
 
-TEST(BinaryOpContract_TEST, mat_mat_and_mat_scalar_mul_u8_s8_u16_s16_support_xsimd_only_with_saturation)
+TEST(BinaryOpContract_TEST, mat_mat_and_mat_scalar_mul_u8_s8_u16_s16_support_scalar_only_with_saturation)
 {
     const auto previous_mode = cpu::dispatch_mode();
-    cpu::set_dispatch_mode(cpu::DispatchMode::XSimdOnly);
+    cpu::set_dispatch_mode(cpu::DispatchMode::ScalarOnly);
 
     Mat out;
 
@@ -414,10 +414,10 @@ TEST(BinaryOpContract_TEST, mat_mat_and_mat_scalar_mul_u8_s8_u16_s16_support_xsi
     cpu::set_dispatch_mode(previous_mode);
 }
 
-TEST(BinaryOpContract_TEST, mat_mat_integer_compare_supports_xsimd_only_mode)
+TEST(BinaryOpContract_TEST, mat_mat_integer_compare_supports_scalar_only_mode)
 {
     const auto previous_mode = cpu::dispatch_mode();
-    cpu::set_dispatch_mode(cpu::DispatchMode::XSimdOnly);
+    cpu::set_dispatch_mode(cpu::DispatchMode::ScalarOnly);
 
     Mat out;
 
@@ -439,10 +439,10 @@ TEST(BinaryOpContract_TEST, mat_mat_integer_compare_supports_xsimd_only_mode)
     cpu::set_dispatch_mode(previous_mode);
 }
 
-TEST(BinaryOpContract_TEST, mat_scalar_integer_compare_supports_xsimd_only_mode)
+TEST(BinaryOpContract_TEST, mat_scalar_integer_compare_supports_scalar_only_mode)
 {
     const auto previous_mode = cpu::dispatch_mode();
-    cpu::set_dispatch_mode(cpu::DispatchMode::XSimdOnly);
+    cpu::set_dispatch_mode(cpu::DispatchMode::ScalarOnly);
 
     Mat out;
 
@@ -649,10 +649,10 @@ TEST(BinaryOpContract_TEST, fmod_and_mean_support_float_and_half)
     }
 }
 
-TEST(BinaryOpContract_TEST, mat_mat_add_fp16_supports_xsimd_only_mode)
+TEST(BinaryOpContract_TEST, mat_mat_add_fp16_supports_scalar_only_mode)
 {
     const auto previous_mode = cpu::dispatch_mode();
-    cpu::set_dispatch_mode(cpu::DispatchMode::XSimdOnly);
+    cpu::set_dispatch_mode(cpu::DispatchMode::ScalarOnly);
 
     const Mat a = make_vec_mat_from_doubles({1.0, -2.0, 3.5, 4.0}, CV_16FC1);
     const Mat b = make_vec_mat_from_doubles({0.5, 1.0, -1.5, 2.0}, CV_16FC1);
@@ -664,10 +664,10 @@ TEST(BinaryOpContract_TEST, mat_mat_add_fp16_supports_xsimd_only_mode)
     cpu::set_dispatch_mode(previous_mode);
 }
 
-TEST(BinaryOpContract_TEST, mat_scalar_add_fp16_supports_xsimd_only_mode)
+TEST(BinaryOpContract_TEST, mat_scalar_add_fp16_supports_scalar_only_mode)
 {
     const auto previous_mode = cpu::dispatch_mode();
-    cpu::set_dispatch_mode(cpu::DispatchMode::XSimdOnly);
+    cpu::set_dispatch_mode(cpu::DispatchMode::ScalarOnly);
 
     const Mat src = make_vec_mat_from_doubles({1.0, -2.0, 3.5, 4.0}, CV_16FC1);
 

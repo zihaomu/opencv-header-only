@@ -145,25 +145,8 @@ void expect_transpose_kernel_bytes_equal(int rows,
     DispatchModeGuard guard(mode);
     cpu::reset_last_dispatch_tag();
 
-    if (mode == cpu::DispatchMode::XSimdOnly)
-    {
-        try
-        {
-            cpu::transpose2d_kernel_blocked(src.data(), dst.data(), rows, cols, elem_size, 1);
-        }
-        catch (const Exception& e)
-        {
-            ASSERT_EQ(e.code, Error::StsNotImplemented)
-                << "unexpected exception code in xsimd-only transpose2d kernel";
-            return;
-        }
-        ASSERT_EQ(cpu::last_dispatch_tag(), cpu::DispatchTag::XSimd);
-    }
-    else
-    {
-        cpu::transpose2d_kernel_blocked(src.data(), dst.data(), rows, cols, elem_size, 1);
-        ASSERT_NE(cpu::last_dispatch_tag(), cpu::DispatchTag::Unknown);
-    }
+    cpu::transpose2d_kernel_blocked(src.data(), dst.data(), rows, cols, elem_size, 1);
+    ASSERT_EQ(cpu::last_dispatch_tag(), cpu::DispatchTag::Scalar);
 
     ASSERT_EQ(dst.size(), ref.size());
     for (size_t i = 0; i < byte_count; ++i)
@@ -421,7 +404,7 @@ TEST(MatContract_TEST, transpose2d_kernel_blocked_matches_reference_for_elem_siz
     }
 }
 
-TEST(MatContract_TEST, transpose2d_kernel_blocked_xsimd_only_mode_is_correct_or_reports_not_implemented)
+TEST(MatContract_TEST, transpose2d_kernel_blocked_matches_reference_in_scalar_only_mode)
 {
     const int shapes[][2] = {
         {11, 29},
@@ -440,7 +423,7 @@ TEST(MatContract_TEST, transpose2d_kernel_blocked_xsimd_only_mode_is_correct_or_
                          << "rows=" << shape[0]
                          << ", cols=" << shape[1]
                          << ", elem_size=" << elem_size);
-            expect_transpose_kernel_bytes_equal(shape[0], shape[1], elem_size, cpu::DispatchMode::XSimdOnly);
+            expect_transpose_kernel_bytes_equal(shape[0], shape[1], elem_size, cpu::DispatchMode::ScalarOnly);
         }
     }
 }

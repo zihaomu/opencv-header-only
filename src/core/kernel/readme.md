@@ -2,7 +2,7 @@
 
 ## 目录职责
 
-存放当前 `xsimd`/CPU 内核实现，支撑 `core` 里的性能路径。  
+存放过渡期 CPU 内核实现，支撑 legacy `core` 里的性能路径。
 该目录当前仍属于过渡形态，后续需与 header-only 架构统一。
 
 ## 阶段计划
@@ -40,4 +40,4 @@
 ## 已完成迁移样例
 
 - `openmp_utils.h` 已迁移到 `include/cvh/core/detail/openmp_utils.h`
-- `xsimd_kernel_utils.h` 已迁移到 `include/cvh/core/detail/xsimd_kernel_utils.h`
+- 历史 xsimd kernel 已在 P5.3.3 从本目录移除；新的性能路径应进入 header-only OpenCV UI adapter。

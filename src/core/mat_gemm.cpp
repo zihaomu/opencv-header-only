@@ -7,9 +7,9 @@
 #include "cvh/core/parallel.h"
 #include "cvh/core/system.h"
 #include "cvh/core/utils.h"
-#include "kernel/gemm_kernel_xsimd.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 
 namespace cvh
@@ -121,6 +121,65 @@ inline void for_each_gemm_row(int m, int n, int k, Fn&& fn)
         static_cast<double>(m));
 }
 
+inline size_t gemm_packed_b_elements(int n, int k)
+{
+    return static_cast<size_t>(n) * static_cast<size_t>(k);
+}
+
+inline float gemm_weight_value(float value)
+{
+    return value;
+}
+
+inline float gemm_weight_value(hfloat value)
+{
+    return static_cast<float>(value);
+}
+
+inline float gemm_weight_value(std::int8_t value)
+{
+    return static_cast<float>(value);
+}
+
+template <typename WeightT>
+inline void gemm_kernel_nn_row_scalar(const float* a, const WeightT* b, float* c, int n, int k)
+{
+    for (int col = 0; col < n; ++col)
+    {
+        float sum = 0.0f;
+        for (int kk = 0; kk < k; ++kk)
+        {
+            sum += a[kk] * gemm_weight_value(b[static_cast<size_t>(kk) * static_cast<size_t>(n) + col]);
+        }
+        c[col] = sum;
+    }
+}
+
+template <typename WeightT>
+inline void gemm_kernel_nt_scalar(const float* a,
+                                  const WeightT* b,
+                                  const float* scales,
+                                  float* c,
+                                  int m,
+                                  int n,
+                                  int k)
+{
+    for_each_gemm_row(m, n, k, [&](int row) {
+        const float* a_row = a + static_cast<size_t>(row) * static_cast<size_t>(k);
+        float* c_row = c + static_cast<size_t>(row) * static_cast<size_t>(n);
+        for (int col = 0; col < n; ++col)
+        {
+            const WeightT* b_row = b + static_cast<size_t>(col) * static_cast<size_t>(k);
+            float sum = 0.0f;
+            for (int kk = 0; kk < k; ++kk)
+            {
+                sum += a_row[kk] * gemm_weight_value(b_row[kk]);
+            }
+            c_row[col] = scales == nullptr ? sum : sum * scales[col];
+        }
+    });
+}
+
 static inline
 GemmPackedB gemm_pack_b_impl(const Mat& b)
 {
@@ -139,7 +198,7 @@ GemmPackedB gemm_pack_b_impl(const Mat& b)
     packed.type = b.type();
     packed.k = K;
     packed.n = N;
-    packed.packed_step = cpu::gemm_xsimd_packed_b_elements(N, K);
+    packed.packed_step = gemm_packed_b_elements(N, K);
 
     const int batch_dims = static_cast<int>(shape_b.size()) - 2;
     const size_t batch_count = batch_dims > 0 ? total(shape_b, 0, shape_b.size() - 2) : 1;
@@ -153,7 +212,7 @@ GemmPackedB gemm_pack_b_impl(const Mat& b)
         {
             const float* pbi = pb + i * matrix_elements;
             float* packed_ptr = packed.packed_fp32.data() + i * packed.packed_step;
-            cpu::gemm_pack_xsimd_nn_fp32(pbi, packed_ptr, N, K);
+            std::copy(pbi, pbi + matrix_elements, packed_ptr);
         }
     }
     else
@@ -164,7 +223,7 @@ GemmPackedB gemm_pack_b_impl(const Mat& b)
         {
             const hfloat* pbi = pb + i * matrix_elements;
             hfloat* packed_ptr = packed.packed_fp16.data() + i * packed.packed_step;
-            cpu::gemm_pack_xsimd_nn_fp16(pbi, packed_ptr, N, K);
+            std::copy(pbi, pbi + matrix_elements, packed_ptr);
         }
     }
 
@@ -249,13 +308,10 @@ void gemm_impl_naive(const Mat& a, const Mat& b, Mat& c)
             const float* pb = reinterpret_cast<const float*>(b.data);
             const float* pbi = lin_b * step_b + pb;
 
-            std::vector<float> packed_b(cpu::gemm_xsimd_packed_b_elements(N, K));
-            cpu::gemm_pack_xsimd_nn_fp32(pbi, packed_b.data(), N, K);
-
             for_each_gemm_row(M, N, K, [&](int mi) {
                 const float* a_row = pai + static_cast<size_t>(mi) * static_cast<size_t>(K);
                 float* c_row = pci + static_cast<size_t>(mi) * static_cast<size_t>(N);
-                cpu::gemm_kernel_xsimd_row_packed_fp32(a_row, packed_b.data(), c_row, N, K);
+                gemm_kernel_nn_row_scalar(a_row, pbi, c_row, N, K);
             });
         }
         else
@@ -263,13 +319,10 @@ void gemm_impl_naive(const Mat& a, const Mat& b, Mat& c)
             const hfloat* pb = reinterpret_cast<const hfloat*>(b.data);
             const hfloat* pbi = lin_b * step_b + pb;
 
-            std::vector<hfloat> packed_b(cpu::gemm_xsimd_packed_b_elements(N, K));
-            cpu::gemm_pack_xsimd_nn_fp16(pbi, packed_b.data(), N, K);
-
             for_each_gemm_row(M, N, K, [&](int mi) {
                 const float* a_row = pai + static_cast<size_t>(mi) * static_cast<size_t>(K);
                 float* c_row = pci + static_cast<size_t>(mi) * static_cast<size_t>(N);
-                cpu::gemm_kernel_xsimd_row_packed_fp16(a_row, packed_b.data(), c_row, N, K);
+                gemm_kernel_nn_row_scalar(a_row, pbi, c_row, N, K);
             });
         }
     });
@@ -311,7 +364,7 @@ void gemm_impl_naive_packed(const Mat& a, const GemmPackedB& packed_b, Mat& c)
     CV_Assert((packed_b.type == CV_32F || packed_b.type == CV_16F) &&
               "Packed gemm currently supports FP32/FP16 weights only!");
     CV_Assert(packed_b.k == K && packed_b.n == N && "Packed gemm metadata does not match shape!");
-    CV_Assert(packed_b.packed_step == cpu::gemm_xsimd_packed_b_elements(N, K) && "Packed gemm metadata is invalid!");
+    CV_Assert(packed_b.packed_step == gemm_packed_b_elements(N, K) && "Packed gemm metadata is invalid!");
     CV_Assert(!packed_b.empty() && "Packed gemm requires non-empty packed weights!");
 
     c = Mat(shape_c, CV_32F);
@@ -349,7 +402,7 @@ void gemm_impl_naive_packed(const Mat& a, const GemmPackedB& packed_b, Mat& c)
             for_each_gemm_row(M, N, K, [&](int mi) {
                 const float* a_row = pai + static_cast<size_t>(mi) * static_cast<size_t>(K);
                 float* c_row = pci + static_cast<size_t>(mi) * static_cast<size_t>(N);
-                cpu::gemm_kernel_xsimd_row_packed_fp32(a_row, packed_ptr, c_row, N, K);
+                gemm_kernel_nn_row_scalar(a_row, packed_ptr, c_row, N, K);
             });
         }
         else
@@ -358,7 +411,7 @@ void gemm_impl_naive_packed(const Mat& a, const GemmPackedB& packed_b, Mat& c)
             for_each_gemm_row(M, N, K, [&](int mi) {
                 const float* a_row = pai + static_cast<size_t>(mi) * static_cast<size_t>(K);
                 float* c_row = pci + static_cast<size_t>(mi) * static_cast<size_t>(N);
-                cpu::gemm_kernel_xsimd_row_packed_fp16(a_row, packed_ptr, c_row, N, K);
+                gemm_kernel_nn_row_scalar(a_row, packed_ptr, c_row, N, K);
             });
         }
     });
@@ -504,20 +557,20 @@ void gemm_impl_row(const Mat& a, const Mat& b, const Mat* b_scales, Mat& c)
         {
             const float* pb = reinterpret_cast<const float*>(b.data);
             const float* pbi = lin_b * step_b + pb;
-            cpu::gemm_kernel_xsimd_nt(pai, pbi, pci, M, N, K);
+            gemm_kernel_nt_scalar(pai, pbi, nullptr, pci, M, N, K);
         }
         else if (b.type() == CV_16F)
         {
             const hfloat* pb = reinterpret_cast<const hfloat*>(b.data);
             const hfloat* pbi = lin_b * step_b + pb;
-            cpu::gemm_kernel_xsimd_nt_fp16(pai, pbi, pci, M, N, K);
+            gemm_kernel_nt_scalar(pai, pbi, nullptr, pci, M, N, K);
         }
         else
         {
             const int8_t* pb = reinterpret_cast<const int8_t*>(b.data);
             const int8_t* pbi = lin_b * step_b + pb;
             const float* scale_ptr = reinterpret_cast<const float*>(b_scales->data);
-            cpu::gemm_kernel_xsimd_nt_i8_rowwise(pai, pbi, scale_ptr, pci, M, N, K);
+            gemm_kernel_nt_scalar(pai, pbi, scale_ptr, pci, M, N, K);
         }
     });
 }

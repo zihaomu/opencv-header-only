@@ -43,4 +43,4 @@
 - 文件级迁移状态见：`doc/src-core-migration-tracker.md`
 - 已完成低风险迁移样例：
   - `src/core/kernel/openmp_utils.h` -> `include/cvh/core/detail/openmp_utils.h`
-  - `src/core/kernel/xsimd_kernel_utils.h` -> `include/cvh/core/detail/xsimd_kernel_utils.h`
+  - 历史 xsimd `.cpp` kernel 已在 P5.3.3 移除，剩余实现不得重新依赖该路径。

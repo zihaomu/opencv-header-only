@@ -3,14 +3,16 @@
 
 #include "cvh/detail/config.h"
 
-#if CVH_ENABLE_XSIMD && !CVH_ENABLE_LEGACY_XSIMD
-#error "CVH_ENABLE_XSIMD is legacy/experimental; define CVH_ENABLE_LEGACY_XSIMD=1 for internal xsimd checks"
+#ifdef CVH_ENABLE_XSIMD
+#error "CVH_ENABLE_XSIMD has been removed from the header-only SIMD facade; use cvh::headers_fast for accepted SIMD paths"
+#endif
+
+#ifdef CVH_ENABLE_LEGACY_XSIMD
+#error "CVH_ENABLE_LEGACY_XSIMD has been removed from the header-only SIMD facade"
 #endif
 
 #if CVH_ENABLE_OPENCV_INTRIN
 #include "opencv_intrin_adapter.h"
-#elif CVH_ENABLE_XSIMD && CVH_ENABLE_LEGACY_XSIMD
-#include "xsimd_adapter.h"
 #else
 #include "scalar_adapter.h"
 #endif
@@ -21,8 +23,6 @@ namespace simd {
 
 #if CVH_ENABLE_OPENCV_INTRIN
 using namespace opencv_intrin;
-#elif CVH_ENABLE_XSIMD && CVH_ENABLE_LEGACY_XSIMD
-using namespace xsimd_adapter;
 #else
 using namespace scalar;
 #endif

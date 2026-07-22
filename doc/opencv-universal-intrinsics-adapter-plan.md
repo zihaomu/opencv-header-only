@@ -1,6 +1,6 @@
 # OpenCV Universal Intrinsics Adapter 引入计划
 
-P5.2 更新：xsimd 已进入 quarantine。当前 accepted header-only fast profile 只包含 scalar fallback + OpenCV Universal Intrinsics；direct platform intrinsics 仍是 benchmark-gated 候选。下文早期阶段中的 xsimd 内容只作为历史上下文或 legacy/experimental 路径记录，不再代表公开推荐用法。
+P5.3.5 更新：xsimd 已从 public adapter、legacy runtime、测试入口和 vendor 目录中移除。当前 accepted header-only fast profile 只包含 scalar fallback + OpenCV Universal Intrinsics；direct platform intrinsics 仍是 benchmark-gated 候选。下文早期阶段中的 xsimd 内容只作为历史上下文记录，不再代表公开推荐用法。
 
 ## 背景
 
@@ -47,7 +47,7 @@ OpenCV 中的 HAL 可以粗略分为两类：
 - 引入一个内部 `cvh` SIMD facade，避免业务 kernel 直接依赖 `cv::v_*`。
 - 将 OpenCV Universal Intrinsics 作为 facade 的可选 adapter。
 - 保留 scalar fallback，任意 SIMD adapter 缺失时 API 仍可运行。
-- 将 xsimd 从公开 fast profile 隔离；P5.3 前仅允许作为 legacy/experimental 显式 opt-in。
+- 将 xsimd 从公开 fast profile 和可执行实现路径移除；P5.3 后只允许在历史归档或旧宏 hard error 中出现。
 - 为 ARM 热点 kernel 提供比 xsimd 更接近手写 NEON 的实现路径。
 - 建立可重复的 OpenCV upstream 同步机制。
 
@@ -93,7 +93,7 @@ cvh::detail::simd::pack_u16_to_u8
 - OpenCV Universal Intrinsics implementation
 - direct NEON / AVX implementation
 
-历史 xsimd adapter 只允许作为 quarantine 期间的内部 legacy/experimental 路径存在，不作为 accepted header-only fast profile。
+历史 xsimd adapter 已在 P5.3 移除，不作为 accepted header-only fast profile，也不作为内部 legacy/experimental 路径继续维护。
 
 ### 3. 默认纯净
 
@@ -169,7 +169,6 @@ include/cvh/core/simd/
   scalar_adapter.h
   opencv_intrin_adapter.h
   platform_intrin_adapter.h
-  xsimd_adapter.h  # legacy/quarantined until P5.3
   simd.h
 ```
 
@@ -206,7 +205,7 @@ CVH_ENABLE_FAST_MATH
 - `CVH_ENABLE_OPENCV_INTRIN=1`：允许使用 vendored OpenCV Universal Intrinsics adapter。
 - `CVH_ENABLE_PLATFORM_INTRINSICS=1`：允许使用项目自写 NEON / AVX 等平台专项 header 实现。
 
-xsimd 相关开关只属于 quarantine 期间的 legacy/experimental 内部验证，不再作为公开推荐用法。
+xsimd 相关开关已移除，不再作为公开推荐用法；继续手动定义旧宏时应被 header-only SIMD facade 明确拒绝。
 
 选择顺序建议：
 
@@ -1035,7 +1034,7 @@ cvh::headers_fast
 
 说明：历史 `.cpp` 实现只作为 legacy/experimental 代码存在，不进入 `opencv-header-only` 的公开产品叙事。
 
-P4 明确不让 `cvh::headers_fast` 启用 xsimd。xsimd 暂时只作为 legacy/experimental 手动开关存在；除非某个 kernel 有独立 benchmark 证明稳定收益，否则不进入 header-only fast profile。P5 将进一步推进隔离和移除。
+P4 明确不让 `cvh::headers_fast` 启用 xsimd；P5.3 已进一步完成 public adapter、legacy runtime、测试入口和 vendor 目录移除。xsimd 不再作为 header-only fast profile 或 legacy `.cpp` 实验路径维护。
 
 `cvh::headers_fast` 首轮只传播：
 
@@ -1305,7 +1304,7 @@ P5.2：xsimd Quarantine
 
 P5.3：xsimd Removal
 
-状态：进行中，P5.3.0 已完成；下一步 P5.3.1。
+状态：已完成。
 
 P5.3 不一次性硬删。先通过依赖扫描确认 xsimd 暴露面，再按 public header-only、CMake/test、legacy `.cpp`、benchmark/vendor 的顺序移除，避免误伤仍需要保留的 scalar/OpenCV UI 路径。
 
@@ -1335,7 +1334,7 @@ P5.3.0：依赖扫描
 | legacy `.cpp` core kernels | `src/core/kernel/binary_kernel_xsimd.*`、`src/core/kernel/gemm_kernel_xsimd.*`、`src/core/kernel/normalization_kernel_xsimd.*`、`src/core/kernel/transpose_kernel.cpp` | P5.3.3 |
 | legacy `.cpp` callers | `src/core/basic_op.cpp`、`src/core/basic_op_scalar.cpp`、`src/core/mat_gemm.cpp`、`src/core/readme.md`、`src/core/kernel/readme.md` | P5.3.3 |
 | xsimd-only tests | `test/core/binary_op_contract_test.cpp`、`test/core/mat_contract_test.cpp` | P5.3.3 |
-| benchmark dispatch option | `benchmark/core_ops_benchmark.cpp` | P5.3.4 |
+| benchmark dispatch option | `benchmark/core_ops_benchmark.cpp` | P5.3.3 |
 | user / design docs | `README.md`、`doc/design.md`、`doc/native-backend-migration-plan.md`、`doc/mat-rollout-history.md`、`doc/transpose-x86-todo-2026-04-19.md`、本计划文档 | P5.3.5 |
 | vendor | `include/cvh/3rdparty/xsimd/` | P5.3.4 |
 
@@ -1347,48 +1346,148 @@ P5.3.0 额外发现：
 
 P5.3.1：删除 public header-only xsimd adapter
 
-状态：待开始。
+状态：已完成。
 
 - 删除 `include/cvh/core/simd/xsimd_adapter.h`。
 - 删除 `include/cvh/detail/config.h` 中 `CVH_ENABLE_XSIMD` / `CVH_ENABLE_LEGACY_XSIMD` 的公开默认入口。
 - `include/cvh/core/simd/simd.h` 只保留 scalar fallback 和 OpenCV Universal Intrinsics 选择。
 
+落地结果：
+
+- 已删除 `include/cvh/core/simd/xsimd_adapter.h`。
+- `include/cvh/detail/config.h` 不再为 `CVH_ENABLE_XSIMD` / `CVH_ENABLE_LEGACY_XSIMD` 提供默认值。
+- `include/cvh/core/simd/simd.h` 不再 include 或 using xsimd adapter；只在 `CVH_ENABLE_OPENCV_INTRIN=1` 时选择 OpenCV UI，否则选择 scalar。
+- `simd.h` 对外部继续手动定义 `CVH_ENABLE_XSIMD` 或 `CVH_ENABLE_LEGACY_XSIMD` 的情况保留明确编译期错误，避免旧宏静默失效。
+- `scripts/check_header_only_contract.sh` 的负向 consumer 已同步为“旧 xsimd 宏已移除”错误文本；P5.3.2 会继续把 CMake/test 中的 legacy xsimd smoke 和负向 gate 清成无残留检查。
+
+验收结果：
+
+- `rg -n "xsimd|XSIMD|CVH_ENABLE_XSIMD|CVH_ENABLE_LEGACY_XSIMD|XSimd" include/cvh/core/simd include/cvh/detail/config.h -g '!include/cvh/3rdparty/xsimd/**'` 只剩 `simd.h` 中旧宏的 compile-time hard error。
+- `./scripts/check_header_only_contract.sh` 通过。
+- `./scripts/ci_headers_all.sh` 通过；默认 header-only CI 仍为 `CVH_BUILD_LEGACY_XSIMD_TESTS=OFF`。
+
 P5.3.2：删除 CMake/test 中 xsimd smoke
 
-状态：待开始。
+状态：已完成。
 
 - 删除 `CVH_BUILD_LEGACY_XSIMD_TESTS`。
 - 删除 `cvh_legacy_xsimd_facade_smoke` target 和 CTest 注册。
 - 更新 `scripts/check_header_only_contract.sh`，从“xsimd 负向 gate”转为“公开 target/package 无 xsimd 宏、target、include 残留”。
 
+落地结果：
+
+- `CMakeLists.txt` 已删除 `CVH_BUILD_LEGACY_XSIMD_TESTS` option、`cvh_legacy_xsimd_facade_smoke` target 和对应 CTest 注册。
+- `scripts/ci_headers_all.sh` 不再展示 legacy xsimd cache key，并通过 `-U 'CVH_BUILD_LEGACY_*'` 清理复用 build dir 中的旧 legacy cache。
+- `scripts/check_header_only_contract.sh` 删除旧 xsimd 负向 consumer，改为检查 installed CMake package surface 不含 `xsimd`、`XSIMD`、`CVH_ENABLE_XSIMD`、`CVH_ENABLE_LEGACY_XSIMD` 或 `XSimd`。
+- `test/smoke/cvh_headers_fast_smoke.cpp` 不再检查已移除的 xsimd 宏；`simd.h` 本身仍会对旧宏做 compile-time hard error。
+- `test/smoke/readme.md` 删除 legacy xsimd smoke 说明。
+
+验收结果：
+
+- `./scripts/check_header_only_contract.sh` 通过。
+- `./scripts/ci_headers_all.sh` 通过；cache 输出不再包含 `CVH_BUILD_LEGACY_XSIMD_TESTS`。
+- `build-ci-headers-all/CMakeCache.txt` 不含 `CVH_BUILD_LEGACY_XSIMD_TESTS`。
+- `ctest -N --test-dir build-ci-headers-all` 和 `cmake --build build-ci-headers-all --target help` 不含 `legacy_xsimd` / `xsimd_facade`。
+- 即使显式传入已删除的 `-DCVH_BUILD_LEGACY_XSIMD_TESTS=ON`，`build-p532-old-xsimd-opt` 也不会生成 legacy xsimd target 或 CTest。
+
 P5.3.3：处理 legacy `.cpp` xsimd kernel
 
-状态：待开始。
+状态：已完成。
 
 - 删除或迁移 `src/core/kernel/*_xsimd.*`。
 - 处理 `src/core/basic_op.cpp`、`src/core/basic_op_scalar.cpp`、`src/core/mat_gemm.cpp`、`src/core/kernel/transpose_kernel.cpp` 对 xsimd kernel、`DispatchMode::XSimdOnly`、`DispatchTag::XSimd` 的依赖。
 - 如果 legacy `.cpp` build 仍保留最小可编译性，则把相关路径降级到 scalar fallback；否则同步从 legacy source list 移除对应能力。
 
-P5.3.4：删除 vendor 和 benchmark 参数
+落地结果：
 
-状态：待开始。
+- `CMakeLists.txt` 已从 legacy native source list 移除 `binary_kernel_xsimd.cpp`、`gemm_kernel_xsimd.cpp`，并移除 native target 对 xsimd vendor include dir 的依赖。
+- 删除 `src/core/kernel/binary_kernel_xsimd.*`、`src/core/kernel/gemm_kernel_xsimd.*`、`src/core/kernel/normalization_kernel_xsimd.*`、`include/cvh/core/detail/xsimd_kernel_utils.h`。
+- 删除未进入当前 CMake source list、且仍引用 normalization/xsimd kernel 的历史 `src/core/basic_op.cpp`。
+- `src/core/basic_op_scalar.cpp` 不再尝试 xsimd fast dispatch；mat-mat、mat-scalar、compare 路径统一走 scalar fallback，并继续设置 `DispatchTag::Scalar`。
+- `src/core/mat_gemm.cpp` 保留 `gemm_pack_b` / packed GEMM API，但 packed B 改为 contiguous copy，NN/NT GEMM 使用 scalar multiply-accumulate fallback。
+- `src/core/kernel/transpose_kernel.cpp` 删除 xsimd transpose、probe cache 和 `CVH_TRANSPOSE_XSIMD_PROBE_LOG` 路径，保留 tiled/memcpy scalar fallback。
+- `include/cvh/core/detail/dispatch_control.h` 删除 `DispatchMode::XSimdOnly` 和 `DispatchTag::XSimd`。
+- `test/core/binary_op_contract_test.cpp`、`test/core/mat_contract_test.cpp` 的 xsimd-only 正确性用例改为 scalar-only 正确性用例。
+- 因 `XSimdOnly` enum 已删除，`benchmark/core_ops_benchmark.cpp` 同步移除 `--dispatch xsimd-only`，P5.3.4 不再需要单独处理该参数。
+- `README.md`、`doc/design.md`、`include/cvh/core/readme.md`、`include/cvh/core/define.h`、`src/core/readme.md`、`src/core/kernel/readme.md` 已同步当前代码面的 xsimd 状态。
+
+验证结果：
+
+- `./scripts/check_header_only_contract.sh` 通过。
+- `./scripts/ci_headers_all.sh` 通过。
+- `cmake -S . -B build-p533-native -DCVH_BUILD_NATIVE_BACKEND=ON -DCVH_BUILD_TESTS=ON -DCVH_BUILD_BENCHMARKS=ON` 通过。
+- `cmake --build build-p533-native --target cvh_native_backend cvh_test_core_native cvh_benchmark_core_ops -j` 通过。
+- `ctest --test-dir build-p533-native --output-on-failure -R 'cvh_test_core_native|cvh_test_core$'` 通过。
+- `cvh_benchmark_core_ops --help` 不再输出 `xsimd`；`--dispatch xsimd-only` 会按预期报错 `expected auto/scalar-only`。
+- `rg -n "DispatchMode::XSimdOnly|DispatchTag::XSimd|xsimd-only|CVH_TRANSPOSE_XSIMD_PROBE_LOG|binary_kernel_xsimd|gemm_kernel_xsimd|normalization_kernel_xsimd|xsimd_kernel_utils" CMakeLists.txt include src test benchmark scripts README.md -g '!include/cvh/3rdparty/xsimd/**'` 无结果。
+
+P5.3.4：删除 vendor 和许可说明
+
+状态：已完成。
 
 - 删除 `include/cvh/3rdparty/xsimd/` vendor 目录。
-- 删除 benchmark 中的 `xsimd-only` dispatch 参数或将相关 benchmark 迁入历史归档说明。
 - 更新 third-party/license 说明，确保不再列出已经移除的 xsimd vendor。
+
+落地结果：
+
+- 已删除 `include/cvh/3rdparty/xsimd/` vendor 目录；P5.3.0 扫描时该目录共 96 个文件。
+- root `LICENSE` 未包含 xsimd 条目；原 xsimd 许可说明只随 vendor 自带 `LICENSE` / `README.md` 存在，随目录删除一并移除。
+- `README.md`、`doc/design.md` 和历史 compiled-extension 归档文档已同步为 P5.3 已移除 xsimd vendor 的状态。
+- OpenCV Universal Intrinsics 的第三方来源和许可仍由 `include/cvh/3rdparty/opencv_intrin/UPSTREAM.md` 与 `LICENSE.opencv` 记录。
+
+验证结果：
+
+- `test ! -e include/cvh/3rdparty/xsimd` 通过。
+- `rg --files include src test benchmark | rg "xsimd|XSimd"` 无结果。
+- 源码和构建面扫描只剩 deliberate old-macro hard error、contract/package gate，以及 README/文档中的历史说明。
+- `./scripts/check_header_only_contract.sh` 通过。
+- `./scripts/ci_headers_all.sh` 通过。
+- `cmake -S . -B build-p534-native -DCVH_BUILD_NATIVE_BACKEND=ON -DCVH_BUILD_TESTS=ON -DCVH_BUILD_BENCHMARKS=ON` 通过。
+- `cmake --build build-p534-native --target cvh_native_backend cvh_test_core_native cvh_benchmark_core_ops -j` 通过。
+- `ctest --test-dir build-p534-native --output-on-failure -R 'cvh_test_core_native|cvh_test_core$'` 通过。
+- `cvh_benchmark_core_ops --help` 不再输出 `xsimd`，dispatch 参数只剩 `auto|scalar-only`。
+- `git diff --check` 通过。
 
 P5.3.5：验证
 
-状态：待开始。
+状态：已完成。
 
-- `rg -n "xsimd|XSIMD|CVH_ENABLE_XSIMD|XSimd" CMakeLists.txt include src test benchmark README.md doc scripts` 只允许历史归档说明中保留，或完全无结果。
+- `rg -n "xsimd|XSIMD|CVH_ENABLE_XSIMD|XSimd" CMakeLists.txt include src test benchmark README.md doc scripts` 只允许以下残留：
+  - `include/cvh/core/simd/simd.h` 中对旧宏的 compile-time hard error。
+  - `scripts/check_header_only_contract.sh` 中对 installed package 的负向扫描。
+  - `README.md` / `doc/design.md` 中“xsimd 不属于 accepted fast path”的当前策略说明。
+  - `doc/` 中明确标记为历史归档或历史阶段记录的上下文。
 - `./scripts/check_header_only_contract.sh` 通过。
 - `./scripts/ci_headers_all.sh` 通过。
 - 如 legacy `.cpp` build 仍声明可构建，补跑 `CVH_BUILD_NATIVE_BACKEND=ON` 的最小配置验证。
 
+落地结果：
+
+- `doc/mat-rollout-history.md` 更新为 P5.3.5 历史归档口径，明确 xsimd public adapter、legacy runtime、测试入口和 vendor 目录已在 P5.3 移除。
+- `doc/transpose-x86-todo-2026-04-19.md` 从可执行 handoff 改为历史归档，明确旧 xsimd transpose/probe 路径已删除，不再作为后续 TODO。
+- P5.3.5 明确了允许残留清单：旧宏 hard error、installed package gate、README/design 当前策略说明和历史归档上下文。
+
+验证结果：
+
+- `test ! -e include/cvh/3rdparty/xsimd` 通过。
+- `rg --files include src test benchmark | rg "xsimd|XSimd"` 无结果。
+- `rg -n "DispatchMode::XSimdOnly|DispatchTag::XSimd|xsimd-only|CVH_TRANSPOSE_XSIMD_PROBE_LOG|binary_kernel_xsimd|gemm_kernel_xsimd|normalization_kernel_xsimd|xsimd_kernel_utils|CVH_BUILD_LEGACY_XSIMD_TESTS|cvh_legacy_xsimd_facade_smoke|cvh_simd_facade_xsimd_smoke" CMakeLists.txt include src test benchmark scripts README.md` 无结果。
+- `rg -n "xsimd|XSimd|XSIMD|CVH_ENABLE_XSIMD|CVH_ENABLE_LEGACY_XSIMD" CMakeLists.txt include src test benchmark README.md scripts -g '!doc/**'` 只剩 README 策略说明、`simd.h` 旧宏 hard error、`scripts/check_header_only_contract.sh` installed package gate，以及 `include/cvh/core/readme.md` / `src/core/readme.md` / `src/core/kernel/readme.md` 历史说明。
+- `./scripts/check_header_only_contract.sh` 通过。
+- `./scripts/ci_headers_all.sh` 通过。
+- `cmake -S . -B build-p535-native -DCVH_BUILD_NATIVE_BACKEND=ON -DCVH_BUILD_TESTS=ON -DCVH_BUILD_BENCHMARKS=ON` 通过。
+- `cmake --build build-p535-native --target cvh_native_backend cvh_test_core_native cvh_benchmark_core_ops -j` 通过。
+- `ctest --test-dir build-p535-native --output-on-failure -R 'cvh_test_core_native|cvh_test_core$'` 通过。
+- `cmake --build build-p535-native --target cvh_headers_fast_smoke cvh_cvtcolor_opencv_intrin_smoke cvh_resize_opencv_intrin_smoke -j` 通过。
+- `ctest --test-dir build-p535-native --output-on-failure -R 'cvh_headers_fast_smoke|cvh_cvtcolor_opencv_intrin_smoke|cvh_resize_opencv_intrin_smoke'` 通过。
+- `cvh_benchmark_core_ops --help` 不再输出 `xsimd`，dispatch 参数只剩 `auto|scalar-only`。
+- `git diff --check` 通过。
+
 验收：
 
-- `rg -n "xsimd|XSIMD|CVH_ENABLE_XSIMD|XSimd" CMakeLists.txt include src test benchmark README.md doc` 只允许出现在历史归档说明中，或完全无结果。
+- `include/`、`src/`、`test/`、`benchmark/` 中不再有 xsimd 文件名。
+- 源码残留只允许 old-macro hard error；构建脚本残留只允许 installed package gate。
+- 文档残留必须是当前策略说明或历史归档，不得继续描述 xsimd 待办或可执行路线。
 - `cvh::headers` 和 `cvh::headers_fast` 全量 smoke/test 通过。
 - `cvh::headers_fast` 的 accepted fast path 仍覆盖 `BGR2GRAY/RGB2GRAY` 和 exact 2x `CV_8UC1 INTER_LINEAR resize`。
 

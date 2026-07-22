@@ -57,7 +57,7 @@ target_link_libraries(app PRIVATE cvh::headers_fast)
 
 Users should prefer `cvh::headers_fast` over manually combining `CVH_ENABLE_OPENCV_INTRIN`, `CVH_ENABLE_PLATFORM_INTRINSICS`, or vendored OpenCV UI include paths.
 
-xsimd is quarantined as legacy/experimental code and is not part of the accepted `cvh::headers_fast` profile.
+xsimd is not part of the accepted runtime path. P5.3 removed the legacy `.cpp` xsimd kernels, public adapter surface, tests, dispatch mode, and vendored xsimd tree.
 
 ## Operator Status
 

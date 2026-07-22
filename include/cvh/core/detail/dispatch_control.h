@@ -10,14 +10,12 @@ enum class DispatchMode
 {
     Auto = 0,
     ScalarOnly,
-    XSimdOnly,
 };
 
 enum class DispatchTag
 {
     Unknown = 0,
     Scalar,
-    XSimd,
 };
 
 inline std::atomic<DispatchMode> g_dispatch_mode {DispatchMode::Auto};
@@ -54,8 +52,6 @@ inline const char* dispatch_tag_name(DispatchTag tag)
     {
         case DispatchTag::Scalar:
             return "scalar";
-        case DispatchTag::XSimd:
-            return "xsimd";
         case DispatchTag::Unknown:
         default:
             return "unknown";
