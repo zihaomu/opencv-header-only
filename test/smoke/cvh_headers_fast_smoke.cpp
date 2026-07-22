@@ -4,11 +4,11 @@
 #include <cstring>
 
 #ifndef CVH_LITE
-#error "cvh::headers_fast must keep header-only lite mode"
+#error "cvh::headers_fast must keep the pure header-only compatibility mode"
 #endif
 
 #ifdef CVH_NATIVE
-#error "cvh::headers_fast must not enable native mode"
+#error "cvh::headers_fast must not enable legacy .cpp mode"
 #endif
 
 #if !CVH_ENABLE_OPENCV_INTRIN

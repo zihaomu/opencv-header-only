@@ -30,7 +30,7 @@ int test_waitkey_backend(int delay)
 
 }  // namespace
 
-TEST(Highgui_TEST, imshow_requires_native_or_imwrite_hint_in_lite)
+TEST(Highgui_TEST, imshow_reports_header_only_unsupported_and_imwrite_hint)
 {
     Mat img({2, 2}, CV_8UC3);
     img = 0;
@@ -38,27 +38,27 @@ TEST(Highgui_TEST, imshow_requires_native_or_imwrite_hint_in_lite)
     try
     {
         imshow("lite_mode_window", img);
-        FAIL() << "imshow should throw in CVH_LITE mode";
+        FAIL() << "imshow should throw in pure header-only mode";
     }
     catch (const Exception& e)
     {
         const std::string msg = e.what();
-        EXPECT_NE(msg.find("CVH_NATIVE"), std::string::npos);
+        EXPECT_NE(msg.find("header-only"), std::string::npos);
         EXPECT_NE(msg.find("imwrite"), std::string::npos);
     }
 }
 
-TEST(Highgui_TEST, waitkey_requires_native_in_lite)
+TEST(Highgui_TEST, waitkey_reports_header_only_unsupported)
 {
     try
     {
         (void)waitKey(1);
-        FAIL() << "waitKey should throw in CVH_LITE mode";
+        FAIL() << "waitKey should throw in pure header-only mode";
     }
     catch (const Exception& e)
     {
         const std::string msg = e.what();
-        EXPECT_NE(msg.find("CVH_NATIVE"), std::string::npos);
+        EXPECT_NE(msg.find("header-only"), std::string::npos);
     }
 }
 
@@ -93,7 +93,7 @@ TEST(Highgui_TEST, dispatch_registration_overrides_api_calls)
     detail::register_waitkey_backend(old_waitkey);
 }
 
-TEST(Highgui_TEST, lite_mode_keeps_backend_unregistered_by_default)
+TEST(Highgui_TEST, header_only_mode_keeps_display_callbacks_unregistered_by_default)
 {
     EXPECT_FALSE(detail::is_imshow_backend_registered());
     EXPECT_FALSE(detail::is_waitkey_backend_registered());

@@ -17,16 +17,16 @@ include(CTest)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-option(CVH_BUILD_NATIVE_BACKEND "Build optional native backend from src/ compiled sources" OFF)
-set(CVH_BUILD_FULL_BACKEND "" CACHE STRING "Deprecated alias for CVH_BUILD_NATIVE_BACKEND; use CVH_BUILD_NATIVE_BACKEND instead")
+option(CVH_BUILD_NATIVE_BACKEND "Internal/development-only: build legacy .cpp experiments; not installed/exported" OFF)
+set(CVH_BUILD_FULL_BACKEND "" CACHE STRING "Deprecated internal alias for CVH_BUILD_NATIVE_BACKEND")
 if(NOT "${CVH_BUILD_FULL_BACKEND}" STREQUAL "")
-    message(DEPRECATION "CVH_BUILD_FULL_BACKEND is deprecated; use CVH_BUILD_NATIVE_BACKEND instead")
-    set(CVH_BUILD_NATIVE_BACKEND "${CVH_BUILD_FULL_BACKEND}" CACHE BOOL "Build optional native backend from src/ compiled sources" FORCE)
+    message(DEPRECATION "CVH_BUILD_FULL_BACKEND is deprecated and only forwards to the internal CVH_BUILD_NATIVE_BACKEND switch")
+    set(CVH_BUILD_NATIVE_BACKEND "${CVH_BUILD_FULL_BACKEND}" CACHE BOOL "Internal/development-only: build legacy .cpp experiments; not installed/exported" FORCE)
 endif()
-option(CVH_BUILD_BACKEND_KERNEL_SOURCES "Build sources requiring native backend kernels" ON)
+option(CVH_BUILD_BACKEND_KERNEL_SOURCES "Internal/development-only: include legacy .cpp kernel sources" ON)
 option(CVH_BUILD_TESTS "Build all test targets (smoke + core)" ON)
 option(CVH_BUILD_BENCHMARKS "Build benchmark targets" ON)
-option(CVH_USE_OPENMP "Enable OpenMP acceleration in backend kernels when available" ON)
+option(CVH_USE_OPENMP "Internal/development-only: enable OpenMP in legacy .cpp experiments when available" ON)
 option(CVH_ENABLE_OPENCV_COMPARE "Build cvh vs OpenCV compare benchmark target" OFF)
 set(CVH_OPENCV_BENCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/opencv_compare/opencv-bench-slim" CACHE PATH "Path to opencv-bench-slim source repository")
 
@@ -112,6 +112,8 @@ set(CVH_NATIVE_BACKEND_PRIVATE_COMPILE_DEFINITIONS)
 set(CVH_NATIVE_BACKEND_LINK_DEPS)
 
 if(CVH_ENABLE_NATIVE_BACKEND)
+    # Legacy .cpp experiments remain build-tree only. The installed package
+    # public surface is cvh::headers and cvh::headers_fast.
     if(WIN32)
         list(APPEND CVH_NATIVE_BACKEND_SOURCES src/highgui/display_win32.cpp)
     elseif(APPLE)
@@ -483,16 +485,6 @@ install(TARGETS cvh_headers cvh_headers_fast
     EXPORT opencv_header_onlyTargets
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
-
-if(TARGET cvh_native_backend)
-    install(TARGETS cvh_native_backend
-        EXPORT opencv_header_onlyTargets
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    )
-endif()
 
 install(EXPORT opencv_header_onlyTargets
     NAMESPACE cvh::

@@ -89,6 +89,21 @@ Legend:
 | `imgcodecs` | `imwrite` | Supported | `CV_8U` 2D `C1` / `C3` / `C4`; writes `png`, `jpg/jpeg`, `bmp`. | Same behavior as baseline. |
 | `highgui` | `imshow`, `waitKey` | Out of scope | Display/event-loop APIs are not part of the pure header-only product. Use `imwrite` or application-owned UI code. | Out of scope. |
 
+## Header-only Contract Tests
+
+The support table above is tied to the header-only test path:
+
+| Contract area | Test / gate |
+|---|---|
+| Public headers and forbidden `src/` includes | `scripts/check_public_headers.sh` |
+| Installed public targets and external package consumers | `scripts/check_header_only_contract.sh` |
+| `cvh::headers` macro/default behavior | `cvh_header_compile_smoke`, `cvh_include_only_smoke` |
+| `cvh::headers_fast` macro/default behavior | `cvh_headers_fast_smoke` |
+| `core` supported baseline | `cvh_test_core_lite` |
+| `imgproc` supported operators | `cvh_test_imgproc` |
+| `imgcodecs` supported read/write subset | `cvh_test_imgcodecs` |
+| `highgui` header-only out-of-scope behavior | `cvh_test_highgui` |
+
 ## WIP / Roadmap
 
 These are target areas, but they are not yet supported promises in the pure header-only contract:
@@ -136,8 +151,10 @@ PR admins can toggle compare jobs by comment:
 Header-only validation:
 
 ```bash
-./scripts/ci_lite_all.sh
+./scripts/ci_headers_all.sh
 ```
+
+`scripts/ci_lite_all.sh` remains as a deprecated compatibility wrapper for now.
 
 Benchmark targets:
 

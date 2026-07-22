@@ -1,12 +1,16 @@
 #ifndef CVH_DETAIL_CONFIG_H
 #define CVH_DETAIL_CONFIG_H
 
-// Mode contract:
-// - CVH_LITE: header-only fallback mode
-// - CVH_NATIVE: linked native backend-enhanced mode
+// Public package contract:
+// - cvh::headers: pure header-only baseline
+// - cvh::headers_fast: pure header-only baseline plus accepted SIMD fast paths
 //
-// If neither is provided by build flags, default to LITE so plain header users
-// get a runnable baseline contract by default.
+// CVH_LITE remains the default compatibility macro for plain header users.
+// CVH_NATIVE/CVH_FULL are legacy internal switches for development-only .cpp
+// experiments and are not part of the installed package surface.
+//
+// If no legacy mode macro is provided, default to CVH_LITE so plain header users
+// get a runnable baseline by default.
 #if defined(CVH_FULL) && !defined(CVH_NATIVE)
 #define CVH_NATIVE 1
 #endif

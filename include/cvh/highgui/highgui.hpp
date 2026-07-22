@@ -27,14 +27,14 @@ inline void imshow_fallback(const std::string& winname, const Mat& mat)
     (void)winname;
     (void)mat;
     CV_Error(Error::StsNotImplemented,
-             "imshow requires CVH_NATIVE backend. Use imwrite(\"out.png\", mat) as temporary replacement.");
+             "imshow is not supported by the pure header-only highgui fallback. Use imwrite(\"out.png\", mat) or application-owned UI code.");
 }
 
 inline int waitkey_fallback(int delay)
 {
     (void)delay;
     CV_Error(Error::StsNotImplemented,
-             "waitKey requires CVH_NATIVE backend. Use your app event loop or avoid waitKey in CVH_LITE.");
+             "waitKey is not supported by the pure header-only highgui fallback. Use your application event loop instead.");
     return -1;
 }
 

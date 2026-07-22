@@ -54,7 +54,7 @@ OpenCV 中的 HAL 可以粗略分为两类：
 - 不复用 OpenCV 完整 HAL 函数接口层。
 - 不引入 OpenCV binary 依赖。
 - 不要求用户安装 OpenCV。
-- 不依赖 native backend。
+- 不依赖 `.cpp` 实验路径。
 - 不在第一阶段追求 OpenCV 完整 CPU dispatch 体系。
 - 不承诺跟随 OpenCV master。
 - 不把 OpenCV Universal Intrinsics 的原始 API 作为本项目公开 API。
@@ -668,7 +668,7 @@ P3 不直接跳到 `cvh::headers_fast`。它先分成若干可验收的小阶段
 目标：
 
 - 加一个 header-only benchmark，同一输入分别跑 scalar fallback 和 `CVH_ENABLE_OPENCV_INTRIN=1`。
-- benchmark 不链接 OpenCV，不启用 native backend。
+- benchmark 不链接 OpenCV，不启用 `.cpp` 实验路径。
 - 输出每个尺寸的耗时和吞吐量，至少包含 `ms/call`、`MPix/s`、speedup。
 - 尺寸矩阵至少覆盖 `640x480`、`1280x720`、`1920x1080`、`3840x2160`。
 - 每个 case 需要 warmup 和多次 repeat，记录 min/median，避免单次计时噪声。
@@ -689,7 +689,7 @@ P3 不直接跳到 `cvh::headers_fast`。它先分成若干可验收的小阶段
 落地结果：
 
 - 新增 header-only benchmark target：`cvh_benchmark_cvtcolor_bgr2gray_header`。
-- benchmark 只链接 `cvh::headers`，不链接 OpenCV，不启用 native backend。
+- benchmark 只链接 `cvh::headers`，不链接 OpenCV，不启用 `.cpp` 实验路径。
 - benchmark 在同一个可执行文件里用同一份输入对比 `cvh::detail::cvtcolor_bgr2gray_u8_scalar_impl` 和 `CVH_ENABLE_OPENCV_INTRIN=1` 的 `cvh::cvtColor(..., COLOR_BGR2GRAY)`。
 - 为避免不同宏 translation unit 带来的 inline ODR 风险，benchmark 不采用双 TU 方案。
 - ARM 构建为该 target 显式打开 `CV_NEON=1`，当前结果记录为 `opencv_intrin_neon`。
@@ -872,7 +872,7 @@ P3.4 决策结果：
 
 边界：
 
-- 本轮仍只关注 CPU header-only，不启用 native backend。
+- 本轮仍只关注 CPU header-only，不启用 `.cpp` 实验路径。
 - P3.5 的结论只决定第二热点，不承诺进入 P4。
 - `resize` 的 direct NEON 特化仍是后续备选，不能抢在 OpenCV Universal Intrinsics 试点之前进入默认路径。
 
@@ -888,7 +888,7 @@ P3.6.1：建立 header-only resize benchmark
 - 输出 `ms/call`、`MPix/s`、输入尺寸、输出尺寸、通道数、dtype、allocation mode、checksum。
 - 尺寸至少覆盖 `640x480->320x240`、`1280x720->640x360`、`1920x1080->960x540`、`3840x2160->1920x1080`。
 - 额外覆盖非整数缩放和非 16 对齐宽度，避免只验证 2x downsample 的理想路径。
-- benchmark target 必须只链接 `cvh::headers`，不链接 OpenCV，也不链接 `cvh::native`。
+- benchmark target 必须只链接 `cvh::headers`，不链接 OpenCV，也不链接 `.cpp` 实验 target。
 
 落地结果：
 
@@ -1030,13 +1030,14 @@ P4 目标是在不改变默认 `cvh::headers` 行为的前提下，增加纯 hea
 cvh::headers_fast
 ```
 
-项目对外确立三层使用结构：
+项目对外确立公开 header-only 使用结构：
 
 - `cvh::headers`：默认 header-only baseline，最小依赖、最少平台分支，不默认启用 SIMD 加速实验路径。
-- `cvh::headers_fast`：header-only + 已验证 SIMD fast-path，只传播宏和 include，不编译 `.cpp`，不链接 native backend。
-- `cvh::native`：需要编译 `.cpp` 的扩展层，可包含 native dispatch、OpenMP、xsimd GEMM/通用算子等非 header-only 实现。
+- `cvh::headers_fast`：header-only + 已验证 SIMD fast-path，只传播宏和 include，不编译或链接 `.cpp`。
 
-P4 明确不让 `cvh::headers_fast` 启用 xsimd。xsimd 保留为 legacy/experimental 手动开关，或留在 native/通用算子评估路径中；除非某个 kernel 有独立 benchmark 证明稳定收益，否则不进入 header-only fast profile。
+说明：历史 `.cpp` 实现只作为 legacy/experimental 代码存在，不进入 `opencv-header-only` 的公开产品叙事。
+
+P4 明确不让 `cvh::headers_fast` 启用 xsimd。xsimd 暂时只作为 legacy/experimental 手动开关存在；除非某个 kernel 有独立 benchmark 证明稳定收益，否则不进入 header-only fast profile。P5 将进一步推进隔离和移除。
 
 `cvh::headers_fast` 首轮只传播：
 
@@ -1047,7 +1048,7 @@ CVH_ENABLE_PLATFORM_INTRINSICS=1
 
 首批纳入范围只限已通过 gate 的 header-only SIMD fast-path：
 
-- `BGR2GRAY/RGB2GRAY` 的 OpenCV Universal Intrinsics 路径，RGB2GRAY 待补项继续按 P3 记录推进。
+- `BGR2GRAY/RGB2GRAY` 的 OpenCV Universal Intrinsics 路径。
 - exact 2x `CV_8UC1 INTER_LINEAR` resize OpenCV Universal Intrinsics 路径。
 
 不纳入首轮 P4：
@@ -1081,7 +1082,7 @@ P4.1：建立 `cvh::headers_fast` target
 - `cvh_headers_fast` 继承 `cvh::headers` 的 include 和 C++17 要求。
 - `cvh_headers_fast` 只传播 `CVH_ENABLE_OPENCV_INTRIN=1`、`CVH_ENABLE_PLATFORM_INTRINSICS=1`。
 - ARM 构建时传播 OpenCV UI 需要的 NEON 宏；x86 后续按 OpenCV UI adapter 的可用宏扩展。
-- 不传播 `CVH_ENABLE_XSIMD=1`，不链接 `cvh::native`。
+- 不传播 `CVH_ENABLE_XSIMD=1`，不链接 `.cpp` 实验 target。
 
 落地结果：
 
@@ -1105,7 +1106,7 @@ P4.2：增加 `headers_fast` smoke
 - 验证 `CVH_ENABLE_OPENCV_INTRIN == 1`。
 - 验证 `CVH_ENABLE_PLATFORM_INTRINSICS == 1`。
 - 验证 `CVH_ENABLE_XSIMD == 0`。
-- 验证不需要 native backend。
+- 验证不需要 `.cpp` 实验路径。
 
 落地结果：
 
@@ -1118,7 +1119,7 @@ P4.2：增加 `headers_fast` smoke
 验收：
 
 - CTest 增加 `headers_fast` smoke：通过。
-- smoke 在不构建 `cvh::native` 的配置下通过：通过。
+- smoke 在不构建 `.cpp` 实验 target 的配置下通过：通过。
 
 P4.3：迁移现有 OpenCV UI smoke/benchmark 到 profile 入口
 
@@ -1147,15 +1148,15 @@ P4.4：安装导出与用户文档
 状态：已完成。
 
 - 确认 install/export 后外部项目能引用 `cvh::headers_fast`。
-- 更新用户文档，明确三层结构和使用方式。
+- 更新用户文档，明确 `cvh::headers` / `cvh::headers_fast` 两个公开 header-only target 的使用方式。
 - 明确 `headers_fast` 是 opt-in，不是默认 `headers`。
 
 落地结果：
 
 - `install(TARGETS ...)` 同时导出 `cvh_headers` 和 `cvh_headers_fast`。
 - install/export 后外部项目可以通过 `find_package(opencv_header_only CONFIG REQUIRED)` 引用 `cvh::headers` 和 `cvh::headers_fast`。
-- `README.md` 增加三层入口说明：`cvh::headers`、`cvh::headers_fast`、`cvh::native`。
-- `README.md` 明确 `cvh::headers_fast` 是 opt-in header-only fast profile，不启用 xsimd，不编译或链接 native backend。
+- `README.md` 明确 `cvh::headers` 和 `cvh::headers_fast` 是两个公开 header-only target。
+- `README.md` 明确 `cvh::headers_fast` 是 opt-in header-only fast profile，不启用 xsimd，不编译或链接 `.cpp`。
 - 用户文档不再建议手动组合 `CVH_ENABLE_OPENCV_INTRIN`、`CVH_ENABLE_PLATFORM_INTRINSICS` 或 vendored OpenCV UI include 路径；推荐链接 `cvh::headers_fast`。
 
 验收：
@@ -1189,11 +1190,126 @@ P4.5：P4 验收矩阵
 验收：
 
 - `cvh::headers` 保持默认纯净：通过。
-- `cvh::headers_fast` 仍然不构建 native backend：通过。
+- `cvh::headers_fast` 仍然不构建 `.cpp` 实验 target：通过。
 - `cvh::headers_fast` 不传播 `CVH_ENABLE_XSIMD=1`：通过。
 - 不满足已验证 fast-path 条件的 API 继续回退到 scalar fallback：通过。
 
-### P5：常态维护
+### P5：公开面收口与 xsimd 退场
+
+P5 的目标不是继续扩 kernel 面，而是让项目定位、公开 CMake target、宏开关、测试和文档全部对齐到“纯 header-only OpenCV-style subset”。
+
+P5 不应一次性硬删所有历史代码。先收口 public surface，再建立 gate，最后移除没有进入 accepted fast path 的 xsimd 路线。
+
+P5.0：Public Surface Cleanup
+
+状态：已完成。
+
+- 将公开叙事固定为纯 header-only：`cvh::headers` 和 `cvh::headers_fast` 是唯一推荐入口。
+- 清理 README 之外其它文档中的 native 主叙事；历史 `.cpp` 路径只能作为 legacy/experimental 代码描述。
+- 修正 `highgui` header-only fallback 的报错文案，不再要求用户理解 native/backend 术语。
+- 收口 package/export 叙事，用户安装后应只看到并使用 `cvh::headers` / `cvh::headers_fast`。
+- 保留源码内必要兼容开关时，必须标为 internal/development-only，不能成为公开产品路径。
+
+落地结果：
+
+- `README.md` 已固定为 pure header-only 叙事，只推荐 `cvh::headers` 和 `cvh::headers_fast`。
+- `CMakeLists.txt` 将历史 `.cpp` 构建选项标为 internal/development-only。
+- 安装导出只包含 `cvh_headers` 和 `cvh_headers_fast`；历史 `.cpp` target 不再进入 installed package export。
+- `cmake/opencv_header_onlyConfig.cmake.in` 移除 installed package 中的旧兼容 alias。
+- `highgui` fallback 报错改为 pure header-only unsupported，不再引导用户理解 backend 术语。
+- `doc/design.md` 已重写为当前 header-only 设计文档。
+- 旧 compiled extension 迁移文档已改为历史归档，并明确被 P5 路线取代。
+
+验收：
+
+- 公开文档不再把 native/backend 作为项目层次结构的一部分。
+- `README.md`、主计划文档和用户入口说明对 `cvh::headers` / `cvh::headers_fast` 的定义一致。
+- `highgui` 在 header-only 下的错误信息表达为“not supported in pure header-only”，而不是引导到 `.cpp` 扩展路径。
+
+验收结果：
+
+- `rg` 检查 README、doc、cmake config、benchmark/test readme 和 highgui 后，公开文档层面不再保留 native/backend 作为推荐产品结构；旧 target 字面量仅保留在 `CMakeLists.txt` 的 build-tree legacy target 内。
+- 默认 header-only 配置：`cmake -S . -B build-p50 -DCVH_BUILD_NATIVE_BACKEND=OFF -DCVH_BUILD_BACKEND_KERNEL_SOURCES=OFF -DCVH_BUILD_TESTS=ON -DCVH_BUILD_BENCHMARKS=OFF` 通过。
+- P5.0 相关测试：`cvh_header_compile_smoke`、`cvh_include_only_smoke`、`cvh_headers_fast_smoke`、`cvh_test_highgui` 通过。
+- `./scripts/ci_lite_all.sh` 通过，`cvh_test_core_lite` 25 tests 和 `cvh_test_imgproc` 141 tests 全部通过。
+- 默认安装包和打开 legacy `.cpp` 构建开关后的安装包都只导出 `cvh::headers` 与 `cvh::headers_fast`。
+
+P5.1：Header-only Contract Gate
+
+状态：已完成。
+
+- 增加或强化 gate：`cvh::headers` 和 `cvh::headers_fast` 不能依赖 `src/`。
+- install/export 验证只围绕两个 header-only public targets。
+- `cvh::headers_fast` 必须持续验证不传播 `CVH_ENABLE_XSIMD=1`。
+- 将 CI/test 命名中残留的 `lite` 语义逐步收口到 `headers`，避免“lite vs full”误导项目定位。
+- 对 README 中 `Supported` 的算子建立可追溯 header-only test 映射；没有 header-only 实现或链接不过的 API 必须保持 WIP。
+
+落地结果：
+
+- 新增 `scripts/check_header_only_contract.sh`。
+  - 先运行 public header include 检查。
+  - 构建 `cvh_header_compile_smoke`、`cvh_include_only_smoke`、`cvh_headers_fast_smoke`。
+  - 安装 package 到临时目录，检查 installed CMake targets 只包含 `cvh::headers` / `cvh::headers_fast`。
+  - 用外部最小 CMake 工程分别消费 `cvh::headers` 和 `cvh::headers_fast`。
+  - `cvh::headers` consumer 验证默认不启用 OpenCV UI、platform intrinsics、xsimd 或 legacy `.cpp` 模式。
+  - `cvh::headers_fast` consumer 验证启用 OpenCV UI/platform intrinsics，且不启用 xsimd 或 legacy `.cpp` 模式。
+  - 即使 `CVH_BUILD_NATIVE_BACKEND=ON`，installed package 仍不能导出 legacy `.cpp` target。
+- 新增 `scripts/ci_headers_all.sh` 作为新的 header-only CI 入口。
+- `scripts/ci_lite_all.sh` 改为 deprecated compatibility wrapper，转发到 `scripts/ci_headers_all.sh`。
+- `scripts/ci_headers_all.sh` 纳入 `cvh_test_core_lite`、`cvh_test_imgproc`、`cvh_test_imgcodecs`、`cvh_test_highgui`，让 README Supported / Out of scope 状态有 header-only 测试映射。
+- `README.md` 新增 Header-only Contract Tests 映射表，并将开发命令改为 `./scripts/ci_headers_all.sh`。
+- `test/smoke/readme.md` 增加 `cvh_headers_fast_smoke` 说明。
+
+验收：
+
+- 外部最小工程可以只通过 `find_package(...); target_link_libraries(app PRIVATE cvh::headers)` 编译通过。
+- 外部最小工程可以只通过 `cvh::headers_fast` 编译并验证 OpenCV UI 宏状态。
+- `CVH_ENABLE_XSIMD` 不会由任何公开 target 自动传播。
+
+验收结果：
+
+- `./scripts/check_header_only_contract.sh` 通过；默认 header-only install/export 和打开 legacy `.cpp` build option 后的 install/export 都只暴露 `cvh::headers` / `cvh::headers_fast`。
+- 外部 `cvh::headers` consumer 验证 `CVH_ENABLE_OPENCV_INTRIN=0`、`CVH_ENABLE_PLATFORM_INTRINSICS=0`、`CVH_ENABLE_XSIMD=0`，且能执行最小 `cvh::resize`。
+- 外部 `cvh::headers_fast` consumer 验证 `CVH_ENABLE_OPENCV_INTRIN=1`、`CVH_ENABLE_PLATFORM_INTRINSICS=1`、`CVH_ENABLE_XSIMD=0`，且能执行 exact 2x `cvh::resize`。
+- `./scripts/ci_headers_all.sh` 通过；`cvh_test_core_lite` 25 tests、`cvh_test_imgproc` 141 tests、`cvh_test_imgcodecs` 7 tests + 1 skipped、`cvh_test_highgui` 4 tests。
+- `./scripts/ci_lite_all.sh` 通过 deprecated wrapper 验证，会提示迁移到 `scripts/ci_headers_all.sh` 并转发执行同一套 header-only gate。
+
+P5.2：xsimd Quarantine
+
+状态：待开始。
+
+- 从公开文档和推荐用法中移除 `CVH_ENABLE_XSIMD`。
+- `simd.h` 不再把 xsimd 作为 accepted adapter 路线描述；如需保留，必须明确为 legacy/experimental。
+- 删除或改名 `cvh_simd_facade_xsimd_smoke`，避免 CI 给出“xsimd 是官方支持加速后端”的信号。
+- 整理 `doc/design.md`、`doc/mat-rollout-history.md`、transpose todo 和本计划文档中的 xsimd 旧判断。
+- 历史 xsimd kernel 只能停留在非公开实验路径；不能影响 header-only public target、安装包和默认测试。
+
+验收：
+
+- 用户文档中不再推荐 `CVH_ENABLE_XSIMD`。
+- header-only fast profile 只剩 OpenCV Universal Intrinsics + scalar fallback 两条 accepted 路径。
+- xsimd 相关测试不再作为 header-only public contract 的必跑项。
+
+P5.3：xsimd Removal
+
+状态：待开始。
+
+- 删除 `include/cvh/core/simd/xsimd_adapter.h`。
+- 删除 `include/cvh/3rdparty/xsimd/` vendor 目录。
+- 删除 CMake 中 xsimd include、宏、测试 target 和相关源码引用。
+- 删除或迁移 `src/core/kernel/*_xsimd.cpp` 及依赖 `DispatchMode::XSimdOnly` / `DispatchTag::XSimd` 的历史路径。
+- 删除 benchmark 参数中的 `xsimd-only`，或把对应 benchmark 移到归档文档。
+- 更新 license/third-party 说明，确保不再列出已经移除的 xsimd vendor。
+
+验收：
+
+- `rg -n "xsimd|XSIMD|CVH_ENABLE_XSIMD|XSimd" CMakeLists.txt include src test benchmark README.md doc` 只允许出现在历史归档说明中，或完全无结果。
+- `cvh::headers` 和 `cvh::headers_fast` 全量 smoke/test 通过。
+- `cvh::headers_fast` 的 accepted fast path 仍覆盖 `BGR2GRAY/RGB2GRAY` 和 exact 2x `CV_8UC1 INTER_LINEAR resize`。
+
+P5.4：OpenCV UI 常态维护
+
+状态：待开始。
 
 - 固定 OpenCV upstream 版本。
 - 每次升级通过同步脚本。
@@ -1205,14 +1321,15 @@ P4.5：P4 验收矩阵
 短期成功：
 
 - 可以在 header-only 模式下启用 OpenCV Universal Intrinsics adapter。
-- 默认 Lite 不受影响。
-- 不引入 native 编译层。
+- 默认 `cvh::headers` 不受影响。
+- 不引入 `.cpp` 编译层作为公开依赖。
 - 至少一个 ARM 热点 kernel 明显优于 xsimd。
 
 中期成功：
 
 - `cvh` 形成自己的 `cvh::detail::simd` 方言。
-- xsimd、OpenCV Universal Intrinsics、direct platform intrinsics 可以共存。
+- OpenCV Universal Intrinsics 和 scalar fallback 成为 accepted header-only SIMD/基线路径。
+- xsimd 从公开路径隔离，并在 P5.3 后移除。
 - 试点 kernel 的实现选择由 benchmark 驱动。
 
 长期成功：
@@ -1245,4 +1362,4 @@ benchmark gate
 默认开启所有 SIMD 头文件
 ```
 
-这条路线可以在不触碰 native backend 的前提下，增强 header-only 层的 CPU SIMD 能力，并给 ARM 热点 kernel 留出比 xsimd 更高性能的实现空间。
+这条路线可以在不引入 `.cpp` 编译层的前提下，增强 header-only 层的 CPU SIMD 能力，并让 ARM 热点 kernel 优先走 OpenCV Universal Intrinsics 或必要的 direct platform intrinsics，而不是继续依赖 xsimd。

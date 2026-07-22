@@ -1,15 +1,3 @@
 @PACKAGE_INIT@
 
 include("${CMAKE_CURRENT_LIST_DIR}/opencv_header_onlyTargets.cmake")
-
-# Deprecated compatibility aliases for installed packages.
-if(TARGET cvh::native)
-    if(NOT TARGET cvh::full_backend)
-        add_library(cvh::full_backend INTERFACE IMPORTED)
-        set_property(TARGET cvh::full_backend PROPERTY INTERFACE_LINK_LIBRARIES cvh::native)
-    endif()
-    if(NOT TARGET cvh::full)
-        add_library(cvh::full INTERFACE IMPORTED)
-        set_property(TARGET cvh::full PROPERTY INTERFACE_LINK_LIBRARIES cvh::native)
-    endif()
-endif()
