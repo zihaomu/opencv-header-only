@@ -1,5 +1,44 @@
 {
-  "version": 1,
+  "version": 2,
+  "benchmark_framework": {
+    "implementation_phase": "P-Bench-7-complete",
+    "results_dir": "benchmark/results",
+    "modes": {
+      "internal_regression": {
+        "purpose": "Compare old header-only cvh against current header-only cvh during optimization.",
+        "opencv_required": false,
+        "compiled_extension_required": false,
+        "default_gate": "quick"
+      },
+      "opencv_compare": {
+        "purpose": "Compare current header-only cvh against official OpenCV core/imgproc.",
+        "opencv_required": true,
+        "compiled_extension_required": false,
+        "default_gate": "log_only",
+        "preferred_opencv_source": "../opencv",
+        "cvh_target": "cvh_benchmark_opencv_compare_headers_fast",
+        "cvh_implementation": "cvh_headers_fast"
+      }
+    },
+    "suites": {
+      "core_mat": {
+        "module": "core",
+        "target": "cvh_benchmark_core_mat_header",
+        "status": "active"
+      },
+      "imgproc": {
+        "module": "imgproc",
+        "target": "cvh_benchmark_imgproc_header",
+        "status": "active",
+        "current_header_targets": [
+          "cvh_benchmark_core_mat_header",
+          "cvh_benchmark_imgproc_header",
+          "cvh_benchmark_cvtcolor_bgr2gray_header",
+          "cvh_benchmark_resize_bilinear_header"
+        ]
+      }
+    }
+  },
   "core_contract": {
     "path": "test/upstream/opencv/core/contract_v0.json"
   },

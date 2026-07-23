@@ -130,14 +130,9 @@ Current accepted fast paths:
 
 Compare workspace:
 
-- [OpenCV Compare README](benchmark/opencv_compare/README.md) - legacy/internal compare modes, not public CMake targets
+- [Benchmark Framework](benchmark/readme.md) - internal header-only regression and OpenCV upstream compare design
+- [OpenCV Compare README](benchmark/opencv_compare/README.md) - `cvh::headers_fast` versus upstream OpenCV
 - [OpenCV UI Kernel Migration Checklist](doc/opencv-ui-kernel-migration-checklist.md)
-
-Available Markdown reports:
-
-- Quick: [benchmark/opencv_compare/opencv_compare_quick.md](benchmark/opencv_compare/opencv_compare_quick.md)
-- Stable: [benchmark/opencv_compare/opencv_compare_stable.md](benchmark/opencv_compare/opencv_compare_stable.md)
-- Baseline Stable: [benchmark/opencv_compare/opencv_compare_baseline_stable.md](benchmark/opencv_compare/opencv_compare_baseline_stable.md)
 
 Scripts:
 
@@ -166,8 +161,16 @@ Benchmark targets:
 ```bash
 cmake -S . -B build-bench -DCVH_BUILD_BENCHMARKS=ON
 cmake --build build-bench -j --target \
+  cvh_benchmark_core_mat_header \
+  cvh_benchmark_imgproc_header \
   cvh_benchmark_cvtcolor_bgr2gray_header \
   cvh_benchmark_resize_bilinear_header
+```
+
+Header-only benchmark quick smoke:
+
+```bash
+./scripts/ci_benchmark_headers_quick.sh
 ```
 
 ## Repository Layout

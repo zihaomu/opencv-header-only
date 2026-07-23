@@ -1,12 +1,12 @@
 #include "cvh.h"
 #include "cvh/core/simd/opencv_ui.h"
+#include "common/benchmark_common.h"
 
 #if !CVH_ENABLE_OPENCV_INTRIN
 #error "cvh_benchmark_cvtcolor_bgr2gray_header must be compiled with CVH_ENABLE_OPENCV_INTRIN=1"
 #endif
 
 #include <algorithm>
-#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -34,12 +34,7 @@ struct ShapeCase
     int cols;
 };
 
-struct Result
-{
-    double min_ms = 0.0;
-    double median_ms = 0.0;
-    std::uint64_t checksum = 0;
-};
+using Result = common::BenchmarkResult;
 
 struct ResultRow
 {
@@ -99,58 +94,13 @@ void usage()
 
 Args parse_args(int argc, char** argv)
 {
-    Args args;
-    for (int i = 1; i < argc; ++i)
-    {
-        const std::string token = argv[i];
-        auto next_value = [&](const char* name) -> std::string {
-            if (i + 1 >= argc)
-            {
-                std::cerr << "Missing value for " << name << "\n";
-                std::exit(2);
-            }
-            return std::string(argv[++i]);
-        };
-
-        if (token == "--profile")
-        {
-            args.profile = next_value("--profile");
-        }
-        else if (token == "--warmup")
-        {
-            args.warmup = std::max(0, std::stoi(next_value("--warmup")));
-        }
-        else if (token == "--iters")
-        {
-            args.iters = std::max(1, std::stoi(next_value("--iters")));
-        }
-        else if (token == "--repeats")
-        {
-            args.repeats = std::max(1, std::stoi(next_value("--repeats")));
-        }
-        else if (token == "--output")
-        {
-            args.output_csv = next_value("--output");
-        }
-        else if (token == "--help")
-        {
-            usage();
-            std::exit(0);
-        }
-        else
-        {
-            std::cerr << "Unknown arg: " << token << "\n";
-            std::exit(2);
-        }
-    }
-
-    if (args.profile != "quick" && args.profile != "full")
-    {
-        std::cerr << "Unsupported profile: " << args.profile << " (expected quick/full)\n";
-        std::exit(2);
-    }
-
-    return args;
+    const auto parsed = common::parse_basic_args(
+        argc,
+        argv,
+        common::BasicArgs {"quick", 3, 10, 7, ""},
+        {"quick", "full"},
+        usage);
+    return Args {parsed.profile, parsed.warmup, parsed.iters, parsed.repeats, parsed.output_csv};
 }
 
 std::vector<ShapeCase> build_shapes(const std::string& profile)
@@ -181,13 +131,7 @@ std::vector<ShapeCase> build_shapes(const std::string& profile)
 
 std::string opencv_intrin_backend_name()
 {
-#if defined(CV_FORCE_SIMD128_CPP)
-    return "opencv_intrin_cpp";
-#elif defined(CV_NEON) && CV_NEON
-    return "opencv_intrin_neon";
-#else
-    return "opencv_intrin_cpp";
-#endif
+    return common::opencv_intrin_backend_name();
 }
 
 std::string allocation_mode_name(AllocationMode mode)
@@ -197,7 +141,7 @@ std::string allocation_mode_name(AllocationMode mode)
 
 int simd_lanes()
 {
-    return cv::VTraits<cv::v_uint8x16>::vlanes();
+    return common::simd_u8_lanes();
 }
 
 std::size_t tail_pixels(const ShapeCase& shape)
@@ -212,12 +156,7 @@ std::size_t tail_pixels(const ShapeCase& shape)
 
 void fill_bgr(cvh::Mat& mat, std::uint32_t seed)
 {
-    const std::size_t count = mat.total() * static_cast<std::size_t>(mat.channels());
-    for (std::size_t i = 0; i < count; ++i)
-    {
-        seed = seed * 1664525u + 1013904223u;
-        mat.data[i] = static_cast<uchar>((seed >> 16) & 0xffu);
-    }
+    common::fill_mat_u8_lcg(mat, seed);
 }
 
 cvh::Mat make_planar_bgr(const cvh::Mat& bgr)
@@ -251,34 +190,12 @@ cvh::Mat make_planar_bgr(const cvh::Mat& bgr)
 
 std::uint64_t checksum(const cvh::Mat& mat)
 {
-    const std::size_t count = mat.total() * static_cast<std::size_t>(mat.channels()) *
-                              static_cast<std::size_t>(mat.elemSize1());
-    std::uint64_t value = 1469598103934665603ull;
-    for (std::size_t i = 0; i < count; ++i)
-    {
-        value ^= static_cast<std::uint64_t>(mat.data[i]);
-        value *= 1099511628211ull;
-    }
-    return value;
+    return common::checksum_mat_bytes(mat);
 }
 
 bool same_mat(const cvh::Mat& lhs, const cvh::Mat& rhs)
 {
-    if (lhs.type() != rhs.type() || lhs.dims != rhs.dims || lhs.size != rhs.size)
-    {
-        return false;
-    }
-
-    const std::size_t count = lhs.total() * static_cast<std::size_t>(lhs.channels()) *
-                              static_cast<std::size_t>(lhs.elemSize1());
-    for (std::size_t i = 0; i < count; ++i)
-    {
-        if (lhs.data[i] != rhs.data[i])
-        {
-            return false;
-        }
-    }
-    return true;
+    return common::same_mat_bytes(lhs, rhs);
 }
 
 void run_scalar(const cvh::Mat& src, cvh::Mat& dst)
@@ -339,34 +256,18 @@ Result measure(BenchFn fn,
                int iters,
                int repeats)
 {
-    for (int i = 0; i < warmup; ++i)
-    {
-        prepare_dst(dst, src, allocation_mode);
-        fn(src, dst);
-    }
-
-    std::vector<double> samples;
-    samples.reserve(static_cast<std::size_t>(repeats));
-
-    using Clock = std::chrono::steady_clock;
-    for (int r = 0; r < repeats; ++r)
-    {
-        const auto t0 = Clock::now();
-        for (int i = 0; i < iters; ++i)
-        {
+    const auto timing = common::measure_repeated_ms(
+        [&]() {
             prepare_dst(dst, src, allocation_mode);
             fn(src, dst);
-        }
-        const auto t1 = Clock::now();
-        const double elapsed_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-        samples.push_back(elapsed_ms / static_cast<double>(iters));
-    }
-
-    std::sort(samples.begin(), samples.end());
+        },
+        warmup,
+        iters,
+        repeats);
     const std::uint64_t hash = checksum(dst);
     g_sink ^= hash;
 
-    return Result {samples.front(), samples[samples.size() / 2], hash};
+    return Result {timing.min_ms, timing.median_ms, hash};
 }
 
 void run_micro_store_u8(const cvh::Mat&, const cvh::Mat&, const ShapeCase& shape, cvh::Mat& dst)
@@ -506,34 +407,18 @@ Result measure_micro(MicroFn fn,
                      int repeats)
 {
     cvh::Mat dst;
-    for (int i = 0; i < warmup; ++i)
-    {
-        prepare_dst(dst, shape, allocation_mode);
-        fn(bgr, planar, shape, dst);
-    }
-
-    std::vector<double> samples;
-    samples.reserve(static_cast<std::size_t>(repeats));
-
-    using Clock = std::chrono::steady_clock;
-    for (int r = 0; r < repeats; ++r)
-    {
-        const auto t0 = Clock::now();
-        for (int i = 0; i < iters; ++i)
-        {
+    const auto timing = common::measure_repeated_ms(
+        [&]() {
             prepare_dst(dst, shape, allocation_mode);
             fn(bgr, planar, shape, dst);
-        }
-        const auto t1 = Clock::now();
-        const double elapsed_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-        samples.push_back(elapsed_ms / static_cast<double>(iters));
-    }
-
-    std::sort(samples.begin(), samples.end());
+        },
+        warmup,
+        iters,
+        repeats);
     const std::uint64_t hash = checksum(dst);
     g_sink ^= hash;
 
-    return Result {samples.front(), samples[samples.size() / 2], hash};
+    return Result {timing.min_ms, timing.median_ms, hash};
 }
 
 ResultRow make_row(const Args& args,

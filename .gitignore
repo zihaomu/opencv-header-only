@@ -64,3 +64,10 @@ big_models
 /build-opencv-compare/
 /opencv_compare/opencv-bench-slim/
 /opencv_compare/results/
+/benchmark/results/*
+!/benchmark/results/.gitkeep
+/benchmark/opencv_compare/opencv-bench-slim/
+/benchmark/opencv_compare/results/*
+!/benchmark/opencv_compare/results/.gitkeep
+!/benchmark/opencv_compare/results/*-opencv-upstream-performance.md
+/benchmark/*.csv

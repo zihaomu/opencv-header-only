@@ -250,6 +250,12 @@ if(CVH_ENABLE_NATIVE_BACKEND)
 endif()
 
 if(CVH_BUILD_BENCHMARKS)
+    add_executable(cvh_benchmark_core_mat_header
+        benchmark/core_mat_header_benchmark.cpp
+    )
+    target_link_libraries(cvh_benchmark_core_mat_header PRIVATE cvh::headers)
+    target_compile_features(cvh_benchmark_core_mat_header PRIVATE cxx_std_17)
+
     add_executable(cvh_benchmark_cvtcolor_bgr2gray_header
         benchmark/cvtcolor_bgr2gray_header_benchmark.cpp
     )
@@ -261,6 +267,39 @@ if(CVH_BUILD_BENCHMARKS)
     )
     target_link_libraries(cvh_benchmark_resize_bilinear_header PRIVATE cvh::headers_fast)
     target_compile_features(cvh_benchmark_resize_bilinear_header PRIVATE cxx_std_17)
+
+    add_executable(cvh_benchmark_imgproc_header
+        benchmark/imgproc_header_benchmark.cpp
+    )
+    target_link_libraries(cvh_benchmark_imgproc_header PRIVATE cvh::headers_fast)
+    target_compile_features(cvh_benchmark_imgproc_header PRIVATE cxx_std_17)
+
+    if(CVH_ENABLE_OPENCV_COMPARE)
+        find_package(OpenCV REQUIRED COMPONENTS core imgproc)
+
+        add_library(cvh_benchmark_opencv_compare_backend_obj OBJECT
+            benchmark/opencv_compare_opencv_backend.cpp
+        )
+        target_compile_features(cvh_benchmark_opencv_compare_backend_obj PRIVATE cxx_std_17)
+        target_include_directories(cvh_benchmark_opencv_compare_backend_obj PRIVATE
+            ${OpenCV_INCLUDE_DIRS}
+        )
+
+        add_executable(cvh_benchmark_opencv_compare_headers_fast
+            benchmark/opencv_compare_header_benchmark.cpp
+            $<TARGET_OBJECTS:cvh_benchmark_opencv_compare_backend_obj>
+        )
+        target_link_libraries(cvh_benchmark_opencv_compare_headers_fast PRIVATE cvh::headers_fast ${OpenCV_LIBS})
+        target_compile_features(cvh_benchmark_opencv_compare_headers_fast PRIVATE cxx_std_17)
+        target_compile_definitions(cvh_benchmark_opencv_compare_headers_fast PRIVATE CVH_COMPARE_IMPL_NAME="cvh_headers_fast")
+        target_include_directories(cvh_benchmark_opencv_compare_headers_fast BEFORE PRIVATE
+            ${OpenCV_INCLUDE_DIRS}
+        )
+        target_include_directories(cvh_benchmark_opencv_compare_headers_fast PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+        )
+    endif()
 endif()
 
 if(CVH_BUILD_TESTS)

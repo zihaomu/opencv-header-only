@@ -1,126 +1,115 @@
-# OpenCV Compare Workspace
+# OpenCV Compare Mode
 
-This directory is dedicated to **cvh vs official OpenCV** speed comparison.
+This directory is the current workspace for comparing `cvh` with official
+OpenCV. It belongs to Mode B in [../readme.md](../readme.md): current
+header-only `cvh` versus OpenCV upstream.
 
-This workspace is an internal benchmark harness. Its `native` / `lite`
-implementation names are legacy compare modes used by the scripts and CSV
-schema; they are not public product targets. The public product targets remain
-`cvh::headers` and `cvh::headers_fast`.
+## Target Design
 
-## Reports
+Mode B intentionally uses only the fastest header-only profile on the `cvh`
+side:
 
-- Quick report: [opencv_compare_quick.md](opencv_compare_quick.md)
-- Stable report: [opencv_compare_stable.md](opencv_compare_stable.md)
-- Baseline stable report: [opencv_compare_baseline_stable.md](opencv_compare_baseline_stable.md)
+| Implementation | Meaning |
+|---|---|
+| `cvh_headers_fast` | Current `cvh::headers_fast`, representing the fastest header-only implementation. |
+| `opencv` | Official OpenCV `core` / `imgproc` built on the same machine. |
 
-All reports are generated in bilingual format (English + 中文).
+The compare report is for visibility and prioritization. It is log-only by
+default and should not block every PR.
 
-## Layout
+Required metadata for every run:
 
-- `setup_opencv_bench_slim.sh`: shallow clone/update `opencv-bench-slim` and optionally build it.
-- `run_compare.sh`: one command for setup + configure + build + run compare benchmark.
-- `csv_to_markdown.py`: render compare CSV into Markdown report.
-- `results/`: generated CSV outputs (ignored by git).
-- `opencv-bench-slim/`: shallow clone of the external OpenCV slim repo (ignored by git).
-- `*.meta.json`: runtime metadata/fingerprint generated alongside compare CSV.
+- `cvh` git commit
+- OpenCV git commit
+- compiler and build type
+- OS, arch, CPU
+- thread count and runtime flags
+- profile, warmup, iters, repeats
+- OpenCV source/build directory
 
-## External OpenCV Source
+## Local OpenCV Source
 
-Default source repo and branch:
+For this workspace, the preferred OpenCV source tree is:
 
-- Repo: `https://github.com/zihaomu/opencv.git`
-- Branch: `opencv-bench-slim-v4.13`
-- Clone mode: `--depth=1`
-
-You can override with environment variables:
-
-- `CVH_OPENCV_REPO`
-- `CVH_OPENCV_BRANCH`
-- `CVH_OPENCV_DIR`
-- `CVH_OPENCV_BUILD_DIR`
-- `CVH_COMPARE_BUILD_OPENCV` (`auto|0|1`, default `auto`)
-- `CVH_COMPARE_RENDER_MD` (`0` means skip Markdown generation in `run_compare.sh`)
-- `CVH_COMPARE_BUILD_TYPE` (`Release|RelWithDebInfo|Debug`, default `Release`)
-- `CVH_COMPARE_OUTPUT_MD` (override Markdown output path)
-- `CVH_COMPARE_OUTPUT_META` (override metadata JSON output path)
-- `CVH_COMPARE_IMPLS` (`native|lite|native,lite`, default `native,lite`; internal compare modes only; `full` is a deprecated alias for `native`)
-
-## Compare Profiles
-
-`run_compare.sh` supports three profiles:
-
-- `quick`: `warmup=1, iters=5, repeats=1`
-- `stable`: `warmup=2, iters=20, repeats=5`
-- `full`: `warmup=1, iters=10, repeats=3`
-
-These defaults can be overridden by `CVH_COMPARE_WARMUP/ITERS/REPEATS` or CLI flags.
-
-## Typical Workflow
-
-1. Setup and build slim OpenCV:
-
-```bash
-./benchmark/opencv_compare/setup_opencv_bench_slim.sh --build
+```text
+/Users/zmu/work/my_project/ocvh/opencv
 ```
 
-2. Run compare benchmark and output CSV:
+From the `opencv-header-only` repository root this is:
+
+```text
+../opencv
+```
+
+The full OpenCV tree should be built separately and passed to the compare
+runner by environment variables or future CLI flags. Do not point the legacy
+`setup_opencv_bench_slim.sh` clone/update flow at the full local OpenCV
+checkout unless you explicitly want that script to manage the repo.
+
+## Current Harness
+
+Existing files:
+
+- `setup_opencv_bench_slim.sh`: historical helper for a slim OpenCV clone.
+- `run_compare.sh`: one-command runner for `cvh::headers_fast` versus
+  upstream OpenCV.
+- `csv_to_markdown.py`: render compare CSV into Markdown.
+- `opencv_compare_header_benchmark.cpp`: pure header-only `cvh` compare cases.
+- `opencv_compare_opencv_backend.cpp`: OpenCV-side implementation, compiled
+  without `cvh::headers` include paths.
+
+Current caveats:
+
+- `cvh::headers` is intentionally not a Mode B compare implementation. It is
+  useful for default header-only validation and internal regression, while
+  Mode B should stay easy to read: fastest header-only `cvh` versus upstream
+  OpenCV.
+- Raw CSV/metadata and rolling `current_*` reports are generated artifacts.
+  Curated date-named `*-opencv-upstream-performance.md` snapshots may be
+  committed under `benchmark/opencv_compare/results/`.
+- A missing `headers_fast` specialization is not an unsupported case:
+  `cvh::headers_fast` inherits the `cvh::headers` implementation and the case
+  remains in the report as `dispatch_path=headers_baseline`.
+
+## Dated Snapshots
+
+- [2026-07-23 OpenCV upstream performance](results/2026-07-23-opencv-upstream-performance.md):
+  Apple M5, single-threaded stable profile, `core_mat` plus `imgproc`.
+
+## Current Commands
+
+Header-only quick run:
 
 ```bash
 ./benchmark/opencv_compare/run_compare.sh --profile quick
 ```
 
-Run only one implementation mode:
+Use an existing local OpenCV build:
 
 ```bash
-./benchmark/opencv_compare/run_compare.sh --profile quick --impls native
-./benchmark/opencv_compare/run_compare.sh --profile quick --impls lite
+CVH_COMPARE_SKIP_OPENCV_SETUP=1 \
+CVH_OPENCV_DIR=../opencv \
+CVH_OPENCV_CONFIG_DIR=build-opencv-upstream-compare \
+./benchmark/opencv_compare/run_compare.sh --profile quick
 ```
 
-These names select benchmark binaries inside this workspace. They should not be
-used in README/API documentation as replacement names for `cvh::headers` or
-`cvh::headers_fast`.
-
-3. Generate/update baseline CSV + Markdown + metadata:
+Stable baseline:
 
 ```bash
 ./benchmark/opencv_compare/run_compare.sh --profile stable --baseline
 ```
 
-Default CSV path:
+Explicit implementation:
 
-- `benchmark/opencv_compare/results/current_compare_quick.csv`
-  - includes `impl` column to distinguish internal `native` and `lite` compare rows.
+```bash
+./benchmark/opencv_compare/run_compare.sh --profile quick --impls headers_fast
+```
 
-Default Markdown path:
+`cvh_headers_fast` is accepted as an alias for `headers_fast`.
 
-- `benchmark/opencv_compare/opencv_compare_quick.md`
+## Migration TODO
 
-Default metadata path:
-
-- `benchmark/opencv_compare/results/current_compare_quick.csv.meta.json`
-
-## CMake Switches
-
-The main repo adds:
-
-- `CVH_ENABLE_OPENCV_COMPARE` (default `OFF`)
-- `CVH_OPENCV_BENCH_DIR` (default `benchmark/opencv_compare/opencv-bench-slim`)
-
-When compare is enabled, internal benchmark targets `cvh_benchmark_compare`
-(`native` mode) and `cvh_benchmark_compare_lite` (`lite` mode) are built. These
-targets are not part of the public package surface.
-
-## Bench Scope
-
-Current compare benchmark includes:
-
-- `ADD`, `SUB`, `GEMM`, `GEMM_PREPACK` (fixed-`B` pack-once scenario)
-- `GAUSSIAN_3X3`, `GAUSSIAN_5X5`, `GAUSSIAN_11X11`
-- `BOX_3X3`, `BOX_5X5`, `BOX_11X11`
-- `COPYMAKEBORDER`
-- `LUT`
-- `FILTER2D_3X3`
-- `SEPFILTER2D_3X3`
-- `WARP_AFFINE`
-- `SOBEL`, `ERODE`, `DILATE`（`C1/C3/C4`）
-- `CANNY_A3_L1`, `CANNY_A3_L2`, `CANNY_A5_L1`, `CANNY_A5_L2`（`CV_8UC1`）
+1. Broaden depth/channel/ROI coverage for the current `core_mat` and `imgproc`
+   operation set.
+2. Keep generated reports under `benchmark/results/opencv/<suite>/<profile>/`.
+3. Keep unsupported OpenCV cases visible instead of silently dropping them.

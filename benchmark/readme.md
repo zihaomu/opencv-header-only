@@ -1,251 +1,297 @@
-# `benchmark` 目录规划
+# `benchmark` Framework
 
-## 目录职责
+这个目录的目标不是临时跑几个数字，而是给 `opencv-header-only` 建立一套可以长期演进的性能判断系统。框架围绕两个模块展开：
 
-提供性能基准与回归检查，防止优化退化和跨版本性能漂移。
+- `core`：以 `Mat` 和基础数组算子为中心。
+- `imgproc`：以图像预处理/后处理常用算子为中心。
 
-## 规划目标
+框架同时支持两种 benchmark 模式：
 
-- 建立可重复的 benchmark 入口（固定数据、固定线程、固定输出格式）。
-- 优先覆盖 `core` 热点算子，再覆盖 `imgproc`。
-- 可选对比 OpenCV 或仓库历史版本。
+- **内部回归模式**：旧版本 header-only 和当前版本 header-only 对比，用来指导提速过程。
+- **OpenCV 对比模式**：当前 header-only 实现和官方 OpenCV 主仓库实现对比，用来展示差距和选择优化优先级。
 
-## 阶段计划
+## Mode A: Internal Header-only Regression
 
-### P1：基准框架
+内部回归模式回答的问题是：这次改动让 `cvh` 自己变快了，还是变慢了？
 
-- 统一 CLI 参数：输入规模、线程数、warmup、repeat。
-- 输出统一为 `csv/json`，便于 CI 归档。
+约束：
 
-### P2：Core 基线
+- 只比较 header-only 产物，不依赖 OpenCV，不依赖需要编译的 `.cpp` 扩展层。
+- baseline 和 candidate 必须使用同一组 case、同一套输入生成规则、同一套编译参数和同一台机器。
+- baseline 可以来自旧 commit、上一版发布产物、或同一二进制内强制 scalar fallback 的诊断行。
+- candidate 默认使用当前 checkout 的 `cvh::headers` 或 `cvh::headers_fast`。
+- 结果用于本项目优化决策，可以作为 CI gate。
 
-- 覆盖 `add/mul/convertTo/transpose/gemm` 等高频路径。
-- 分离标量路径与 SIMD 路径数据。
+推荐输出位置：
 
-### P3：Imgproc 基线
-
-- 覆盖 `cvtColor/resize/GaussianBlur`。
-- 建立不同分辨率下的吞吐与延迟对比。
-
-## 完成定义（DoD）
-
-- 关键算子有可追踪性能曲线。
-- PR 可基于 benchmark 报告判断是否有明显性能回退。
-
-## 当前可用工具
-
-- 可执行程序：`cvh_benchmark_core_ops`
-  - 源码：`benchmark/core_ops_benchmark.cpp`
-  - 覆盖：`core` 二元基础算子与 `compare(Mat,Mat)`（含多 `depth` / `channel` / `shape`）
-  - 输出：标准 CSV（stdout）或 `--output <file>`
-
-- 可执行程序：`cvh_benchmark_imgproc_ops`
-  - 源码：`benchmark/imgproc_ops_benchmark.cpp`
-  - 覆盖：`imgproc` 基础热点算子（`resize nearest/linear (CV_8U/CV_32F)`, `cvtColor BGR2GRAY/GRAY2BGR/GRAY2BGRA/BGRA2GRAY/GRAY2RGBA/RGBA2GRAY/BGR2RGB/BGR2BGRA/BGRA2BGR/RGB2RGBA/RGBA2RGB/BGR2RGBA/RGBA2BGR/RGB2BGRA/BGRA2RGB/BGRA2RGBA/RGBA2BGRA/BGR2YUV/YUV2BGR/RGB2YUV/YUV2RGB (CV_8U/CV_32F)`, `cvtColor BGR2YUV_NV12/RGB2YUV_NV12/BGR2YUV_NV21/RGB2YUV_NV21/BGR2YUV_I420/RGB2YUV_I420/BGR2YUV_YV12/RGB2YUV_YV12/BGR2YUV_NV16/RGB2YUV_NV16/BGR2YUV_NV61/RGB2YUV_NV61/BGR2YUV_YUY2/RGB2YUV_YUY2/BGR2YUV_UYVY/RGB2YUV_UYVY/BGR2YUV_NV24/RGB2YUV_NV24/BGR2YUV_NV42/RGB2YUV_NV42/BGR2YUV_I444/RGB2YUV_I444/BGR2YUV_YV24/RGB2YUV_YV24/YUV2BGR_NV12/YUV2RGB_NV12/YUV2BGR_NV21/YUV2RGB_NV21/YUV2BGR_I420/YUV2RGB_I420/YUV2BGR_YV12/YUV2RGB_YV12/YUV2BGR_I444/YUV2RGB_I444/YUV2BGR_YV24/YUV2RGB_YV24/YUV2BGR_NV16/YUV2RGB_NV16/YUV2BGR_NV61/YUV2RGB_NV61/YUV2BGR_NV24/YUV2RGB_NV24/YUV2BGR_NV42/YUV2RGB_NV42/YUV2BGR_YUY2/YUV2RGB_YUY2/YUV2BGR_UYVY/YUV2RGB_UYVY (CV_8U)`, `threshold(CV_8U/CV_32F fixed)`, `boxFilter(CV_8U/CV_32F)`, `GaussianBlur(CV_8U/CV_32F)`）
-  - 数据维度：`CV_8U/CV_32F` + 合法 `channel` 组合 + `quick/full` 分辨率组合；`NV12/NV21` 与 `I420/YV12` decode/encode 均按 `C1(H*3/2 x W)` 布局生成，`I444/YV24` 与 `NV24/NV42` decode/encode 使用 `C1(H*3 x W)` 输入/输出布局，`NV16/NV61` decode/encode 使用 `C1(H*2 x W)` 输入/输出布局，`YUY2/UYVY` decode/encode 使用 `C2(H x W)` 输入/输出布局
-  - 其中 `I444/YV24` 的 `C1(H*3 x W)` 语义为：上 `H` 行 `Y`，中间 `H` 行为 `U/V` 平面，最后 `H` 行为 `V/U` 平面；decode 以该布局作为输入，encode 以该布局作为输出
-  - `NV24/NV42` 的 `C1(H*3 x W)` 语义为：上 `H` 行 `Y`，下 `2H` 行为连续 `UV` / `VU` 字节流；decode 以该布局作为输入，encode 以该布局作为输出
-  - `NV12/NV21` 的 `C1(H*3/2 x W)` 语义为：上 `H` 行 `Y`，下 `H/2` 行为连续 `UV` / `VU` 字节流；decode 与 encode 都以该布局作为输入/输出，且每 `2x2` 像素共享一组 `U/V`
-  - `I420/YV12` 的 `C1(H*3/2 x W)` 语义为：上 `H` 行 `Y`，下 `H/2` 行按平面排列；`I420` 为 `U` 后 `V`，`YV12` 为 `V` 后 `U`；decode 与 encode 都以该布局作为输入/输出，且每 `2x2` 像素共享一组 `U/V`
-  - `NV16/NV61` 的 `C1(H*2 x W)` 语义为：上 `H` 行 `Y`，下 `H` 行为连续 `UV` / `VU` 字节流；decode 以该布局作为输入，encode 以该布局作为输出，且每 2 个水平像素共享一组 `U/V`
-  - `YUY2/UYVY` 的 `C2(H x W)` 语义为：`YUY2` 按 `[Y0 U][Y1 V]` 写出，`UYVY` 按 `[U Y0][V Y1]` 写出；decode 以该布局作为输入，encode 以该布局作为输出，且每 2 个水平像素共享一组 `U/V`
-  - 输出：标准 CSV（stdout）或 `--output <file>`
-
-- 回归检查脚本：`scripts/check_core_benchmark_regression.py`
-  - 对比 baseline/current CSV
-  - 支持全局阈值 `--max-slowdown`
-  - 支持分桶阈值 `--max-slowdown-by-op-depth`（按 `op+depth` 或单维覆盖）
-  - 超过阈值时返回非 0（可用于 CI gate）
-
-- 可执行程序：`cvh_benchmark_imgproc_filter`
-  - 源码：`benchmark/imgproc_filter_benchmark.cpp`
-  - 覆盖：`boxFilter/GaussianBlur`（`CV_8U`，`C1/C3/C4`，continuous/ROI）
-  - 输出字段：`op,kernel,depth,channels,shape,layout,border,dispatch_path,ms_per_iter`
-  - `dispatch_path` 典型值：`fallback / box3x3 / box_generic / gauss3x3 / gauss_separable`
-  - 支持 `--dispatch auto|optimized-only|fallback-only`（用于 A/B 对照）
-
-- 可执行程序：`cvh_benchmark_cvtcolor_bgr2gray_header`
-  - 源码：`benchmark/cvtcolor_bgr2gray_header_benchmark.cpp`
-  - 覆盖：header-only `CV_8UC3 BGR2GRAY/RGB2GRAY`
-  - 对比：同一输入下的 scalar direct helper、`cvh::cvtColor` 公共入口、direct OpenCV UI detail 入口
-  - 分配模式：`reuse` 预分配并复用输出 `Mat`，`recreate` 每次调用前 `dst.release()` 强制重建输出 buffer
-  - micro rows：`MICRO_STORE_U8`、`MICRO_SCALAR_READ3_WRITE1_U8`、`MICRO_LOAD_DEINTERLEAVE_STORE_U8`、`MICRO_PLANAR_LOAD3_WIDEN_MUL_PACK_STORE_U8`
-  - `full` profile 额外覆盖非 16 对齐宽度：`63x480`、`641x479`、`1919x1080`、`3839x2160`
-  - 输出字段：`profile,op,backend,entry,allocation_mode,shape,width,height,pixels,simd_lanes,tail_pixels,tail_ratio,warmup,iters,repeats,min_ms_per_call,median_ms_per_call,mpix_per_sec,speedup_vs_scalar,checksum`
-  - `MICRO_*` 行的 `speedup_vs_scalar=0`，只用于阶段成本诊断，不作为 scalar 加速比
-  - target 链接 `cvh::headers_fast`；OpenCV Universal Intrinsics 默认开启，profile 额外传播平台 intrinsic 宏；不链接 OpenCV，也不启用 `.cpp` 实验路径
-
-- 可执行程序：`cvh_benchmark_resize_bilinear_header`
-  - 源码：`benchmark/resize_bilinear_header_benchmark.cpp`
-  - 覆盖：header-only `CV_8UC1 resize INTER_LINEAR`
-  - 对比：同一输入下的 scalar `detail::resize_fallback_impl_typed<uchar>` 直接入口、`cvh::resize` 公共入口、OpenCV Universal Intrinsics direct detail 入口、预计算坐标/权重表后的 scalar 像素内核
-  - 分配模式：`reuse` 预分配并复用输出 `Mat`，`recreate` 每次调用前 `dst.release()` 强制重建输出 buffer
-  - micro rows：`MICRO_RESIZE_LINEAR_TABLES`、`MICRO_RESIZE_LINEAR_U8_C1_PRECOMPUTED_TABLES`
-  - `full` profile 额外覆盖非整数缩放和非 16 对齐宽度：`641x479->321x239`、`1919x1080->961x541`、`1920x1080->853x480`、`3839x2160->1917x1079`、`3840x2160->1280x720`
-  - 输出字段：`profile,op,backend,entry,allocation_mode,shape,src_width,src_height,dst_width,dst_height,channels,pixels,simd_lanes,tail_pixels,tail_ratio,warmup,iters,repeats,min_ms_per_call,median_ms_per_call,mpix_per_sec,speedup_vs_scalar,checksum`
-  - target 链接 `cvh::headers_fast`；OpenCV Universal Intrinsics 默认开启，profile 额外传播平台 intrinsic 宏；exact 2x downsample case 会标记为 `opencv_intrin_neon`，其他缩放形态标记为 `opencv_intrin_neon_no_resize_fastpath`
-  - 不链接 OpenCV，也不启用 `.cpp` 实验路径
-
-- 回归检查脚本：`scripts/check_imgproc_filter_benchmark_regression.py`
-  - 对比 baseline/current CSV
-  - 支持全局阈值 `--max-slowdown`
-  - 支持分桶阈值 `--max-slowdown-by-op-kernel`（按 `op+kernel` 或单维覆盖）
-  - 超过阈值时返回非 0（可用于 CI gate）
-
-- 速度对照脚本：`scripts/report_imgproc_filter_speedup.py`
-  - 对比 baseline/candidate CSV（按相同 case）
-  - 输出 `geomean/median/min/max speedup`
-  - 可用 `--fail-below-speedup` 设最低加速门槛
-## 使用示例
-
-0. （可选）启用 OpenMP 构建（对 `compare` 等已并行化 kernel 提升明显）：
-
-```bash
-cmake -S . -B build-full-test -DCVH_USE_OPENMP=ON
-cmake --build build-full-test -j --target cvh_benchmark_core_ops
+```text
+benchmark/results/internal/<suite>/<profile>/baseline.csv
+benchmark/results/internal/<suite>/<profile>/current.csv
+benchmark/results/internal/<suite>/<profile>/report.md
+benchmark/results/internal/<suite>/<profile>/meta.json
 ```
 
-1. 运行 quick 基准并导出结果：
+推荐实现名：
+
+| Implementation | 含义 |
+|---|---|
+| `cvh_headers_baseline` | 旧版本 `cvh::headers` 或旧版本默认 header-only target。 |
+| `cvh_headers_current` | 当前版本 `cvh::headers`。 |
+| `cvh_headers_fast_current` | 当前版本 `cvh::headers_fast`。 |
+| `scalar_fallback` | 同一二进制内强制 fallback 的诊断路径，只用于拆内核成本。 |
+| `opencv_ui_fastpath` | 同一二进制内直接 OpenCV UI fast path 的诊断路径。 |
+
+当前已可用的纯 header-only benchmark：
+
+| Target | Scope | 状态 |
+|---|---|---|
+| `cvh_benchmark_cvtcolor_bgr2gray_header` | `CV_8UC3` `BGR2GRAY` / `RGB2GRAY`，含 scalar/public/direct UI/micro rows。 | 可用于 imgproc 内部诊断。 |
+| `cvh_benchmark_resize_bilinear_header` | `CV_8UC1` `INTER_LINEAR` exact 2x downsample，含 scalar/public/direct UI/micro rows。 | 可用于 imgproc 内部诊断。 |
+
+当前需要迁移的 legacy benchmark：
+
+| Target | 当前问题 | 目标 |
+|---|---|---|
+| `cvh_benchmark_core_ops` | 仍链接旧 `cvh::native`。 | 拆成 `cvh_benchmark_core_mat_header`，只链接 `cvh::headers` / `cvh::headers_fast`。 |
+| `cvh_benchmark_imgproc_ops` | 仍链接旧 `cvh::native`。 | 并入或替换为 `cvh_benchmark_imgproc_header`。 |
+| `cvh_benchmark_imgproc_filter` | 仍链接旧 `cvh::native`，但已有 dispatch A/B 思路。 | 迁到 header-only filter suite，保留 forced fallback/fast-path 诊断能力。 |
+
+最小运行示例：
 
 ```bash
-./build-full-test/cvh_benchmark_core_ops --profile quick --warmup 2 --iters 20 --repeats 5 --output benchmark/current_quick.csv
-```
+cmake -S . -B build-bench \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCVH_BUILD_NATIVE_BACKEND=OFF \
+  -DCVH_BUILD_TESTS=OFF \
+  -DCVH_BUILD_BENCHMARKS=ON
 
-2. 生成一次基线（例如当前主分支）：
+cmake --build build-bench -j --target \
+  cvh_benchmark_cvtcolor_bgr2gray_header \
+  cvh_benchmark_resize_bilinear_header
 
-```bash
-cp benchmark/current_quick.csv benchmark/baseline_quick.csv
-```
+mkdir -p benchmark/results/internal/imgproc/quick
 
-3. 对比回归（默认允许最多 8% 变慢）：
-
-```bash
-python3 scripts/check_core_benchmark_regression.py \
-  --baseline benchmark/baseline_quick.csv \
-  --current benchmark/current_quick.csv \
-  --max-slowdown 0.08
-```
-
-4. 对热点分桶设置阈值（例如对 `CV_16F` 和 compare 单独放宽）：
-
-```bash
-python3 scripts/check_core_benchmark_regression.py \
-  --baseline benchmark/baseline_quick.csv \
-  --current benchmark/current_quick.csv \
-  --max-slowdown 0.08 \
-  --max-slowdown-by-op-depth CV_16F=0.20 \
-  --max-slowdown-by-op-depth CMP_GT:CV_16F=0.25
-```
-
-5. 运行 imgproc filter quick 基准并导出结果：
-
-```bash
-./build-full-test/cvh_benchmark_imgproc_filter --profile quick --output benchmark/current_filter_quick.csv
-```
-
-6. 生成一次 filter 基线（例如当前主分支）：
-
-```bash
-cp benchmark/current_filter_quick.csv benchmark/baseline_filter_quick.csv
-```
-
-7. 对比 filter 回归（默认允许最多 8% 变慢）：
-
-```bash
-python3 scripts/check_imgproc_filter_benchmark_regression.py \
-  --baseline benchmark/baseline_filter_quick.csv \
-  --current benchmark/current_filter_quick.csv \
-  --max-slowdown 0.08
-```
-
-8. 量化 filter 加速（A/B 对照：forced fallback vs optimized）：
-
-```bash
-./build-full-test/cvh_benchmark_imgproc_filter --profile quick --dispatch fallback-only --output benchmark/filter_quick_fallback.csv
-./build-full-test/cvh_benchmark_imgproc_filter --profile quick --dispatch optimized-only --output benchmark/filter_quick_optimized.csv
-
-python3 scripts/report_imgproc_filter_speedup.py \
-  --baseline benchmark/filter_quick_fallback.csv \
-  --candidate benchmark/filter_quick_optimized.csv \
-  --fail-below-speedup 1.0
-```
-
-## 建议流程
-
-- 日常提交：使用 `quick` profile 做回归门禁。
-- 周期性评估：使用 `full` profile 做深度扫描（更慢，但覆盖更多组合）。
-
-## Imgproc 使用示例
-
-1. 编译 imgproc benchmark：
-
-```bash
-cmake -S . -B build-full-test -DCVH_USE_OPENMP=ON
-cmake --build build-full-test -j --target cvh_benchmark_imgproc_ops
-```
-
-2. 生成 quick 基线：
-
-```bash
-taskset -c <stable-cpu> env OMP_NUM_THREADS=1 OMP_DYNAMIC=false OMP_PROC_BIND=close \
-./build-full-test/cvh_benchmark_imgproc_ops --profile quick --warmup 2 --iters 20 --repeats 5 --output benchmark/baseline_imgproc_quick.csv
-```
-
-3. 生成当前版本结果：
-
-```bash
-taskset -c <stable-cpu> env OMP_NUM_THREADS=1 OMP_DYNAMIC=false OMP_PROC_BIND=close \
-./build-full-test/cvh_benchmark_imgproc_ops --profile quick --warmup 2 --iters 20 --repeats 5 --output benchmark/current_imgproc_quick.csv
-```
-
-4. 使用 compare 工作流进行 CVH / OpenCV 对比：
-
-```bash
-./scripts/ci_compare_log_only.sh
-```
-
-5. 运行 header-only BGR/RGB2GRAY OpenCV Universal Intrinsics 诊断：
-
-```bash
-cmake -S . -B build-opencv-intrin-p3-bench \
-  -DCVH_BUILD_TESTS=ON \
-  -DCVH_BUILD_BENCHMARKS=ON \
-  -DCVH_BUILD_NATIVE_BACKEND=OFF
-
-cmake --build build-opencv-intrin-p3-bench -j --target cvh_benchmark_cvtcolor_bgr2gray_header
-
-./build-opencv-intrin-p3-bench/cvh_benchmark_cvtcolor_bgr2gray_header \
+./build-bench/cvh_benchmark_cvtcolor_bgr2gray_header \
   --profile quick \
   --warmup 3 \
   --iters 10 \
   --repeats 7 \
-  --output benchmark/cvtcolor_bgr_rgb_gray_header_p45.csv
-```
+  --output benchmark/results/internal/imgproc/quick/cvtcolor_current.csv
 
-6. 运行 header-only resize bilinear OpenCV Universal Intrinsics 诊断：
-
-```bash
-cmake -S . -B build-opencv-intrin-p3-bench \
-  -DCVH_BUILD_TESTS=ON \
-  -DCVH_BUILD_BENCHMARKS=ON \
-  -DCVH_BUILD_NATIVE_BACKEND=OFF
-
-cmake --build build-opencv-intrin-p3-bench -j --target cvh_benchmark_resize_bilinear_header
-
-./build-opencv-intrin-p3-bench/cvh_benchmark_resize_bilinear_header \
+./build-bench/cvh_benchmark_resize_bilinear_header \
   --profile quick \
   --warmup 3 \
   --iters 10 \
   --repeats 7 \
-  --output benchmark/resize_bilinear_header_p45.csv
+  --output benchmark/results/internal/imgproc/quick/resize_current.csv
 ```
 
-## Imgproc 证据文件保留规则
+后续 runner 应支持通过 `git worktree` 拉起旧版本，例如：
 
-- 常规 imgproc ops 对比仅保留 4 个最终证据 CSV：
-  - `benchmark/baseline_imgproc_quick.csv`
-  - `benchmark/current_imgproc_quick.csv`
-  - `benchmark/baseline_imgproc_full.csv`
-  - `benchmark/current_imgproc_full.csv`
-- OpenCV UI direct migration 计划引用的 header-only 诊断 CSV 可随计划阶段单独保留。
-- 阶段性中间产物（如 `*_b2.csv`、`*_d1.csv`、`*_e3.csv`、`*_ci_*.csv`）用于开发期验证，收口后应清理。
+```text
+benchmark/internal/run_header_regression.sh --baseline-ref <git-ref> --suite core_mat --profile quick
+benchmark/internal/run_header_regression.sh --baseline-ref <git-ref> --suite imgproc --profile quick
+```
+
+## Mode B: OpenCV Upstream Compare
+
+OpenCV 对比模式回答的问题是：当前 `cvh` header-only 实现和官方 OpenCV 主仓库还有多大差距？
+
+约束：
+
+- 对比对象只包括当前 `cvh::headers_fast` 和官方 OpenCV `core` / `imgproc`。
+- `cvh::headers_fast` 在 Mode B 中代表 header-only 项目的最快实现，避免报告变成内部 profile 对比。
+- 这个模式默认是 report/log-only，不作为每个 PR 的硬 gate。
+- 每份结果必须记录 `cvh` commit、OpenCV commit、编译器、平台、CPU、线程数、profile 和 CMake 选项。
+- 不使用 `cvh::headers`、`native` / `lite` 作为 OpenCV upstream compare 的 implementation。
+
+本机 OpenCV 源码位置：
+
+```text
+/Users/zmu/work/my_project/ocvh/opencv
+```
+
+从当前仓库相对路径看，它等价于：
+
+```text
+../opencv
+```
+
+推荐输出位置：
+
+```text
+benchmark/results/opencv/<suite>/<profile>/compare.csv
+benchmark/results/opencv/<suite>/<profile>/report.md
+benchmark/results/opencv/<suite>/<profile>/meta.json
+```
+
+目标实现名：
+
+| Implementation | 含义 |
+|---|---|
+| `cvh_headers_fast` | 当前 `cvh::headers_fast`，代表 header-only 最快实现。 |
+| `opencv` | 同机同编译模式下的官方 OpenCV。 |
+
+现状：
+
+- `benchmark/opencv_compare/` 已经可以生成 `cvh vs OpenCV` 报告。
+- 该目录已经裁剪为纯 header-only compare：只用 `cvh::headers_fast` 对比 OpenCV。
+- `cvh::headers` 留在 Mode A 内部回归和默认 header-only 验证中，不进入 Mode B 报告。
+
+## Suites
+
+### `core_mat`
+
+第一优先级是 `Mat` 基础成本，而不是泛化数学库。
+
+候选 case：
+
+| Area | Case |
+|---|---|
+| Allocation/lifetime | `Mat::create`, `release`, reuse create, reallocation create。 |
+| Copy/layout | `clone`, `copyTo`, continuous copy, ROI/non-contiguous copy。 |
+| Fill/convert | `setTo`, `convertTo`, saturating cast。 |
+| Shape/view | `reshape`, ROI construction, step/stride traversal。 |
+| Basic array ops | `add`, `subtract`, `multiply`, `divide`, `compare`, `merge`, `split`，等这些进入 header-only contract 后再纳入 gate。 |
+
+核心指标：
+
+- `ns/op`：适合小矩阵和元数据操作。
+- `MElems/s`：适合元素级算子。
+- `GB/s`：适合内存带宽型路径。
+- allocation count 或 reuse/recreate 标记：用于拆 `Mat::create` 影响。
+
+目标 target：
+
+```text
+cvh_benchmark_core_mat_header
+```
+
+### `imgproc`
+
+第一优先级是 AI vision 预处理/后处理中高频、容易被 OpenCV 用户感知的算子。
+
+候选 case：
+
+| Area | Case |
+|---|---|
+| Resize | `INTER_NEAREST`, `INTER_NEAREST_EXACT`, `INTER_LINEAR`，覆盖 downsample/upsample/非整数缩放/非对齐宽度。 |
+| Color | BGR/RGB/GRAY/BGRA/RGBA，YUV encode/decode 家族按已支持布局覆盖。 |
+| Threshold/LUT | `threshold`, `LUT`。 |
+| Border/filter | `copyMakeBorder`, `filter2D`, `sepFilter2D`, `boxFilter`, `blur`, `GaussianBlur`。 |
+| Grad/morphology | `Sobel`, `Canny`, `erode`, `dilate`, `morphologyEx`。 |
+
+核心指标：
+
+- `ms/call`：用户最直观的延迟。
+- `MPix/s`：图像算子主指标。
+- `GB/s`：内存带宽型路径辅助指标。
+- `tail_ratio`：SIMD 尾部比例，尤其关注非 16/32 对齐宽度。
+- `allocation_mode`：`reuse` / `recreate`，用于拆公共入口分配成本。
+- `dispatch_path`：`scalar_fallback` / `opencv_ui` / `platform_fastpath`。
+
+目标 target：
+
+```text
+cvh_benchmark_imgproc_header
+```
+
+## Common CSV Schema
+
+新 benchmark 尽量收敛到同一批字段。现有专项 benchmark 可以先保持原 schema，但新 runner/report 应能映射到下面的标准字段。
+
+| Field | 含义 |
+|---|---|
+| `mode` | `internal` 或 `opencv_compare`。 |
+| `suite` | `core_mat` 或 `imgproc`。 |
+| `module` | `core` / `imgproc`。 |
+| `op` | 算子名。 |
+| `variant` | 插值、border、kernel size、color code 等变体。 |
+| `depth` | `CV_8U` / `CV_32F` 等。 |
+| `channels` | 通道数。 |
+| `layout` | `continuous` / `roi` / YUV layout 等。 |
+| `shape` | 人类可读尺寸。 |
+| `pixels` | 输出像素数；core 非图像 case 可为元素数。 |
+| `implementation` | Mode A 可使用 `cvh_headers`, `cvh_headers_fast`, `scalar_fallback` 等；Mode B 只使用 `cvh_headers_fast`, `opencv`。 |
+| `dispatch_path` | 实际命中的内部路径。 |
+| `allocation_mode` | `reuse` / `recreate` / `none`。 |
+| `warmup`, `iters`, `repeats`, `threads` | 采样参数。 |
+| `min_ms`, `median_ms` | 最小值和中位数。 |
+| `mpix_per_sec`, `melems_per_sec`, `gb_per_sec` | 吞吐指标。 |
+| `checksum` | 防止编译器消除和粗粒度结果一致性检查。 |
+| `status`, `note` | 支持状态和跳过原因。 |
+
+## Profiles And Gates
+
+| Profile | 用途 | 建议采样 | Gate |
+|---|---|---|---|
+| `quick` | 本地开发和 PR 预检查。 | 小到中尺寸，短采样。 | internal regression 可 fail。 |
+| `stable` | 合并前或阶段收口。 | 更多 repeats，固定线程，固定机器。 | internal regression 可 fail。 |
+| `full` | 周期性扫描。 | 全尺寸矩阵和更多边界 case。 | 默认 log-only。 |
+| `micro` | 拆内核成本。 | 单内核、单职责。 | 不直接作为产品性能 gate。 |
+
+建议 gate：
+
+- 内部回归 quick：默认允许最多 `8%` slowdown。
+- 内部回归 stable：对已接受 fast path 应收紧到 `5%` 左右；噪声大的平台可 log-only。
+- OpenCV 对比：默认不 fail，只输出 `OpenCV/CVH` 和 unsupported cases。
+- 只有当某个 fast path 已经以 benchmark 证据进入支持表，才为它设置硬性性能门槛。
+
+## Measurement Rules
+
+- Release 构建，尽量固定编译器和 CMake 选项。
+- 单线程优先；多线程只在明确测试并行路径时启用。
+- 同一份输入在同一 case 内复用。
+- 同时记录 `reuse` 和 `recreate`，避免把 `Mat::create` 成本误判为 kernel 成本。
+- micro benchmark 只解释瓶颈，不代表用户可见 API 性能。
+- 每个结果必须带 metadata；没有 metadata 的 CSV 只能作为临时诊断。
+
+## Cleanup Rules
+
+- 新生成结果放入 `benchmark/results/` 或 `benchmark/opencv_compare/results/`，不再放在 `benchmark/` 根目录。
+- `benchmark/*.csv` 视为历史阶段产物，不再作为长期文档入口。
+- OpenCV compare 的 Markdown 报告是生成产物，后续由 runner 写入 `benchmark/results/opencv/.../report.md`。
+- 源码 benchmark 暂时保留在当前路径，等 `core_mat` / `imgproc` header-only target 成型后再移动目录和改 CMake。
+
+## Implementation Plan
+
+Detailed execution steps live in
+[`doc/benchmark-refactor-implementation-plan.md`](../doc/benchmark-refactor-implementation-plan.md).
+
+1. **P-Bench-0：目录和文档收口** - complete
+   - 明确两种模式、两个 suite、输出目录和 schema。
+   - 清理 tracked 的阶段性 CSV/Markdown 报告。
+   - 增加 ignore 规则，避免新结果再次进入源码树。
+
+2. **P-Bench-1：公共 benchmark helper** - complete
+   - 新增 header-only benchmark 公共 helper。
+   - 统一计时、CSV、metadata、checksum 和 profile 解析。
+
+3. **P-Bench-2：内部回归 runner** - complete
+   - 新增 `benchmark/internal/run_header_regression.sh`。
+   - 支持 `--baseline-ref <git-ref>`，用临时 `git worktree` 构建旧版本。
+   - 输出 baseline/current/report/meta。
+
+4. **P-Bench-3：`core_mat` header-only target** - complete
+   - 从 `cvh_benchmark_core_ops` 拆出 `cvh_benchmark_core_mat_header`。
+   - 只链接 `cvh::headers` / `cvh::headers_fast`。
+   - 覆盖 `Mat` create/copy/convert/layout 成本。
+
+5. **P-Bench-4：`imgproc` header-only target** - complete
+   - 合并 `cvtColor` 和 `resize` 专项 benchmark 的可复用测量代码。
+   - 形成 `cvh_benchmark_imgproc_header`。
+   - 保留 scalar/public/direct UI/micro 诊断维度。
+
+6. **P-Bench-5：统一 report/gate** - complete
+   - 统一 CSV to Markdown/JSON summary。
+   - 让内部回归可按 suite/op/variant 设置阈值。
+   - OpenCV compare 继续保持 log-only，但输出 gap 排序和 unsupported matrix。
+
+7. **P-Bench-6：OpenCV 主仓库 compare** - complete
+   - 支持本地 `../opencv` 源码和用户指定 OpenCV build dir。
+   - 只用 `cvh::headers_fast` 对比 OpenCV，代表 header-only 最快实现。
+   - 移除 compare 报告里的产品层 `native` / `lite` 叙事。
+
+8. **P-Bench-7：CI integration** - complete
+   - 内部回归进入 quick gate。
+   - OpenCV compare 保持 on-demand/log-only。

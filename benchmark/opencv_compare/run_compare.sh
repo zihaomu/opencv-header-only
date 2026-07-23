@@ -7,7 +7,7 @@ ROOT_DIR="$(cd "${COMPARE_DIR}/../.." && pwd)"
 SETUP_SCRIPT="${COMPARE_DIR}/setup_opencv_bench_slim.sh"
 
 PROFILE="${CVH_COMPARE_PROFILE:-quick}"
-IMPLS="${CVH_COMPARE_IMPLS:-native,lite}"
+IMPLS="${CVH_COMPARE_IMPLS:-headers_fast}"
 WARMUP=""
 ITERS=""
 REPEATS=""
@@ -20,6 +20,8 @@ OMP_PROC_BIND_MODE="${CVH_COMPARE_OMP_PROC_BIND:-close}"
 MARK_AS_BASELINE=0
 
 OPENCV_DIR="${CVH_OPENCV_DIR:-${COMPARE_DIR}/opencv-bench-slim}"
+OPENCV_CONFIG_DIR_OVERRIDE="${CVH_OPENCV_CONFIG_DIR:-}"
+SKIP_OPENCV_SETUP="${CVH_COMPARE_SKIP_OPENCV_SETUP:-0}"
 BUILD_DIR="${CVH_COMPARE_BUILD_DIR:-${ROOT_DIR}/build-opencv-compare}"
 OUTPUT_CSV=""
 OUTPUT_MD=""
@@ -28,11 +30,11 @@ REPORT_SCRIPT="${COMPARE_DIR}/csv_to_markdown.py"
 
 usage() {
   cat <<USAGE
-Usage: $(basename "$0") [--profile quick|stable|full] [--impls native|lite|native,lite] [--warmup N] [--iters N] [--repeats N] [--output path] [--baseline]
+Usage: $(basename "$0") [--profile quick|stable|full] [--impls headers_fast] [--warmup N] [--iters N] [--repeats N] [--output path] [--baseline]
 
 Environment:
   CVH_COMPARE_PROFILE   (default: ${PROFILE})
-  CVH_COMPARE_IMPLS     (default: ${IMPLS}, values: native|lite|native,lite; full is a deprecated alias for native)
+  CVH_COMPARE_IMPLS     (default: ${IMPLS}, value: headers_fast; cvh_headers_fast is accepted as an alias)
   CVH_COMPARE_WARMUP    (profile default, quick=1 stable=2 full=1)
   CVH_COMPARE_ITERS     (profile default, quick=5 stable=20 full=10)
   CVH_COMPARE_REPEATS   (profile default, quick=1 stable=5 full=3)
@@ -44,9 +46,11 @@ Environment:
   CVH_COMPARE_BUILD_TYPE (default: ${BUILD_TYPE}, e.g. Release|RelWithDebInfo|Debug)
   CVH_COMPARE_BUILD_DIR (default: ${BUILD_DIR})
   CVH_COMPARE_OUTPUT    (default: benchmark/opencv_compare/results/current_compare_<profile>.csv, or baseline_* with --baseline)
-  CVH_COMPARE_OUTPUT_MD (default: benchmark/opencv_compare/opencv_compare_<profile>.md, or baseline_* with --baseline)
+  CVH_COMPARE_OUTPUT_MD (default: benchmark/opencv_compare/results/current_compare_<profile>.md, or baseline_* with --baseline)
   CVH_COMPARE_OUTPUT_META (default: <output_csv>.meta.json)
   CVH_OPENCV_DIR        (default: ${OPENCV_DIR})
+  CVH_OPENCV_CONFIG_DIR (optional explicit OpenCVConfig.cmake directory)
+  CVH_COMPARE_SKIP_OPENCV_SETUP (default: ${SKIP_OPENCV_SETUP}, set 1 when using an existing local OpenCV build)
 USAGE
 }
 
@@ -117,13 +121,12 @@ for raw_impl in "${RAW_IMPLS[@]}"; do
     continue
   fi
 
-  if [[ "${impl}" == "full" ]]; then
-    echo "Impl name 'full' is deprecated; using 'native'." >&2
-    impl="native"
+  if [[ "${impl}" == "cvh_headers_fast" ]]; then
+    impl="headers_fast"
   fi
 
-  if [[ "${impl}" != "native" && "${impl}" != "lite" ]]; then
-    echo "Unsupported impl: ${impl} (expected native|lite)" >&2
+  if [[ "${impl}" != "headers_fast" ]]; then
+    echo "Unsupported impl: ${impl} (Mode B only compares headers_fast against upstream OpenCV)" >&2
     exit 2
   fi
 
@@ -140,11 +143,11 @@ for raw_impl in "${RAW_IMPLS[@]}"; do
 done
 
 if [[ "${#REQUESTED_IMPLS[@]}" -eq 0 ]]; then
-  echo "No valid impl selected. Use --impls native|lite|native,lite" >&2
+  echo "No valid impl selected. Use --impls headers_fast" >&2
   exit 2
 fi
 
-IMPLS_NORMALIZED="$(IFS=,; echo "${REQUESTED_IMPLS[*]-}")"
+IMPLS_NORMALIZED="cvh_headers_fast"
 
 case "${PROFILE}" in
   quick)
@@ -170,10 +173,10 @@ REPEATS="${REPEATS:-${CVH_COMPARE_REPEATS:-${DEFAULT_REPEATS}}}"
 
 if [[ "${MARK_AS_BASELINE}" == "1" ]]; then
   DEFAULT_OUTPUT_CSV="${COMPARE_DIR}/results/baseline_compare_${PROFILE}.csv"
-  DEFAULT_OUTPUT_MD="${COMPARE_DIR}/opencv_compare_baseline_${PROFILE}.md"
+  DEFAULT_OUTPUT_MD="${COMPARE_DIR}/results/baseline_compare_${PROFILE}.md"
 else
   DEFAULT_OUTPUT_CSV="${COMPARE_DIR}/results/current_compare_${PROFILE}.csv"
-  DEFAULT_OUTPUT_MD="${COMPARE_DIR}/opencv_compare_${PROFILE}.md"
+  DEFAULT_OUTPUT_MD="${COMPARE_DIR}/results/current_compare_${PROFILE}.md"
 fi
 
 OUTPUT_CSV="${OUTPUT_CSV:-${CVH_COMPARE_OUTPUT:-${DEFAULT_OUTPUT_CSV}}}"
@@ -187,6 +190,14 @@ fi
 
 find_opencv_dir() {
   local src_dir="$1"
+  if [[ -n "${OPENCV_CONFIG_DIR_OVERRIDE}" ]]; then
+    if [[ -f "${OPENCV_CONFIG_DIR_OVERRIDE}/OpenCVConfig.cmake" ]]; then
+      echo "${OPENCV_CONFIG_DIR_OVERRIDE}"
+      return 0
+    fi
+    return 1
+  fi
+
   local -a candidates=(
     "${src_dir}/build-slim"
     "${src_dir}/build-slim/lib/cmake/opencv4"
@@ -226,8 +237,21 @@ write_compare_metadata() {
   generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   local repo_git_commit
   repo_git_commit="$(git -C "${ROOT_DIR}" rev-parse HEAD 2>/dev/null || printf '%s' 'unknown')"
+  local repo_git_dirty="false"
+  if [[ -n "$(git -C "${ROOT_DIR}" status --porcelain 2>/dev/null)" ]]; then
+    repo_git_dirty="true"
+  fi
   local opencv_git_commit
   opencv_git_commit="$(git -C "${OPENCV_DIR}" rev-parse HEAD 2>/dev/null || printf '%s' 'unknown')"
+  local opencv_git_dirty="false"
+  if [[ -n "$(git -C "${OPENCV_DIR}" status --porcelain 2>/dev/null)" ]]; then
+    opencv_git_dirty="true"
+  fi
+  local opencv_version
+  opencv_version="$(awk '/^SET\(OpenCV_VERSION / {gsub(/[()]/, ""); print $2; exit}' "${opencv_config_dir}/OpenCVConfig.cmake" 2>/dev/null || true)"
+  opencv_version="${opencv_version:-unknown}"
+  local compiler
+  compiler="$("${CXX:-c++}" --version 2>/dev/null | head -n 1 || printf '%s' 'unknown')"
   local cpu_model
   cpu_model="$(detect_cpu_model)"
 
@@ -249,8 +273,12 @@ write_compare_metadata() {
     META_OUTPUT_MD="${output_md}" \
     META_OPENCV_DIR="${OPENCV_DIR}" \
     META_OPENCV_CONFIG_DIR="${opencv_config_dir}" \
+    META_OPENCV_VERSION="${opencv_version}" \
     META_OPENCV_GIT_COMMIT="${opencv_git_commit}" \
+    META_OPENCV_GIT_DIRTY="${opencv_git_dirty}" \
     META_REPO_GIT_COMMIT="${repo_git_commit}" \
+    META_REPO_GIT_DIRTY="${repo_git_dirty}" \
+    META_COMPILER="${compiler}" \
     META_SYSTEM="$(uname -s)" \
     META_KERNEL="$(uname -r)" \
     META_ARCH="$(uname -m)" \
@@ -278,8 +306,12 @@ data = {
     "output_md": os.environ["META_OUTPUT_MD"],
     "opencv_dir": os.environ["META_OPENCV_DIR"],
     "opencv_config_dir": os.environ["META_OPENCV_CONFIG_DIR"],
+    "opencv_version": os.environ["META_OPENCV_VERSION"],
     "opencv_git_commit": os.environ["META_OPENCV_GIT_COMMIT"],
+    "opencv_git_dirty": os.environ["META_OPENCV_GIT_DIRTY"] == "true",
     "repo_git_commit": os.environ["META_REPO_GIT_COMMIT"],
+    "repo_git_dirty": os.environ["META_REPO_GIT_DIRTY"] == "true",
+    "compiler": os.environ["META_COMPILER"],
     "system": os.environ["META_SYSTEM"],
     "kernel": os.environ["META_KERNEL"],
     "arch": os.environ["META_ARCH"],
@@ -322,7 +354,9 @@ if [[ "${BUILD_OPENCV}" != "0" && "${BUILD_OPENCV}" != "1" ]]; then
   exit 2
 fi
 
-if [[ "${BUILD_OPENCV}" == "0" ]]; then
+if [[ "${SKIP_OPENCV_SETUP}" == "1" ]]; then
+  echo "opencv_compare: setup mode=skipped_existing_opencv"
+elif [[ "${BUILD_OPENCV}" == "0" ]]; then
   echo "opencv_compare: setup mode=clone_or_update_only"
   "${SETUP_SCRIPT}"
 else
@@ -339,7 +373,7 @@ mkdir -p "${BUILD_DIR}" "$(dirname "${OUTPUT_CSV}")" "$(dirname "${OUTPUT_META}"
 
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
   -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
-  -DCVH_BUILD_NATIVE_BACKEND=ON \
+  -DCVH_BUILD_NATIVE_BACKEND=OFF \
   -DCVH_BUILD_BACKEND_KERNEL_SOURCES=ON \
   -DCVH_BUILD_TESTS=OFF \
   -DCVH_BUILD_BENCHMARKS=ON \
@@ -349,39 +383,32 @@ cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
 
 BENCH_TARGETS=()
 for impl in "${REQUESTED_IMPLS[@]-}"; do
-  if [[ "${impl}" == "native" ]]; then
-    BENCH_TARGETS+=("cvh_benchmark_compare")
-  else
-    BENCH_TARGETS+=("cvh_benchmark_compare_lite")
-  fi
+  BENCH_TARGETS+=("cvh_benchmark_opencv_compare_headers_fast")
 done
 
 cmake --build "${BUILD_DIR}" --target "${BENCH_TARGETS[@]}" -j
 
 TMP_OUTPUT_CSVS=()
 for impl in "${REQUESTED_IMPLS[@]-}"; do
-  if [[ "${impl}" == "native" ]]; then
-    BENCH_BIN="${BUILD_DIR}/cvh_benchmark_compare"
-  else
-    BENCH_BIN="${BUILD_DIR}/cvh_benchmark_compare_lite"
-  fi
+  BENCH_BIN="${BUILD_DIR}/cvh_benchmark_opencv_compare_headers_fast"
 
   if [[ ! -x "${BENCH_BIN}" ]]; then
     echo "Missing benchmark binary for impl=${impl}: ${BENCH_BIN}" >&2
     exit 2
   fi
 
-  IMPL_OUTPUT_CSV="${OUTPUT_CSV}.${impl}.tmp.csv"
+  IMPL_OUTPUT_CSV="${OUTPUT_CSV}.cvh_headers_fast.tmp.csv"
   TMP_OUTPUT_CSVS+=("${IMPL_OUTPUT_CSV}")
 
-  echo "opencv_compare: running benchmark (impl=${impl}, profile=${PROFILE}, warmup=${WARMUP}, iters=${ITERS}, repeats=${REPEATS}, threads=${THREADS}, omp_dynamic=${OMP_DYNAMIC_MODE}, omp_proc_bind=${OMP_PROC_BIND_MODE})"
+  echo "opencv_compare: running benchmark (impl=cvh_headers_fast, profile=${PROFILE}, warmup=${WARMUP}, iters=${ITERS}, repeats=${REPEATS}, threads=${THREADS}, omp_dynamic=${OMP_DYNAMIC_MODE}, omp_proc_bind=${OMP_PROC_BIND_MODE})"
   echo "opencv_compare: benchmark stage can take several minutes for quick profile with large kernels."
   OMP_NUM_THREADS="${THREADS}" \
   OMP_DYNAMIC="${OMP_DYNAMIC_MODE}" \
   OMP_PROC_BIND="${OMP_PROC_BIND_MODE}" \
   "${BENCH_BIN}" \
     --profile "${PROFILE}" \
-    --impl "${impl}" \
+    --impl "cvh_headers_fast" \
+    --threads "${THREADS}" \
     --warmup "${WARMUP}" \
     --iters "${ITERS}" \
     --repeats "${REPEATS}" \

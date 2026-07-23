@@ -11,6 +11,28 @@ enum class DepthId
     F32 = 1,
 };
 
+enum class MatOpId
+{
+    CreateReuse = 0,
+    Clone,
+    CopyTo,
+    SetTo,
+    ConvertTo,
+    Reshape,
+};
+
+void configure_opencv_threads(int threads);
+
+double bench_opencv_mat_op(MatOpId op,
+                           int rows,
+                           int cols,
+                           DepthId depth,
+                           int channels,
+                           int warmup,
+                           int iters,
+                           int repeats,
+                           std::uint32_t seed);
+
 double bench_opencv_add(int rows,
                         int cols,
                         DepthId depth,
@@ -48,6 +70,27 @@ double bench_opencv_gemm_prepack(int m,
                                  int repeats,
                                  std::uint32_t seed_a,
                                  std::uint32_t seed_b);
+
+double bench_opencv_resize_linear_half(int dst_rows,
+                                        int dst_cols,
+                                        int warmup,
+                                        int iters,
+                                        int repeats,
+                                        std::uint32_t seed);
+
+double bench_opencv_cvtcolor_bgr2gray(int rows,
+                                      int cols,
+                                      int warmup,
+                                      int iters,
+                                      int repeats,
+                                      std::uint32_t seed);
+
+double bench_opencv_threshold_binary(int rows,
+                                      int cols,
+                                      int warmup,
+                                      int iters,
+                                      int repeats,
+                                      std::uint32_t seed);
 
 double bench_opencv_gaussian(int rows,
                              int cols,

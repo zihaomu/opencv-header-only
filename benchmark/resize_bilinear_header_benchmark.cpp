@@ -1,5 +1,6 @@
 #include "cvh.h"
 #include "cvh/core/simd/opencv_ui.h"
+#include "common/benchmark_common.h"
 
 #if !CVH_ENABLE_OPENCV_INTRIN
 #error "cvh_benchmark_resize_bilinear_header must be compiled with CVH_ENABLE_OPENCV_INTRIN=1"
@@ -48,12 +49,7 @@ struct LinearTables
     std::vector<float> wy;
 };
 
-struct Result
-{
-    double min_ms = 0.0;
-    double median_ms = 0.0;
-    std::uint64_t checksum = 0;
-};
+using Result = common::BenchmarkResult;
 
 struct ResultRow
 {
@@ -98,58 +94,13 @@ void usage()
 
 Args parse_args(int argc, char** argv)
 {
-    Args args;
-    for (int i = 1; i < argc; ++i)
-    {
-        const std::string token = argv[i];
-        auto next_value = [&](const char* name) -> std::string {
-            if (i + 1 >= argc)
-            {
-                std::cerr << "Missing value for " << name << "\n";
-                std::exit(2);
-            }
-            return std::string(argv[++i]);
-        };
-
-        if (token == "--profile")
-        {
-            args.profile = next_value("--profile");
-        }
-        else if (token == "--warmup")
-        {
-            args.warmup = std::max(0, std::stoi(next_value("--warmup")));
-        }
-        else if (token == "--iters")
-        {
-            args.iters = std::max(1, std::stoi(next_value("--iters")));
-        }
-        else if (token == "--repeats")
-        {
-            args.repeats = std::max(1, std::stoi(next_value("--repeats")));
-        }
-        else if (token == "--output")
-        {
-            args.output_csv = next_value("--output");
-        }
-        else if (token == "--help")
-        {
-            usage();
-            std::exit(0);
-        }
-        else
-        {
-            std::cerr << "Unknown arg: " << token << "\n";
-            std::exit(2);
-        }
-    }
-
-    if (args.profile != "quick" && args.profile != "full")
-    {
-        std::cerr << "Unsupported profile: " << args.profile << " (expected quick/full)\n";
-        std::exit(2);
-    }
-
-    return args;
+    const auto parsed = common::parse_basic_args(
+        argc,
+        argv,
+        common::BasicArgs {"quick", 3, 10, 7, ""},
+        {"quick", "full"},
+        usage);
+    return Args {parsed.profile, parsed.warmup, parsed.iters, parsed.repeats, parsed.output_csv};
 }
 
 std::vector<ResizeCase> build_cases(const std::string& profile)
@@ -175,13 +126,7 @@ std::vector<ResizeCase> build_cases(const std::string& profile)
 
 std::string opencv_intrin_backend_name()
 {
-#if defined(CV_FORCE_SIMD128_CPP)
-    return "opencv_intrin_cpp";
-#elif defined(CV_NEON) && CV_NEON
-    return "opencv_intrin_neon";
-#else
-    return "opencv_intrin_cpp";
-#endif
+    return common::opencv_intrin_backend_name();
 }
 
 bool has_resize_opencv_intrin_fastpath(const ResizeCase& shape)
@@ -207,7 +152,7 @@ std::string allocation_mode_name(AllocationMode mode)
 
 int simd_lanes()
 {
-    return cv::VTraits<cv::v_uint8x16>::vlanes();
+    return common::simd_u8_lanes();
 }
 
 std::size_t output_pixels(const ResizeCase& shape)
@@ -227,38 +172,19 @@ std::size_t tail_pixels(const ResizeCase& shape)
 
 void fill_u8(cvh::Mat& mat, std::uint32_t seed)
 {
-    const std::size_t count = mat.total() * static_cast<std::size_t>(mat.channels());
-    for (std::size_t i = 0; i < count; ++i)
-    {
-        seed = seed * 1664525u + 1013904223u;
-        mat.data[i] = static_cast<uchar>((seed >> 16) & 0xffu);
-    }
-}
-
-std::uint64_t checksum_bytes(const uchar* data, std::size_t count)
-{
-    std::uint64_t value = 1469598103934665603ull;
-    for (std::size_t i = 0; i < count; ++i)
-    {
-        value ^= static_cast<std::uint64_t>(data[i]);
-        value *= 1099511628211ull;
-    }
-    return value;
+    common::fill_mat_u8_lcg(mat, seed);
 }
 
 std::uint64_t checksum(const cvh::Mat& mat)
 {
-    const std::size_t count = mat.total() * static_cast<std::size_t>(mat.channels()) *
-                              static_cast<std::size_t>(mat.elemSize1());
-    return checksum_bytes(mat.data, count);
+    return common::checksum_mat_bytes(mat);
 }
 
 std::uint64_t checksum_tables(const LinearTables& tables)
 {
     std::uint64_t value = 1469598103934665603ull;
     auto mix_u64 = [&](std::uint64_t v) {
-        value ^= v;
-        value *= 1099511628211ull;
+        value = common::fnv1a64_mix_u64(value, v);
     };
     for (const int v : tables.x0b)
     {
@@ -294,21 +220,7 @@ std::uint64_t checksum_tables(const LinearTables& tables)
 
 bool same_mat(const cvh::Mat& lhs, const cvh::Mat& rhs)
 {
-    if (lhs.type() != rhs.type() || lhs.dims != rhs.dims || lhs.size != rhs.size)
-    {
-        return false;
-    }
-
-    const std::size_t count = lhs.total() * static_cast<std::size_t>(lhs.channels()) *
-                              static_cast<std::size_t>(lhs.elemSize1());
-    for (std::size_t i = 0; i < count; ++i)
-    {
-        if (lhs.data[i] != rhs.data[i])
-        {
-            return false;
-        }
-    }
-    return true;
+    return common::same_mat_bytes(lhs, rhs);
 }
 
 LinearTables build_linear_tables(const ResizeCase& shape)
@@ -426,34 +338,18 @@ Result measure_resize(ResizeFn fn,
                       int iters,
                       int repeats)
 {
-    for (int i = 0; i < warmup; ++i)
-    {
-        prepare_dst(dst, shape, allocation_mode);
-        fn(src, dst, shape);
-    }
-
-    std::vector<double> samples;
-    samples.reserve(static_cast<std::size_t>(repeats));
-
-    using Clock = std::chrono::steady_clock;
-    for (int r = 0; r < repeats; ++r)
-    {
-        const auto t0 = Clock::now();
-        for (int i = 0; i < iters; ++i)
-        {
+    const auto timing = common::measure_repeated_ms(
+        [&]() {
             prepare_dst(dst, shape, allocation_mode);
             fn(src, dst, shape);
-        }
-        const auto t1 = Clock::now();
-        const double elapsed_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-        samples.push_back(elapsed_ms / static_cast<double>(iters));
-    }
-
-    std::sort(samples.begin(), samples.end());
+        },
+        warmup,
+        iters,
+        repeats);
     const std::uint64_t hash = checksum(dst);
     g_sink ^= hash;
 
-    return Result {samples.front(), samples[samples.size() / 2], hash};
+    return Result {timing.min_ms, timing.median_ms, hash};
 }
 
 Result measure_precomputed_resize(PrecomputedResizeFn fn,
@@ -466,34 +362,18 @@ Result measure_precomputed_resize(PrecomputedResizeFn fn,
                                   int iters,
                                   int repeats)
 {
-    for (int i = 0; i < warmup; ++i)
-    {
-        prepare_dst(dst, shape, allocation_mode);
-        fn(src, dst, shape, tables);
-    }
-
-    std::vector<double> samples;
-    samples.reserve(static_cast<std::size_t>(repeats));
-
-    using Clock = std::chrono::steady_clock;
-    for (int r = 0; r < repeats; ++r)
-    {
-        const auto t0 = Clock::now();
-        for (int i = 0; i < iters; ++i)
-        {
+    const auto timing = common::measure_repeated_ms(
+        [&]() {
             prepare_dst(dst, shape, allocation_mode);
             fn(src, dst, shape, tables);
-        }
-        const auto t1 = Clock::now();
-        const double elapsed_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-        samples.push_back(elapsed_ms / static_cast<double>(iters));
-    }
-
-    std::sort(samples.begin(), samples.end());
+        },
+        warmup,
+        iters,
+        repeats);
     const std::uint64_t hash = checksum(dst);
     g_sink ^= hash;
 
-    return Result {samples.front(), samples[samples.size() / 2], hash};
+    return Result {timing.min_ms, timing.median_ms, hash};
 }
 
 Result measure_tables(TableFn fn, const ResizeCase& shape, int warmup, int iters, int repeats)
@@ -514,19 +394,17 @@ Result measure_tables(TableFn fn, const ResizeCase& shape, int warmup, int iters
         const auto t0 = Clock::now();
         for (int i = 0; i < iters; ++i)
         {
-            sample_hash ^= fn(shape);
-            sample_hash *= 1099511628211ull;
+            sample_hash = common::fnv1a64_mix_u64(sample_hash, fn(shape));
         }
         const auto t1 = Clock::now();
         const double elapsed_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
         samples.push_back(elapsed_ms / static_cast<double>(iters));
-        hash ^= sample_hash;
-        hash *= 1099511628211ull;
+        hash = common::fnv1a64_mix_u64(hash, sample_hash);
     }
 
-    std::sort(samples.begin(), samples.end());
+    const auto timing = common::summarize_samples(samples);
     g_sink ^= hash;
-    return Result {samples.front(), samples[samples.size() / 2], hash};
+    return Result {timing.min_ms, timing.median_ms, hash};
 }
 
 ResultRow make_row(const Args& args,

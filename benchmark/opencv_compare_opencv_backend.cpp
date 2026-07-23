@@ -140,6 +140,81 @@ double measure_ms(RunFn&& run, ProbeFn&& probe, int warmup, int iters, int repea
 
 }  // namespace
 
+void configure_opencv_threads(int threads)
+{
+    cv::setNumThreads(std::max(1, threads));
+    cv::setUseOptimized(true);
+}
+
+double bench_opencv_mat_op(MatOpId op,
+                           int rows,
+                           int cols,
+                           DepthId depth,
+                           int channels,
+                           int warmup,
+                           int iters,
+                           int repeats,
+                           std::uint32_t seed)
+{
+    const int type = CV_MAKETYPE(to_cv_depth(depth), channels);
+    cv::Mat src(rows, cols, type);
+    cv::Mat dst;
+    fill_by_depth(src, depth, seed);
+
+    switch (op)
+    {
+        case MatOpId::CreateReuse:
+            dst.create(rows, cols, type);
+            return measure_ms(
+                [&]() { dst.create(rows, cols, type); },
+                [&]() { return static_cast<double>(dst.total()); },
+                warmup,
+                iters,
+                repeats);
+        case MatOpId::Clone:
+            return measure_ms(
+                [&]() { dst = src.clone(); },
+                [&]() { return checksum(dst); },
+                warmup,
+                iters,
+                repeats);
+        case MatOpId::CopyTo:
+            return measure_ms(
+                [&]() { src.copyTo(dst); },
+                [&]() { return checksum(dst); },
+                warmup,
+                iters,
+                repeats);
+        case MatOpId::SetTo:
+            dst.create(rows, cols, type);
+            return measure_ms(
+                [&]() { dst.setTo(cv::Scalar::all(7.0)); },
+                [&]() { return checksum(dst); },
+                warmup,
+                iters,
+                repeats);
+        case MatOpId::ConvertTo:
+        {
+            const int dst_depth = depth == DepthId::U8 ? CV_32F : CV_8U;
+            return measure_ms(
+                [&]() { src.convertTo(dst, CV_MAKETYPE(dst_depth, channels)); },
+                [&]() { return checksum(dst); },
+                warmup,
+                iters,
+                repeats);
+        }
+        case MatOpId::Reshape:
+            return measure_ms(
+                [&]() { dst = src.reshape(channels, rows * cols); },
+                [&]() { return static_cast<double>(dst.total()); },
+                warmup,
+                iters,
+                repeats);
+    }
+
+    return -1.0;
+}
+
 double bench_opencv_add(int rows,
                         int cols,
                         DepthId depth,
@@ -229,6 +304,63 @@ double bench_opencv_gemm_prepack(int m,
     return bench_opencv_gemm(m, k, n, warmup, iters, repeats, seed_a, seed_b);
 }
 
+double bench_opencv_resize_linear_half(int dst_rows,
+                                        int dst_cols,
+                                        int warmup,
+                                        int iters,
+                                        int repeats,
+                                        std::uint32_t seed)
+{
+    cv::Mat src(dst_rows * 2, dst_cols * 2, CV_8UC1);
+    cv::Mat dst;
+    fill_u8(src, seed);
+
+    return measure_ms(
+        [&]() { cv::resize(src, dst, cv::Size(dst_cols, dst_rows), 0.0, 0.0, cv::INTER_LINEAR); },
+        [&]() { return checksum(dst); },
+        warmup,
+        iters,
+        repeats);
+}
+
+double bench_opencv_cvtcolor_bgr2gray(int rows,
+                                      int cols,
+                                      int warmup,
+                                      int iters,
+                                      int repeats,
+                                      std::uint32_t seed)
+{
+    cv::Mat src(rows, cols, CV_8UC3);
+    cv::Mat dst;
+    fill_u8(src, seed);
+
+    return measure_ms(
+        [&]() { cv::cvtColor(src, dst, cv::COLOR_BGR2GRAY); },
+        [&]() { return checksum(dst); },
+        warmup,
+        iters,
+        repeats);
+}
+
+double bench_opencv_threshold_binary(int rows,
+                                      int cols,
+                                      int warmup,
+                                      int iters,
+                                      int repeats,
+                                      std::uint32_t seed)
+{
+    cv::Mat src(rows, cols, CV_8UC1);
+    cv::Mat dst;
+    fill_u8(src, seed);
+
+    return measure_ms(
+        [&]() { cv::threshold(src, dst, 127.0, 255.0, cv::THRESH_BINARY); },
+        [&]() { return checksum(dst); },
+        warmup,
+        iters,
+        repeats);
+}
+
 double bench_opencv_gaussian(int rows,
                              int cols,
                              DepthId depth,
@@ -246,7 +378,7 @@ double bench_opencv_gaussian(int rows,
     fill_by_depth(src, depth, seed);
 
     return measure_ms(
-        [&]() { cv::GaussianBlur(src, dst, cv::Size(ksize, ksize), 0.0, 0.0, cv::BORDER_DEFAULT); },
+        [&]() { cv::GaussianBlur(src, dst, cv::Size(ksize, ksize), 0.0, 0.0, cv::BORDER_REPLICATE); },
         [&]() { return checksum(dst); },
         warmup,
         iters,
@@ -272,7 +404,7 @@ double bench_opencv_box(int rows,
     return measure_ms(
         [&]() {
             cv::boxFilter(
-                src, dst, -1, cv::Size(ksize, ksize), cv::Point(-1, -1), true, cv::BORDER_DEFAULT);
+                src, dst, -1, cv::Size(ksize, ksize), cv::Point(-1, -1), true, cv::BORDER_REPLICATE);
         },
         [&]() { return checksum(dst); },
         warmup,
@@ -361,7 +493,7 @@ double bench_opencv_filter2d(int rows,
     kernel.at<float>(2, 2) = 0.0f;
 
     return measure_ms(
-        [&]() { cv::filter2D(src, dst, -1, kernel, cv::Point(-1, -1), 0.0, cv::BORDER_DEFAULT); },
+        [&]() { cv::filter2D(src, dst, -1, kernel, cv::Point(-1, -1), 0.0, cv::BORDER_REPLICATE); },
         [&]() { return checksum(dst); },
         warmup,
         iters,
@@ -393,7 +525,7 @@ double bench_opencv_sep_filter2d(int rows,
 
     return measure_ms(
         [&]() {
-            cv::sepFilter2D(src, dst, -1, kernelX, kernelY, cv::Point(-1, -1), 0.0, cv::BORDER_DEFAULT);
+            cv::sepFilter2D(src, dst, -1, kernelX, kernelY, cv::Point(-1, -1), 0.0, cv::BORDER_REPLICATE);
         },
         [&]() { return checksum(dst); },
         warmup,
@@ -452,7 +584,7 @@ double bench_opencv_sobel(int rows,
     fill_u8(src, seed);
 
     return measure_ms(
-        [&]() { cv::Sobel(src, dst, CV_32F, 1, 0, 3, 1.0, 0.0, cv::BORDER_DEFAULT); },
+        [&]() { cv::Sobel(src, dst, CV_32F, 1, 0, 3, 1.0, 0.0, cv::BORDER_REPLICATE); },
         [&]() { return checksum(dst); },
         warmup,
         iters,
@@ -496,7 +628,7 @@ double bench_opencv_erode(int rows,
     fill_u8(src, seed);
 
     return measure_ms(
-        [&]() { cv::erode(src, dst, kernel, cv::Point(-1, -1), 1, cv::BORDER_DEFAULT); },
+        [&]() { cv::erode(src, dst, kernel, cv::Point(-1, -1), 1, cv::BORDER_REPLICATE); },
         [&]() { return checksum(dst); },
         warmup,
         iters,
@@ -517,7 +649,7 @@ double bench_opencv_dilate(int rows,
     fill_u8(src, seed);
 
     return measure_ms(
-        [&]() { cv::dilate(src, dst, kernel, cv::Point(-1, -1), 1, cv::BORDER_DEFAULT); },
+        [&]() { cv::dilate(src, dst, kernel, cv::Point(-1, -1), 1, cv::BORDER_REPLICATE); },
         [&]() { return checksum(dst); },
         warmup,
         iters,
