@@ -454,7 +454,7 @@ dispatch 优先级。
 - 更新或删除 `cvh_resize_dispatch_native_smoke`；header-only smoke 改为验证实际
   dispatch tag 和结果，不验证“是否注册”。
 - 删除或迁移仍链接 `cvh::native` 的 legacy imgproc benchmark：
-  - `cvh_benchmark_imgproc_ops`
+  - `cvh_benchmark_imgproc_coverage` (renamed from `cvh_benchmark_imgproc_ops`)
   - `cvh_benchmark_imgproc_filter`
 - 保留 native development target 时，其 source list 只能包含仍有明确理由的
   highgui/platform 文件，不得包含 imgproc。

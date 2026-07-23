@@ -467,7 +467,7 @@ Args parse_args(int argc, char** argv)
         else if (token == "--help")
         {
             std::cout
-                << "Usage: cvh_benchmark_imgproc_ops [--profile quick|full] [--warmup N] [--iters N] [--repeats N] [--output path]\n";
+                << "Usage: cvh_benchmark_imgproc_coverage [--profile quick|full] [--warmup N] [--iters N] [--repeats N] [--output path]\n";
             std::exit(0);
         }
         else

@@ -19,7 +19,8 @@
 - 只比较 header-only 产物，不依赖 OpenCV，不依赖需要编译的 `.cpp` 扩展层。
 - baseline 和 candidate 必须使用同一组 case、同一套输入生成规则、同一套编译参数和同一台机器。
 - baseline 可以来自旧 commit、上一版发布产物、或同一二进制内强制 scalar fallback 的诊断行。
-- candidate 默认使用当前 checkout 的 `cvh::headers` 或 `cvh::headers_fast`。
+- baseline 和 candidate 都使用各自 commit 的 canonical
+  `cvh::headers_fast` benchmark target。
 - 结果用于本项目优化决策，可以作为 CI gate。
 
 推荐输出位置：
@@ -35,25 +36,25 @@ benchmark/results/internal/<suite>/<profile>/meta.json
 
 | Implementation | 含义 |
 |---|---|
-| `cvh_headers_baseline` | 旧版本 `cvh::headers` 或旧版本默认 header-only target。 |
-| `cvh_headers_current` | 当前版本 `cvh::headers`。 |
-| `cvh_headers_fast_current` | 当前版本 `cvh::headers_fast`。 |
+| `cvh_headers_fast` | 各自 commit 的 canonical 最快 header-only target；报告通过 baseline/current 输入区分版本。 |
 | `scalar_fallback` | 同一二进制内强制 fallback 的诊断路径，只用于拆内核成本。 |
 | `opencv_ui_fastpath` | 同一二进制内直接 OpenCV UI fast path 的诊断路径。 |
 
-当前已可用的纯 header-only benchmark：
+当前 canonical 纯 header-only benchmark：
+
+| Target | Scope | 状态 |
+|---|---|---|
+| `cvh_benchmark_core_mat_header` | `Mat` 生命周期、布局、复制、转换和基础计算。 | Mode A `core_mat` 聚合 target。 |
+| `cvh_benchmark_imgproc_header` | 已接入聚合矩阵的 imgproc 公共 API。 | Mode A `imgproc` 聚合 target。 |
+
+当前专项诊断 benchmark：
 
 | Target | Scope | 状态 |
 |---|---|---|
 | `cvh_benchmark_cvtcolor_bgr2gray_header` | `CV_8UC3` `BGR2GRAY` / `RGB2GRAY`，含 scalar/public/direct UI/micro rows。 | 可用于 imgproc 内部诊断。 |
 | `cvh_benchmark_resize_bilinear_header` | `CV_8UC1` `INTER_LINEAR` exact 2x downsample，含 scalar/public/direct UI/micro rows。 | 可用于 imgproc 内部诊断。 |
-
-已迁移的 imgproc benchmark：
-
-| Target | 当前问题 | 目标 |
-|---|---|---|
-| `cvh_benchmark_imgproc_ops` | 只链接 `cvh::headers_fast`。 | 保留宽算子矩阵，用于迁移前后诊断。 |
-| `cvh_benchmark_imgproc_filter` | 只链接 `cvh::headers_fast`。 | 保留 forced fallback/fast-path 诊断能力。 |
+| `cvh_benchmark_imgproc_coverage` | exhaustive 类型、通道和 color/YUV compatibility sweep。 | 覆盖诊断，不是产品性能 gate。 |
+| `cvh_benchmark_imgproc_filter` | filter forced fallback/fast-path 对比。 | 内核诊断，不进入 Mode A 产品 gate。 |
 
 最小运行示例：
 
@@ -85,7 +86,7 @@ mkdir -p benchmark/results/internal/imgproc/quick
   --output benchmark/results/internal/imgproc/quick/resize_current.csv
 ```
 
-后续 runner 应支持通过 `git worktree` 拉起旧版本，例如：
+runner 已支持通过 `git worktree` 拉起旧版本，例如：
 
 ```text
 benchmark/internal/run_header_regression.sh --baseline-ref <git-ref> --suite core_mat --profile quick
@@ -135,7 +136,7 @@ benchmark/results/opencv/<suite>/<profile>/meta.json
 
 - `benchmark/opencv_compare/` 已经可以生成 `cvh vs OpenCV` 报告。
 - 该目录已经裁剪为纯 header-only compare：只用 `cvh::headers_fast` 对比 OpenCV。
-- `cvh::headers` 留在 Mode A 内部回归和默认 header-only 验证中，不进入 Mode B 报告。
+- `cvh::headers` 留在编译/正确性契约验证中，不进入性能产品报告。
 
 ## Suites
 
@@ -201,6 +202,7 @@ cvh_benchmark_imgproc_header
 
 | Field | 含义 |
 |---|---|
+| `schema_version` | canonical Mode A CSV 的兼容版本。 |
 | `mode` | `internal` 或 `opencv_compare`。 |
 | `suite` | `core_mat` 或 `imgproc`。 |
 | `module` | `core` / `imgproc`。 |
@@ -211,9 +213,10 @@ cvh_benchmark_imgproc_header
 | `layout` | `continuous` / `roi` / YUV layout 等。 |
 | `shape` | 人类可读尺寸。 |
 | `pixels` | 输出像素数；core 非图像 case 可为元素数。 |
-| `implementation` | Mode A 可使用 `cvh_headers`, `cvh_headers_fast`, `scalar_fallback` 等；Mode B 只使用 `cvh_headers_fast`, `opencv`。 |
+| `implementation` | Mode A 产品行使用 `cvh_headers_fast`，专项诊断可使用 `scalar_fallback` / `opencv_ui_fastpath`；Mode B 只使用 `cvh_headers_fast`, `opencv`。 |
 | `dispatch_path` | 实际命中的内部路径。 |
 | `allocation_mode` | `reuse` / `recreate` / `none`。 |
+| `tail_ratio` | 当前 SIMD lane 下每行标量尾部比例。 |
 | `warmup`, `iters`, `repeats`, `threads` | 采样参数。 |
 | `min_ms`, `median_ms` | 最小值和中位数。 |
 | `mpix_per_sec`, `melems_per_sec`, `gb_per_sec` | 吞吐指标。 |
@@ -249,8 +252,10 @@ cvh_benchmark_imgproc_header
 
 - 新生成结果放入 `benchmark/results/` 或 `benchmark/opencv_compare/results/`，不再放在 `benchmark/` 根目录。
 - `benchmark/*.csv` 视为历史阶段产物，不再作为长期文档入口。
-- OpenCV compare 的 Markdown 报告是生成产物，后续由 runner 写入 `benchmark/results/opencv/.../report.md`。
-- 源码 benchmark 暂时保留在当前路径，等 `core_mat` / `imgproc` header-only target 成型后再移动目录和改 CMake。
+- OpenCV compare 的 raw CSV/metadata 是生成产物；日期命名的 curated
+  Markdown 快照可跟踪在 `benchmark/opencv_compare/results/`。
+- `core_mat` / `imgproc` 聚合 target 是产品 benchmark；专项 target 只在
+  聚合覆盖等价后裁剪。
 
 ## Implementation Plan
 
@@ -274,13 +279,13 @@ Detailed execution steps live in
 4. **P-Bench-3：`core_mat` header-only target** - complete
    - 已删除旧 `cvh_benchmark_core_ops`，`cvh_benchmark_core_mat_header`
      只链接 header-only targets。
-   - 只链接 `cvh::headers` / `cvh::headers_fast`。
+   - canonical 产品 benchmark 固定链接 `cvh::headers_fast`。
    - 覆盖 `Mat` create/copy/convert/layout 成本。
 
 5. **P-Bench-4：`imgproc` header-only target** - complete
    - 合并 `cvtColor` 和 `resize` 专项 benchmark 的可复用测量代码。
    - 形成 `cvh_benchmark_imgproc_header`。
-   - 保留 scalar/public/direct UI/micro 诊断维度。
+   - scalar/direct UI/micro 维度保留在专项诊断 target。
 
 6. **P-Bench-5：统一 report/gate** - complete
    - 统一 CSV to Markdown/JSON summary。
@@ -295,3 +300,6 @@ Detailed execution steps live in
 8. **P-Bench-7：CI integration** - complete
    - 内部回归进入 quick gate。
    - OpenCV compare 保持 on-demand/log-only。
+
+P-Bench-8 之后的完成状态及当前后续阶段见
+[`doc/benchmark-refactor-implementation-plan.md`](../doc/benchmark-refactor-implementation-plan.md)。

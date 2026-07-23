@@ -29,6 +29,32 @@ enum class CoreBinaryOpId
     Divide,
 };
 
+enum class ImgprocRoiOpId
+{
+    ResizeLinear = 0,
+    CvtColorBgr2Gray,
+    ThresholdF32,
+    Box,
+    Gaussian,
+    Filter2D,
+    SepFilter2D,
+};
+
+enum class ImgprocColorOpId
+{
+    Bgr2Rgb = 0,
+    Bgr2Bgra,
+    Bgra2Gray,
+    Bgr2Gray,
+    Bgr2Yuv,
+    Yuv2Bgr,
+    Bgr2YuvI420,
+    YuvI420ToBgr,
+    Bgr2YuvYuy2,
+    YuvYuy2ToBgr,
+    YuvNv12ToBgr,
+};
+
 void configure_opencv_threads(int threads);
 
 double bench_opencv_mat_op(MatOpId op,
@@ -111,6 +137,27 @@ double bench_opencv_resize_linear_half(int dst_rows,
                                         int iters,
                                         int repeats,
                                         std::uint32_t seed);
+
+double bench_opencv_resize(int src_rows,
+                           int src_cols,
+                           int dst_rows,
+                           int dst_cols,
+                           DepthId depth,
+                           int channels,
+                           int interpolation,
+                           int warmup,
+                           int iters,
+                           int repeats,
+                           std::uint32_t seed);
+
+double bench_opencv_cvtcolor(ImgprocColorOpId op,
+                             int rows,
+                             int cols,
+                             DepthId depth,
+                             int warmup,
+                             int iters,
+                             int repeats,
+                             std::uint32_t seed);
 
 double bench_opencv_cvtcolor_bgr2gray(int rows,
                                       int cols,
@@ -207,6 +254,14 @@ double bench_opencv_canny(int rows,
                           bool l2gradient);
 double bench_opencv_erode(int rows, int cols, int channels, int warmup, int iters, int repeats, std::uint32_t seed);
 double bench_opencv_dilate(int rows, int cols, int channels, int warmup, int iters, int repeats, std::uint32_t seed);
+
+double bench_opencv_imgproc_roi(ImgprocRoiOpId op,
+                                int rows,
+                                int cols,
+                                int warmup,
+                                int iters,
+                                int repeats,
+                                std::uint32_t seed);
 
 }  // namespace cvh_bench_compare
 

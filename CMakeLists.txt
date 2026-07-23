@@ -141,12 +141,12 @@ if(CVH_ENABLE_NATIVE_BACKEND)
 endif()
 
 if(CVH_BUILD_BENCHMARKS)
-    add_executable(cvh_benchmark_imgproc_ops
-        benchmark/imgproc_ops_benchmark.cpp
+    add_executable(cvh_benchmark_imgproc_coverage
+        benchmark/imgproc_coverage_benchmark.cpp
     )
-    target_link_libraries(cvh_benchmark_imgproc_ops PRIVATE cvh::headers_fast)
-    target_compile_features(cvh_benchmark_imgproc_ops PRIVATE cxx_std_17)
-    target_include_directories(cvh_benchmark_imgproc_ops PRIVATE
+    target_link_libraries(cvh_benchmark_imgproc_coverage PRIVATE cvh::headers_fast)
+    target_compile_features(cvh_benchmark_imgproc_coverage PRIVATE cxx_std_17)
+    target_include_directories(cvh_benchmark_imgproc_coverage PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
@@ -164,7 +164,7 @@ if(CVH_BUILD_BENCHMARKS)
     add_executable(cvh_benchmark_core_mat_header
         benchmark/core_mat_header_benchmark.cpp
     )
-    target_link_libraries(cvh_benchmark_core_mat_header PRIVATE cvh::headers)
+    target_link_libraries(cvh_benchmark_core_mat_header PRIVATE cvh::headers_fast)
     target_compile_features(cvh_benchmark_core_mat_header PRIVATE cxx_std_17)
 
     add_executable(cvh_benchmark_cvtcolor_bgr2gray_header

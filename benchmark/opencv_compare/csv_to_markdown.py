@@ -87,6 +87,7 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
     lines.append("- OpenCV Universal Intrinsics 是默认 SIMD 方言，kernel 直接使用 OpenCV UI；项目已移除 xsimd 性能路径。")
     lines.append("- ARM 当前关注 NEON，本次实测平台为 Apple ARM；x86 目标是 SSE/AVX 系列，RVV 因 scalable vector 设计问题暂缓。")
     lines.append("- Imgproc legacy `.cpp` fast-path 已迁入 ODR-safe detail headers；resize/cvtColor UI、filter、LUT、border、Sobel、Canny 和 morphology 均从公共 header API 进入。")
+    lines.append("- Stable imgproc 矩阵覆盖代表性的 `CV_8U` / `CV_32F` 与 C1/C3/C4；full profile 额外覆盖非连续 ROI。")
     lines.append("")
 
     lines.append("## 高层优化结构")
@@ -216,6 +217,7 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
                 r.get("variant", ""),
                 r.get("depth", ""),
                 int(r.get("channels", "0")),
+                r.get("layout", ""),
                 r.get("shape", ""),
             ),
         )
@@ -228,6 +230,7 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
                     r.get("dispatch_path", "") or "unknown",
                     r.get("depth", ""),
                     r.get("channels", ""),
+                    r.get("layout", "continuous") or "continuous",
                     r.get("shape", ""),
                     f"{to_float(r.get('cvh_ms', '0')):.6f}",
                     f"{to_float(r.get('opencv_ms', '0')):.6f}",
@@ -237,7 +240,7 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
             )
         lines.append(
             md_table(
-                ["Op", "Variant", "CVH dispatch", "Depth", "Ch", "Shape", "CVH ms", "OpenCV ms", "OpenCV/CVH", "Note"],
+                ["Op", "Variant", "CVH dispatch", "Depth", "Ch", "Layout", "Shape", "CVH ms", "OpenCV ms", "OpenCV/CVH", "Note"],
                 table_rows,
             )
         )

@@ -12,6 +12,7 @@
 namespace cvh_bench {
 
 using Result = common::BenchmarkResult;
+constexpr int kBenchmarkSchemaVersion = 2;
 
 struct Args
 {
@@ -43,7 +44,7 @@ struct ResultRow
     std::string shape;
     std::size_t elements = 0;
     std::size_t pixels = 0;
-    std::string implementation = "cvh_headers";
+    std::string implementation = "cvh_headers_fast";
     std::string dispatch_path = "header_only";
     std::string allocation_mode;
     int warmup = 0;
@@ -197,10 +198,10 @@ void print_csv(const std::vector<ResultRow>& rows, std::ostream& os)
     common::write_csv_row(
         os,
         {
-            "mode", "suite", "module", "op", "variant", "depth", "channels", "layout", "shape", "elements",
-            "pixels", "implementation", "dispatch_path", "allocation_mode", "warmup", "iters", "repeats",
-            "threads", "min_ms", "median_ms", "mpix_per_sec", "melems_per_sec", "gb_per_sec", "checksum",
-            "status", "note",
+            "schema_version", "mode", "suite", "module", "op", "variant", "depth", "channels", "layout",
+            "shape", "elements", "pixels", "implementation", "dispatch_path", "allocation_mode", "warmup",
+            "iters", "repeats", "threads", "min_ms", "median_ms", "mpix_per_sec", "melems_per_sec",
+            "gb_per_sec", "checksum", "status", "note",
         });
 
     for (const auto& row : rows)
@@ -208,6 +209,7 @@ void print_csv(const std::vector<ResultRow>& rows, std::ostream& os)
         common::write_csv_row(
             os,
             {
+                std::to_string(kBenchmarkSchemaVersion),
                 row.mode,
                 row.suite,
                 row.module,

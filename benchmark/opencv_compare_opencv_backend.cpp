@@ -439,6 +439,95 @@ double bench_opencv_resize_linear_half(int dst_rows,
         repeats);
 }
 
+double bench_opencv_resize(int src_rows,
+                           int src_cols,
+                           int dst_rows,
+                           int dst_cols,
+                           DepthId depth,
+                           int channels,
+                           int interpolation,
+                           int warmup,
+                           int iters,
+                           int repeats,
+                           std::uint32_t seed)
+{
+    cv::Mat src(src_rows, src_cols, CV_MAKETYPE(to_cv_depth(depth), channels));
+    cv::Mat dst;
+    fill_by_depth(src, depth, seed);
+    return measure_ms(
+        [&]() { cv::resize(src, dst, cv::Size(dst_cols, dst_rows), 0.0, 0.0, interpolation); },
+        [&]() { return checksum(dst); },
+        warmup,
+        iters,
+        repeats);
+}
+
+double bench_opencv_cvtcolor(ImgprocColorOpId op,
+                             int rows,
+                             int cols,
+                             DepthId depth,
+                             int warmup,
+                             int iters,
+                             int repeats,
+                             std::uint32_t seed)
+{
+    int code = cv::COLOR_BGR2RGB;
+    int src_channels = 3;
+    int src_rows = rows;
+    switch (op)
+    {
+        case ImgprocColorOpId::Bgr2Rgb:
+            code = cv::COLOR_BGR2RGB;
+            break;
+        case ImgprocColorOpId::Bgr2Bgra:
+            code = cv::COLOR_BGR2BGRA;
+            break;
+        case ImgprocColorOpId::Bgra2Gray:
+            code = cv::COLOR_BGRA2GRAY;
+            src_channels = 4;
+            break;
+        case ImgprocColorOpId::Bgr2Gray:
+            code = cv::COLOR_BGR2GRAY;
+            break;
+        case ImgprocColorOpId::Bgr2Yuv:
+            code = cv::COLOR_BGR2YUV;
+            break;
+        case ImgprocColorOpId::Yuv2Bgr:
+            code = cv::COLOR_YUV2BGR;
+            break;
+        case ImgprocColorOpId::Bgr2YuvI420:
+            code = cv::COLOR_BGR2YUV_I420;
+            break;
+        case ImgprocColorOpId::YuvI420ToBgr:
+            code = cv::COLOR_YUV2BGR_I420;
+            src_channels = 1;
+            src_rows = rows * 3 / 2;
+            break;
+        case ImgprocColorOpId::Bgr2YuvYuy2:
+            code = cv::COLOR_BGR2YUV_YUY2;
+            break;
+        case ImgprocColorOpId::YuvYuy2ToBgr:
+            code = cv::COLOR_YUV2BGR_YUY2;
+            src_channels = 2;
+            break;
+        case ImgprocColorOpId::YuvNv12ToBgr:
+            code = cv::COLOR_YUV2BGR_NV12;
+            src_channels = 1;
+            src_rows = rows * 3 / 2;
+            break;
+    }
+
+    cv::Mat src(src_rows, cols, CV_MAKETYPE(to_cv_depth(depth), src_channels));
+    cv::Mat dst;
+    fill_by_depth(src, depth, seed);
+    return measure_ms(
+        [&]() { cv::cvtColor(src, dst, code); },
+        [&]() { return checksum(dst); },
+        warmup,
+        iters,
+        repeats);
+}
+
 double bench_opencv_cvtcolor_bgr2gray(int rows,
                                       int cols,
                                       int warmup,
@@ -766,6 +855,75 @@ double bench_opencv_dilate(int rows,
 
     return measure_ms(
         [&]() { cv::dilate(src, dst, kernel, cv::Point(-1, -1), 1, cv::BORDER_REPLICATE); },
+        [&]() { return checksum(dst); },
+        warmup,
+        iters,
+        repeats);
+}
+
+double bench_opencv_imgproc_roi(ImgprocRoiOpId op,
+                                int rows,
+                                int cols,
+                                int warmup,
+                                int iters,
+                                int repeats,
+                                std::uint32_t seed)
+{
+    const bool is_f32 = op == ImgprocRoiOpId::ThresholdF32;
+    const int type = is_f32 ? CV_32FC3 : CV_8UC3;
+    cv::Mat owner(rows + 2, cols + 3, type);
+    cv::Mat src = owner(cv::Rect(1, 1, cols, rows));
+    cv::Mat dst;
+    fill_by_depth(owner, is_f32 ? DepthId::F32 : DepthId::U8, seed);
+
+    cv::Mat kernel(3, 3, CV_32FC1);
+    kernel.at<float>(0, 0) = 0.0f;
+    kernel.at<float>(0, 1) = 0.25f;
+    kernel.at<float>(0, 2) = 0.0f;
+    kernel.at<float>(1, 0) = 0.25f;
+    kernel.at<float>(1, 1) = 0.0f;
+    kernel.at<float>(1, 2) = 0.25f;
+    kernel.at<float>(2, 0) = 0.0f;
+    kernel.at<float>(2, 1) = 0.25f;
+    kernel.at<float>(2, 2) = 0.0f;
+    cv::Mat kernel_x(1, 3, CV_32FC1);
+    cv::Mat kernel_y(3, 1, CV_32FC1);
+    kernel_x.at<float>(0, 0) = 0.25f;
+    kernel_x.at<float>(0, 1) = 0.5f;
+    kernel_x.at<float>(0, 2) = 0.25f;
+    kernel_y.at<float>(0, 0) = 0.25f;
+    kernel_y.at<float>(1, 0) = 0.5f;
+    kernel_y.at<float>(2, 0) = 0.25f;
+
+    return measure_ms(
+        [&]() {
+            switch (op)
+            {
+                case ImgprocRoiOpId::ResizeLinear:
+                    cv::resize(src, dst, cv::Size(cols * 3 / 4, rows * 3 / 4), 0.0, 0.0, cv::INTER_LINEAR);
+                    break;
+                case ImgprocRoiOpId::CvtColorBgr2Gray:
+                    cv::cvtColor(src, dst, cv::COLOR_BGR2GRAY);
+                    break;
+                case ImgprocRoiOpId::ThresholdF32:
+                    cv::threshold(src, dst, 0.5, 1.0, cv::THRESH_BINARY);
+                    break;
+                case ImgprocRoiOpId::Box:
+                    cv::boxFilter(
+                        src, dst, -1, cv::Size(3, 3), cv::Point(-1, -1), true, cv::BORDER_REPLICATE);
+                    break;
+                case ImgprocRoiOpId::Gaussian:
+                    cv::GaussianBlur(src, dst, cv::Size(5, 5), 0.0, 0.0, cv::BORDER_REPLICATE);
+                    break;
+                case ImgprocRoiOpId::Filter2D:
+                    cv::filter2D(src, dst, -1, kernel, cv::Point(-1, -1), 0.0, cv::BORDER_REPLICATE);
+                    break;
+                case ImgprocRoiOpId::SepFilter2D:
+                    cv::sepFilter2D(
+                        src, dst, -1, kernel_x, kernel_y, cv::Point(-1, -1), 0.0, cv::BORDER_REPLICATE);
+                    break;
+            }
+        },
         [&]() { return checksum(dst); },
         warmup,
         iters,

@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
 
+EXPECTED_SCHEMA_VERSION = "2"
+
+
 def read_csv(path: Path) -> List[dict]:
     with path.open("r", encoding="utf-8", newline="") as f:
         return list(csv.DictReader(f))
@@ -40,10 +43,6 @@ def row_key(row: dict) -> Tuple[str, ...]:
         "dst_height",
         "width",
         "height",
-        "backend",
-        "entry",
-        "implementation",
-        "dispatch_path",
         "allocation_mode",
     ]
     parts = []
@@ -77,10 +76,62 @@ def markdown_table(headers: List[str], rows: List[List[str]]) -> str:
 def compare_internal(args: argparse.Namespace) -> int:
     baseline_rows = read_csv(Path(args.baseline))
     current_rows = read_csv(Path(args.current))
-    baseline_by_key: Dict[Tuple[str, ...], dict] = {row_key(row): row for row in baseline_rows}
-    current_by_key: Dict[Tuple[str, ...], dict] = {row_key(row): row for row in current_rows}
+
+    baseline_versions = {row.get("schema_version", "") for row in baseline_rows}
+    current_versions = {row.get("schema_version", "") for row in current_rows}
+    schema_error = ""
+    if not baseline_rows or not current_rows:
+        schema_error = "baseline/current CSV must both contain rows"
+    elif baseline_versions != {EXPECTED_SCHEMA_VERSION} or current_versions != {EXPECTED_SCHEMA_VERSION}:
+        schema_error = (
+            f"incompatible benchmark schema: expected={EXPECTED_SCHEMA_VERSION} "
+            f"baseline={sorted(baseline_versions)} current={sorted(current_versions)}"
+        )
+
+    if schema_error:
+        summary = {
+            "mode": "internal_regression",
+            "suite": args.suite,
+            "schema_version": EXPECTED_SCHEMA_VERSION,
+            "schema_error": schema_error,
+            "compared": 0,
+            "missing": 0,
+            "added": 0,
+            "failures": 0,
+        }
+        if args.output_json:
+            out_json = Path(args.output_json)
+            out_json.parent.mkdir(parents=True, exist_ok=True)
+            out_json.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        if args.output_md:
+            out_md = Path(args.output_md)
+            out_md.parent.mkdir(parents=True, exist_ok=True)
+            out_md.write_text(
+                f"# Internal Benchmark Regression: {args.suite}\n\n"
+                f"- Schema status: `INCOMPATIBLE`\n"
+                f"- Error: {schema_error}\n",
+                encoding="utf-8",
+            )
+        print(f"benchmark_report: internal schema_error={schema_error}")
+        return 2
+
+    baseline_product_rows = [
+        row for row in baseline_rows
+        if row.get("status", "OK") == "OK" and row.get("implementation", "") == "cvh_headers_fast"
+    ]
+    current_product_rows = [
+        row for row in current_rows
+        if row.get("status", "OK") == "OK" and row.get("implementation", "") == "cvh_headers_fast"
+    ]
+    baseline_by_key: Dict[Tuple[str, ...], dict] = {row_key(row): row for row in baseline_product_rows}
+    current_by_key: Dict[Tuple[str, ...], dict] = {row_key(row): row for row in current_product_rows}
+
+    if len(baseline_by_key) != len(baseline_product_rows) or len(current_by_key) != len(current_product_rows):
+        print("benchmark_report: internal duplicate canonical case keys")
+        return 2
 
     missing = []
+    added = []
     comparisons = []
     failures = []
     for key, base in baseline_by_key.items():
@@ -98,10 +149,16 @@ def compare_internal(args: argparse.Namespace) -> int:
             "current_ms": cur_ms,
             "speedup": speedup,
             "slowdown": slowdown,
+            "baseline_dispatch": base.get("dispatch_path", ""),
+            "current_dispatch": cur.get("dispatch_path", ""),
         }
         comparisons.append(item)
         if slowdown > args.max_slowdown:
             failures.append(item)
+
+    for key, cur in current_by_key.items():
+        if key not in baseline_by_key:
+            added.append(cur)
 
     comparisons.sort(key=lambda item: item["slowdown"], reverse=True)
     failures.sort(key=lambda item: item["slowdown"], reverse=True)
@@ -111,8 +168,10 @@ def compare_internal(args: argparse.Namespace) -> int:
         "suite": args.suite,
         "baseline": args.baseline,
         "current": args.current,
+        "schema_version": EXPECTED_SCHEMA_VERSION,
         "compared": len(comparisons),
         "missing": len(missing),
+        "added": len(added),
         "failures": len(failures),
         "max_slowdown": args.max_slowdown,
         "geomean_speedup": geomean(speedups),
@@ -120,6 +179,7 @@ def compare_internal(args: argparse.Namespace) -> int:
         "max_speedup": max(speedups) if speedups else 0.0,
         "top_regressions": comparisons[:20],
         "missing_cases": [short_case(row) for row in missing[:50]],
+        "added_cases": [short_case(row) for row in added[:50]],
     }
 
     if args.output_json:
@@ -137,7 +197,9 @@ def compare_internal(args: argparse.Namespace) -> int:
             f"- Current CSV: `{args.current}`",
             f"- Compared cases: `{summary['compared']}`",
             f"- Missing cases: `{summary['missing']}`",
+            f"- Added cases: `{summary['added']}`",
             f"- Failures: `{summary['failures']}`",
+            f"- Schema version: `{summary['schema_version']}`",
             f"- Max slowdown gate: `{args.max_slowdown:.2%}`",
             f"- Geomean speedup: `{summary['geomean_speedup']:.4f}`",
             "",
@@ -158,11 +220,14 @@ def compare_internal(args: argparse.Namespace) -> int:
         if missing:
             lines.extend(["", "## Missing Cases", ""])
             lines.extend(f"- {short_case(row)}" for row in missing[:50])
+        if added:
+            lines.extend(["", "## Added Cases", ""])
+            lines.extend(f"- {short_case(row)}" for row in added[:50])
         out_md.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     print(
         "benchmark_report: internal "
-        f"suite={args.suite} compared={summary['compared']} missing={summary['missing']} "
+        f"suite={args.suite} compared={summary['compared']} missing={summary['missing']} added={summary['added']} "
         f"failures={summary['failures']} geomean_speedup={summary['geomean_speedup']:.4f}"
     )
     return 1 if failures or missing else 0

@@ -26,23 +26,32 @@ must not make `native` or compiled `.cpp` paths look like part of the product.
 - Do not require compiled `.cpp` code for the header-only benchmark path.
 - Do not make OpenCV compare a default hard gate for every local change.
 
-## Current Starting Point
+## Current State After C++ Cleanup
 
-Pure header-only benchmark targets that already exist:
+All accepted `core` and `imgproc` implementations have moved from
+`src/core/*.cpp` and `src/imgproc/*.cpp` into ODR-safe headers. Those source
+directories no longer contain operator implementations, so the old benchmark
+TODO to migrate compiled targets is obsolete.
 
-| Target | Current value |
+Canonical product benchmark targets:
+
+| Target | Role |
 |---|---|
-| `cvh_benchmark_cvtcolor_bgr2gray_header` | Useful imgproc fast-path diagnostic for `BGR2GRAY` / `RGB2GRAY`. |
-| `cvh_benchmark_resize_bilinear_header` | Useful imgproc fast-path diagnostic for `CV_8UC1` exact 2x `INTER_LINEAR`. |
+| `cvh_benchmark_core_mat_header` | Mode A `core_mat`; links `cvh::headers_fast`. |
+| `cvh_benchmark_imgproc_header` | Mode A `imgproc`; links `cvh::headers_fast`. |
+| `cvh_benchmark_opencv_compare_headers_fast` | Mode B; compares only `cvh::headers_fast` with OpenCV. |
 
-Legacy benchmark targets that need migration:
+Header-only diagnostic targets retained outside product gates:
 
-| Target | Current issue |
+| Target | Role |
 |---|---|
-| `cvh_benchmark_core_ops` | Links old compiled layer. |
-| `cvh_benchmark_imgproc_ops` | Links old compiled layer. |
-| `cvh_benchmark_imgproc_filter` | Links old compiled layer. |
-| `cvh_benchmark_compare` / `cvh_benchmark_compare_lite` | Use legacy `native` / `lite` internal modes. |
+| `cvh_benchmark_cvtcolor_bgr2gray_header` | Scalar/public/direct UI/micro diagnosis for `BGR2GRAY` / `RGB2GRAY`. |
+| `cvh_benchmark_resize_bilinear_header` | Scalar/public/direct UI/micro diagnosis for exact-half bilinear resize. |
+| `cvh_benchmark_imgproc_coverage` | Exhaustive type/channel/color/YUV compatibility sweep. |
+| `cvh_benchmark_imgproc_filter` | Forced fallback/fast-path filter diagnosis. |
+
+The remaining work is benchmark consolidation and matrix expansion, not
+`.cpp` migration.
 
 Preferred local OpenCV source:
 
@@ -84,6 +93,7 @@ New benchmark rows should converge on these fields:
 
 | Field | Required | Meaning |
 |---|---|---|
+| `schema_version` | yes | Canonical Mode A CSV compatibility version. |
 | `mode` | yes | `internal` or `opencv_compare`. |
 | `suite` | yes | `core_mat` or `imgproc`. |
 | `module` | yes | `core` or `imgproc`. |
@@ -95,9 +105,10 @@ New benchmark rows should converge on these fields:
 | `shape` | yes | Human-readable shape. |
 | `elements` | yes | Logical element count. |
 | `pixels` | imgproc | Output pixel count. |
-| `implementation` | yes | Mode A may use `cvh_headers`, `cvh_headers_fast`, `scalar_fallback`, etc.; Mode B only uses `cvh_headers_fast` and `opencv`. |
+| `implementation` | yes | Mode A product rows use `cvh_headers_fast`; diagnostic rows may use `scalar_fallback` / `opencv_ui_fastpath`. Mode B only uses `cvh_headers_fast` and `opencv`. |
 | `dispatch_path` | yes | Actual internal path. |
 | `allocation_mode` | yes | `reuse`, `recreate`, or `none`. |
+| `tail_ratio` | imgproc | Per-row scalar tail ratio for the selected SIMD lane width. |
 | `warmup`, `iters`, `repeats`, `threads` | yes | Sampling config. |
 | `min_ms`, `median_ms` | yes | Timing metrics. |
 | `mpix_per_sec`, `melems_per_sec`, `gb_per_sec` | when applicable | Throughput metrics. |
@@ -204,7 +215,6 @@ Tasks:
   - `--baseline-ref <git-ref>`
   - `--suite core_mat|imgproc|all`
   - `--profile quick|stable|full|micro`
-  - `--target headers|headers_fast`
   - `--build-type Release|RelWithDebInfo`
   - `--output-dir <path>`
 - Use temporary `git worktree` for the baseline checkout.
@@ -241,6 +251,9 @@ Completion notes:
   summary, and run metadata under `benchmark/results/internal/...`.
 - Baseline refs must contain the new benchmark targets. Full end-to-end
   comparison becomes available after the P-Bench changes are committed.
+- P-Bench-11 removes the ineffective `--target` selector. Both suites use
+  their canonical `cvh::headers_fast` product target; scalar/UI choices stay
+  in diagnostic binaries.
 
 ### P-Bench-3: `core_mat` Header-only Benchmark
 
@@ -257,7 +270,7 @@ Tasks:
 cvh_benchmark_core_mat_header
 ```
 
-- Link only `cvh::headers` or `cvh::headers_fast`.
+- Link only `cvh::headers_fast` for the canonical Mode A product benchmark.
 - Start with `Mat` cases:
   - `Mat::create` no-op reuse
   - `Mat::create` reallocation
@@ -287,8 +300,8 @@ DoD:
 Completion notes:
 
 - Added `benchmark/core_mat_header_benchmark.cpp`.
-- Added CMake target `cvh_benchmark_core_mat_header`, linked only to
-  `cvh::headers`.
+- Added CMake target `cvh_benchmark_core_mat_header`; P-Bench-11 aligns it
+  with the canonical `cvh::headers_fast` Mode A profile.
 - Initial coverage includes `Mat::create`, release/create, `clone`, `copyTo`
   continuous, `copyTo` ROI, `setTo`, `convertTo`, and `reshape`.
 - Output uses the standard benchmark row model.
@@ -353,6 +366,9 @@ Completion notes:
   `erode`, `dilate`, and `morphologyEx`.
 - Existing specialized `cvtColor` and `resize` diagnostic targets remain in
   place.
+- This phase established the aggregate target, but did not yet absorb the full
+  type/channel/YUV/filter matrix from the diagnostic benchmarks. That coverage
+  debt is moved to P-Bench-12.
 
 ### P-Bench-5: Report And Gate Normalization
 
@@ -595,6 +611,248 @@ Completion notes:
   `benchmark/opencv_compare/results/2026-07-23-opencv-upstream-performance.md`
   with 126 stable single-thread cases.
 
+### P-Bench-11: Post-cleanup Benchmark Contract
+
+Status: complete.
+
+Purpose: align Mode A with the now fully header-only implementation and remove
+benchmark controls that do not change the compiled product path.
+
+Tasks:
+
+- Make both canonical aggregate targets link `cvh::headers_fast`.
+- Keep `cvh::headers` for compile/correctness contract tests, not product
+  performance reports.
+- Remove Mode A runner `--target headers|headers_fast`; it previously changed
+  only output metadata and did not alter target linkage.
+- Define these target roles:
+  - product aggregate: `cvh_benchmark_core_mat_header`,
+    `cvh_benchmark_imgproc_header`
+  - kernel diagnostics: `cvh_benchmark_cvtcolor_bgr2gray_header`,
+    `cvh_benchmark_resize_bilinear_header`,
+    `cvh_benchmark_imgproc_filter`
+  - exhaustive compatibility sweep: `cvh_benchmark_imgproc_coverage`
+- Treat the first commit containing this contract as the new Mode A baseline
+  floor. Older refs remain useful for manual diagnosis but are not schema-
+  stable regression baselines.
+
+DoD:
+
+- Mode A metadata and CSV implementation labels match actual CMake linkage.
+- The quick CI wrapper no longer passes an ineffective target selector.
+- Both aggregate targets build and run with
+  `CVH_BUILD_NATIVE_BACKEND=OFF`.
+- Documentation contains no remaining claim that an imgproc/core benchmark
+  still requires migrated `.cpp` operator code.
+
+Completion notes:
+
+- Both canonical aggregate targets now link `cvh::headers_fast` and emit the
+  `cvh_headers_fast` implementation label.
+- Removed the ineffective Mode A `--target` option from the runner and CI
+  wrapper.
+- Fixed Mode A execution on macOS Bash 3 by removing `mapfile`.
+- Fixed temporary worktree reuse/cleanup by treating worktree `.git` as a file
+  rather than a directory.
+- Built and ran both aggregate quick profiles with
+  `CVH_BUILD_NATIVE_BACKEND=OFF`; an imgproc baseline/current runner smoke
+  matched all 13 rows.
+
+### P-Bench-12: Aggregate Imgproc Matrix Consolidation
+
+Status: complete.
+
+Purpose: make `cvh_benchmark_imgproc_header` the canonical Mode A suite without
+losing useful coverage from the older broad and specialized binaries.
+
+Steps:
+
+- P-Bench-12.0: produce an operator/variant/type/channel/layout inventory for
+  the aggregate target and each diagnostic source.
+- P-Bench-12.1: add missing accepted public operators, starting with
+  `filter2D`, `sepFilter2D`, and `blur`.
+- P-Bench-12.2: expand resize and color coverage:
+  - resize `CV_8U` / `CV_32F`, C1/C3/C4, nearest/nearest-exact/linear
+  - BGR/RGB/GRAY/BGRA/RGBA and accepted YUV layouts
+- P-Bench-12.3: add threshold/filter type and channel coverage plus
+  representative ROI/non-contiguous inputs.
+- P-Bench-12.4: add explicit `reuse` / `recreate`, `tail_ratio`, and truthful
+  dispatch-path telemetry where available.
+- P-Bench-12.5: define bounded profile matrices:
+  - `quick`: representative smoke and PR gate
+  - `stable`: supported operator/type/channel matrix
+  - `full`: ROI, odd-width, allocation, and layout expansion
+  - `micro`: kernel diagnostics, excluded from product gates
+
+P-Bench-12.0 inventory:
+
+| Area | Current aggregate | Coverage source | Consolidation decision |
+|---|---|---|---|
+| resize | U8C1 linear exact-half | `imgproc_ops`: U8/F32 C1/C3/C4 nearest/linear; specialized target: exact-half scalar/UI micro | Add bounded U8/F32 C1/C3/C4 matrix and nearest-exact; keep exact-half micro target. |
+| color RGB families | U8 BGR2GRAY and GRAY2BGR | `imgproc_ops`: U8/F32 RGB/BGR/GRAY/BGRA/RGBA families | Add representative quick rows and full accepted family in stable/full. |
+| color YUV | none | `imgproc_ops`: packed, planar, semi-planar, 420/422/444 encode/decode | Keep quick small; add accepted layouts to full with explicit layout names. |
+| threshold | U8C1 binary | `imgproc_ops`: U8 C1/C3 and F32 C1/C3/C4 | Add type/channel matrix to stable/full. |
+| LUT/border | U8C1 single variant | no broader canonical source | Retain quick row; add channel/border variants only where they affect dispatch. |
+| box/Gaussian | U8C1 one kernel/border | `imgproc_ops`: U8/F32 C1/C3/C4; `imgproc_filter`: U8 C1/C3/C4, ROI, kernels, borders, forced dispatch | Move public type/channel/ROI rows; keep forced fallback diagnostics separate. |
+| filter2D/sepFilter2D/blur | absent | Mode B already exercises filter2D/sepFilter2D; public headers are accepted | Add to aggregate before expanding variants. |
+| Sobel/Canny/morphology | U8C1 representative rows | Mode B has the same representative public cases | Retain quick rows, add bounded channel/ROI variants only when the API accepts them. |
+| allocation/layout | rows claim reuse; no recreate/ROI product matrix | filter diagnostic has ROI; specialized targets split public/direct paths | Make reuse real through preallocation, add explicit recreate rows, and fix ROI-safe checksum first. |
+| dispatch | mostly `public_header` constant | filter getters expose box/Gaussian paths; specialized targets expose scalar/UI paths | Record available runtime telemetry; use documented static tags only when the selected path is unambiguous. |
+
+P-Bench-12.0 status: complete.
+
+DoD:
+
+- Aggregate `quick` remains short enough for CI.
+- Aggregate `stable` covers every accepted imgproc operator at least once.
+- Unsupported combinations emit `UNSUPPORTED` rows with a reason instead of
+  disappearing.
+- Every product row calls a public `cvh` API.
+
+Completion notes:
+
+- Added `blur`, `filter2D`, and `sepFilter2D` public API rows to the quick
+  product matrix.
+- Stable now covers 16 operator families across representative `CV_8U` /
+  `CV_32F` and C1/C3/C4 cases without multiplying the matrix across every
+  large shape.
+- Full adds representative NV12/I420/NV16/YUY2/NV24/I444 encode/decode
+  layouts, odd-width tails, seven non-contiguous ROI rows, and four true
+  recreate rows.
+- Added `tail_ratio`; changed reuse measurement to preallocate outside the
+  timed samples.
+- Made common checksum, equality, and deterministic U8 fill helpers safe for
+  non-contiguous 2D Mat inputs; added deterministic F32 fill.
+- Added an explicit `UNSUPPORTED` row for resize interpolation outside the
+  accepted nearest/nearest-exact/linear contract.
+- Release smoke results contain 16 quick, 102 stable, and 172 full rows.
+- Specialized scalar/direct-UI micro targets remain separate by design.
+
+### P-Bench-13: Mode A Baseline And Gate Stabilization
+
+Status: complete.
+
+Purpose: turn the runner into a repeatable optimization gate after the
+aggregate schema is stable.
+
+Tasks:
+
+- Add a benchmark schema version to CSV metadata and reports.
+- Reject incompatible baseline refs with a clear error rather than failing
+  later during build or row matching.
+- Run the first stable baseline/current comparison from the P-Bench-11
+  baseline floor.
+- Separate missing rows caused by schema growth from actual regressions.
+- Allow per-op thresholds only after enough stable samples exist.
+
+DoD:
+
+- `core_mat`, `imgproc`, and `all` run end to end from one command.
+- Reports identify schema mismatch, missing cases, and performance regressions
+  separately.
+- CI quick gates only matched canonical product rows.
+
+Progress notes:
+
+- Canonical core/imgproc CSV now uses benchmark schema version `2`.
+- Reports reject missing or incompatible schema versions with a dedicated
+  exit code and error instead of producing misleading missing rows.
+- Case identity excludes implementation and dispatch metadata, so a dispatch
+  improvement remains comparable to its baseline.
+- Reports distinguish baseline cases removed from candidate cases newly added;
+  newly added rows are log-only.
+- `UNSUPPORTED` and non-canonical implementation rows are excluded from the
+  product regression gate.
+- Dirty candidates are labeled `<commit>-dirty` in run directories and
+  metadata records `current_dirty`, avoiding attribution to a clean commit.
+- A snapshot-backed `suite=all` quick run matched 36 core and 16 imgproc rows.
+- A snapshot-backed `suite=all` stable run matched 63 core and 101 supported
+  imgproc rows with no missing/added cases.
+- Per-op thresholds remain intentionally unset until distinct optimization
+  commits provide enough stable samples; the global quick/stable policy
+  remains in force.
+
+### P-Bench-14: Mode B Coverage Expansion
+
+Status: complete.
+
+Purpose: extend the OpenCV comparison beyond the current mostly continuous
+`CV_8UC1` imgproc matrix.
+
+Tasks:
+
+- Reuse the P-Bench-12 case descriptors where practical so Mode A and Mode B
+  do not drift.
+- Add representative depth/channel cases:
+  - `CV_8U` / `CV_32F`
+  - C1/C3/C4 where the public operator accepts them
+- Add ROI/non-contiguous rows for operators whose API contract supports them.
+- Add resize interpolation and color/YUV variants in bounded stable/full
+  profiles.
+- Preserve only `cvh_headers_fast` and `opencv` implementation labels.
+- Refresh the date-named upstream performance snapshot after correctness
+  preflight passes.
+
+DoD:
+
+- Mode B reports performance gaps for the accepted matrix and explicit
+  unsupported rows for the rest.
+- OpenCV compare remains log-only.
+- No benchmark side links product code from `src/core` or `src/imgproc`.
+
+Completion notes:
+
+- Stable Mode B now contains 176 cases: 84 `core_mat` and 92 `imgproc`.
+- Added bounded U8 C3/C4 and F32 C1/C3/C4 coverage for filter, border, warp,
+  resize, and RGB/YUV conversion paths.
+- Full contains 229 rows, including seven non-contiguous ROI rows and
+  representative I420/YUY2/NV12 layout coverage.
+- Upstream's missing single-call BGR-to-NV12 encoder is emitted as an explicit
+  `UNSUPPORTED` row in full rather than silently omitted.
+- Added `layout` to Mode B CSV and detailed Markdown output.
+- The OpenCV backend remains isolated in its object library; case descriptors
+  are mirrored across the boundary instead of including OpenCV headers in the
+  CVH translation unit.
+- Re-ran the single-thread Apple M5 stable report and refreshed
+  `benchmark/opencv_compare/results/2026-07-23-opencv-upstream-performance.md`.
+- The refreshed stable report has imgproc geometric mean
+  `OpenCV/CVH=0.3637`; this is a mixed-matrix summary, not a claim that every
+  operator improved.
+
+### P-Bench-15: Diagnostic Target Retirement
+
+Status: complete.
+
+Purpose: remove duplicate benchmark maintenance only after the aggregate suite
+has absorbed the valuable cases.
+
+Tasks:
+
+- Compare aggregate coverage against the former `cvh_benchmark_imgproc_ops`.
+- Keep specialized cvtColor/resize/filter binaries only when they still expose
+  scalar/direct-UI/micro data that the aggregate suite intentionally excludes.
+- Remove obsolete source/targets and update CI commands.
+- Keep report compatibility wrappers only where historical data still needs
+  them.
+
+DoD:
+
+- There is one canonical product benchmark per suite.
+- Remaining diagnostics have a unique documented purpose.
+- No duplicate broad product matrix is maintained in two binaries.
+
+Completion notes:
+
+- Renamed `cvh_benchmark_imgproc_ops` and its source to
+  `cvh_benchmark_imgproc_coverage`; it is now explicitly an exhaustive
+  compatibility sweep, not a second product performance suite.
+- Kept `cvh_benchmark_imgproc_filter` because forced fallback and runtime
+  filter dispatch remain unique diagnostics.
+- Kept specialized cvtColor/resize binaries because they expose scalar,
+  direct-UI, and micro rows intentionally excluded from product gates.
+- `cvh_benchmark_core_mat_header` and `cvh_benchmark_imgproc_header` are the
+  only canonical Mode A product targets.
+
 ## Suggested Execution Order
 
 1. Finish P-Bench-0 and commit documentation/artifact cleanup. Done.
@@ -609,6 +867,11 @@ Completion notes:
 10. Complete P-Bench-9 core compute correctness gate. Done.
 11. Complete P-Bench-10 Mode B core compute expansion and refresh the dated
     upstream report. Done.
+12. Complete P-Bench-11 post-cleanup benchmark contract. Done.
+13. Complete P-Bench-12 aggregate imgproc matrix consolidation. Done.
+14. Complete P-Bench-13 Mode A baseline and gate stabilization. Done.
+15. Complete P-Bench-14 Mode B coverage expansion. Done.
+16. Complete P-Bench-15 diagnostic target retirement. Done.
 
 ## Acceptance Rule For New Fast Paths
 

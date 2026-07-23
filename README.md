@@ -4,6 +4,10 @@
 
 `opencv-header-only (cvh)` targets projects that want familiar OpenCV-style APIs without carrying the full OpenCV dependency. The public product direction is intentionally header-only: include headers, link an interface CMake target, and avoid a required library build step.
 
+> **Latest performance report:** [cvh vs OpenCV upstream benchmark (2026-07-23)](benchmark/opencv_compare/results/2026-07-23-opencv-upstream-performance.md)
+>
+> This is the project's stable public performance checkpoint. This link will be updated to the newest dated report as optimization work lands. We commit to continuous, benchmark-backed speed improvements while keeping regressions and the remaining gap to upstream OpenCV visible.
+
 ## Status
 
 - **Project direction:** pure header-only

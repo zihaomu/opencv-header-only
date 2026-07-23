@@ -13,7 +13,6 @@ if [[ -n "${BASELINE_REF}" ]]; then
     --baseline-ref "${BASELINE_REF}" \
     --suite all \
     --profile quick \
-    --target headers_fast \
     --output-dir "${ROOT_DIR}/benchmark/results/internal" \
     --max-slowdown "${MAX_SLOWDOWN}"
   exit 0

@@ -89,7 +89,7 @@ Use an existing local OpenCV build:
 ```bash
 CVH_COMPARE_SKIP_OPENCV_SETUP=1 \
 CVH_OPENCV_DIR=../opencv \
-CVH_OPENCV_CONFIG_DIR=build-opencv-upstream-compare \
+CVH_OPENCV_CONFIG_DIR=../opencv/build-slim \
 ./benchmark/opencv_compare/run_compare.sh --profile quick
 ```
 
@@ -107,9 +107,13 @@ Explicit implementation:
 
 `cvh_headers_fast` is accepted as an alias for `headers_fast`.
 
-## Migration TODO
+## Coverage Status
 
-1. Broaden depth/channel/ROI coverage for the current `core_mat` and `imgproc`
-   operation set.
-2. Keep generated reports under `benchmark/results/opencv/<suite>/<profile>/`.
-3. Keep unsupported OpenCV cases visible instead of silently dropping them.
+- Stable covers the core compute matrix plus representative imgproc U8/F32
+  C1/C3/C4 cases.
+- Full adds odd-width and non-contiguous ROI cases plus representative
+  I420/YUY2/NV12 layouts.
+- Raw CSV and metadata stay generated under
+  `benchmark/opencv_compare/results/`; date-named Markdown snapshots may be
+  tracked.
+- Missing upstream operations remain explicit `UNSUPPORTED` rows.

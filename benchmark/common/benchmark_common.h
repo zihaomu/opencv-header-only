@@ -207,9 +207,22 @@ inline std::uint64_t checksum_bytes(const uchar* data, std::size_t count)
 
 inline std::uint64_t checksum_mat_bytes(const cvh::Mat& mat)
 {
-    const std::size_t count = mat.total() * static_cast<std::size_t>(mat.channels()) *
-                              static_cast<std::size_t>(mat.elemSize1());
-    return checksum_bytes(mat.data, count);
+    if (mat.dims == 2)
+    {
+        std::uint64_t value = fnv1a64_basis();
+        const std::size_t row_bytes = static_cast<std::size_t>(mat.size[1]) * mat.elemSize();
+        for (int row = 0; row < mat.size[0]; ++row)
+        {
+            const uchar* row_data = mat.data + static_cast<std::size_t>(row) * mat.step(0);
+            for (std::size_t i = 0; i < row_bytes; ++i)
+            {
+                value = fnv1a64_mix_byte(value, row_data[i]);
+            }
+        }
+        return value;
+    }
+
+    return checksum_bytes(mat.data, mat.total() * mat.elemSize());
 }
 
 inline bool same_mat_bytes(const cvh::Mat& lhs, const cvh::Mat& rhs)
@@ -219,8 +232,25 @@ inline bool same_mat_bytes(const cvh::Mat& lhs, const cvh::Mat& rhs)
         return false;
     }
 
-    const std::size_t count = lhs.total() * static_cast<std::size_t>(lhs.channels()) *
-                              static_cast<std::size_t>(lhs.elemSize1());
+    if (lhs.dims == 2)
+    {
+        const std::size_t row_bytes = static_cast<std::size_t>(lhs.size[1]) * lhs.elemSize();
+        for (int row = 0; row < lhs.size[0]; ++row)
+        {
+            const uchar* lhs_row = lhs.data + static_cast<std::size_t>(row) * lhs.step(0);
+            const uchar* rhs_row = rhs.data + static_cast<std::size_t>(row) * rhs.step(0);
+            for (std::size_t i = 0; i < row_bytes; ++i)
+            {
+                if (lhs_row[i] != rhs_row[i])
+                {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    const std::size_t count = lhs.total() * lhs.elemSize();
     for (std::size_t i = 0; i < count; ++i)
     {
         if (lhs.data[i] != rhs.data[i])
@@ -242,8 +272,41 @@ inline void fill_bytes_lcg(uchar* data, std::size_t count, std::uint32_t seed)
 
 inline void fill_mat_u8_lcg(cvh::Mat& mat, std::uint32_t seed)
 {
-    const std::size_t count = mat.total() * static_cast<std::size_t>(mat.channels());
-    fill_bytes_lcg(mat.data, count, seed);
+    if (mat.dims != 2)
+    {
+        fill_bytes_lcg(mat.data, mat.total() * mat.elemSize(), seed);
+        return;
+    }
+
+    const std::size_t row_bytes = static_cast<std::size_t>(mat.size[1]) * mat.elemSize();
+    for (int row = 0; row < mat.size[0]; ++row)
+    {
+        uchar* row_data = mat.data + static_cast<std::size_t>(row) * mat.step(0);
+        for (std::size_t i = 0; i < row_bytes; ++i)
+        {
+            seed = seed * 1664525u + 1013904223u;
+            row_data[i] = static_cast<uchar>((seed >> 16) & 0xffu);
+        }
+    }
+}
+
+inline void fill_mat_f32_lcg(cvh::Mat& mat, std::uint32_t seed)
+{
+    const std::size_t row_scalars =
+        mat.dims == 2
+            ? static_cast<std::size_t>(mat.size[1]) * static_cast<std::size_t>(mat.channels())
+            : mat.total() * static_cast<std::size_t>(mat.channels());
+    const int rows = mat.dims == 2 ? mat.size[0] : 1;
+    for (int row = 0; row < rows; ++row)
+    {
+        float* row_data = reinterpret_cast<float*>(
+            mat.data + (mat.dims == 2 ? static_cast<std::size_t>(row) * mat.step(0) : 0u));
+        for (std::size_t i = 0; i < row_scalars; ++i)
+        {
+            seed = seed * 1664525u + 1013904223u;
+            row_data[i] = static_cast<float>((seed >> 8) & 0xffffu) / 65535.0f;
+        }
+    }
 }
 
 inline std::string opencv_intrin_backend_name()

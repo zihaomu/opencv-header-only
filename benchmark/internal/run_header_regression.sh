@@ -9,7 +9,6 @@ REPORT_SCRIPT="${ROOT_DIR}/benchmark/common/benchmark_report.py"
 BASELINE_REF=""
 SUITE="all"
 PROFILE="quick"
-TARGET_PROFILE="headers_fast"
 BUILD_TYPE="Release"
 OUTPUT_DIR="${ROOT_DIR}/benchmark/results/internal"
 WARMUP=""
@@ -25,7 +24,6 @@ Usage: $(basename "$0") --baseline-ref <git-ref> [options]
 Options:
   --suite core_mat|imgproc|all
   --profile quick|stable|full|micro
-  --target headers|headers_fast
   --build-type Release|RelWithDebInfo|Debug
   --output-dir <path>
   --warmup N
@@ -49,10 +47,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --profile)
       PROFILE="$2"
-      shift 2
-      ;;
-    --target)
-      TARGET_PROFILE="$2"
       shift 2
       ;;
     --build-type)
@@ -106,11 +100,6 @@ if [[ "${SUITE}" != "core_mat" && "${SUITE}" != "imgproc" && "${SUITE}" != "all"
   exit 2
 fi
 
-if [[ "${TARGET_PROFILE}" != "headers" && "${TARGET_PROFILE}" != "headers_fast" ]]; then
-  echo "Unsupported --target=${TARGET_PROFILE}" >&2
-  exit 2
-fi
-
 if [[ "${PROFILE}" == "micro" ]]; then
   BENCH_PROFILE="quick"
 else
@@ -118,8 +107,14 @@ else
 fi
 
 CURRENT_COMMIT="$(git -C "${ROOT_DIR}" rev-parse --short HEAD)"
+CURRENT_DIRTY_JSON="false"
+CURRENT_LABEL="${CURRENT_COMMIT}"
+if [[ -n "$(git -C "${ROOT_DIR}" status --porcelain)" ]]; then
+  CURRENT_DIRTY_JSON="true"
+  CURRENT_LABEL="${CURRENT_COMMIT}-dirty"
+fi
 BASELINE_COMMIT="$(git -C "${ROOT_DIR}" rev-parse --short "${BASELINE_REF}")"
-RUN_ID="${BASELINE_COMMIT}_to_${CURRENT_COMMIT}_${BENCH_PROFILE}_${TARGET_PROFILE}"
+RUN_ID="${BASELINE_COMMIT}_to_${CURRENT_LABEL}_${BENCH_PROFILE}_headers_fast"
 RUN_DIR="${OUTPUT_DIR}/${RUN_ID}"
 BASELINE_WORKTREE="${RUN_DIR}/baseline-worktree"
 BASELINE_BUILD="${RUN_DIR}/build-baseline"
@@ -128,13 +123,13 @@ CURRENT_BUILD="${RUN_DIR}/build-current"
 mkdir -p "${RUN_DIR}"
 
 cleanup() {
-  if [[ "${KEEP_WORKTREE}" != "1" && -d "${BASELINE_WORKTREE}/.git" ]]; then
+  if [[ "${KEEP_WORKTREE}" != "1" && -e "${BASELINE_WORKTREE}/.git" ]]; then
     git -C "${ROOT_DIR}" worktree remove --force "${BASELINE_WORKTREE}" >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT
 
-if [[ ! -d "${BASELINE_WORKTREE}/.git" ]]; then
+if [[ ! -e "${BASELINE_WORKTREE}/.git" ]]; then
   git -C "${ROOT_DIR}" worktree add --detach "${BASELINE_WORKTREE}" "${BASELINE_REF}" >/dev/null
 fi
 
@@ -146,14 +141,6 @@ configure_build() {
     -DCVH_BUILD_NATIVE_BACKEND=OFF \
     -DCVH_BUILD_TESTS=OFF \
     -DCVH_BUILD_BENCHMARKS=ON >/dev/null
-}
-
-bench_args() {
-  local -a args=(--profile "${BENCH_PROFILE}")
-  if [[ -n "${WARMUP}" ]]; then args+=(--warmup "${WARMUP}"); fi
-  if [[ -n "${ITERS}" ]]; then args+=(--iters "${ITERS}"); fi
-  if [[ -n "${REPEATS}" ]]; then args+=(--repeats "${REPEATS}"); fi
-  printf '%s\n' "${args[@]}"
 }
 
 target_for_suite() {
@@ -177,8 +164,10 @@ run_suite() {
   cmake --build "${BASELINE_BUILD}" --target "${target}" -j >/dev/null
   cmake --build "${CURRENT_BUILD}" --target "${target}" -j >/dev/null
 
-  local -a args
-  mapfile -t args < <(bench_args)
+  local -a args=(--profile "${BENCH_PROFILE}")
+  if [[ -n "${WARMUP}" ]]; then args+=(--warmup "${WARMUP}"); fi
+  if [[ -n "${ITERS}" ]]; then args+=(--iters "${ITERS}"); fi
+  if [[ -n "${REPEATS}" ]]; then args+=(--repeats "${REPEATS}"); fi
   "${BASELINE_BUILD}/${target}" "${args[@]}" --output "${baseline_csv}" >/dev/null
   "${CURRENT_BUILD}/${target}" "${args[@]}" --output "${current_csv}" >/dev/null
 
@@ -191,7 +180,7 @@ run_suite() {
     --max-slowdown "${MAX_SLOWDOWN}"
 }
 
-echo "header_regression: baseline=${BASELINE_REF} (${BASELINE_COMMIT}) current=${CURRENT_COMMIT} suite=${SUITE} profile=${BENCH_PROFILE}"
+echo "header_regression: baseline=${BASELINE_REF} (${BASELINE_COMMIT}) current=${CURRENT_LABEL} suite=${SUITE} profile=${BENCH_PROFILE}"
 configure_build "${BASELINE_WORKTREE}" "${BASELINE_BUILD}"
 configure_build "${ROOT_DIR}" "${CURRENT_BUILD}"
 
@@ -208,9 +197,11 @@ cat > "${RUN_DIR}/meta.json" <<META
   "baseline_ref": "${BASELINE_REF}",
   "baseline_commit": "${BASELINE_COMMIT}",
   "current_commit": "${CURRENT_COMMIT}",
+  "current_dirty": ${CURRENT_DIRTY_JSON},
   "suite": "${SUITE}",
   "profile": "${BENCH_PROFILE}",
-  "target": "${TARGET_PROFILE}",
+  "target_profile": "headers_fast",
+  "benchmark_schema_version": 2,
   "build_type": "${BUILD_TYPE}",
   "max_slowdown": ${MAX_SLOWDOWN}
 }
