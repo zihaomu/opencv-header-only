@@ -13,6 +13,8 @@
 - `cvh_headers_fast_smoke`：验证 `cvh::headers_fast` 继承默认 OpenCV Universal Intrinsics，并启用平台 fast-profile toggles，不启用 `.cpp` 模式。
 - `cvh_opencv_intrin_smoke`：验证 `cvh/core/simd/opencv_ui.h` gateway 可独立 include，并能直接使用 OpenCV UI `cv::v_*` / `cv::VTraits`。
 - `cvh_opencv_intrin_x86_smoke`：在 x86 AVX2 编译参数下验证 direct OpenCV UI 128-bit 和 256-bit 类型。
+- `cvh_imgproc_header_odr_smoke`：两个 translation unit 同时包含并调用
+  imgproc header fast-path，验证 inline/telemetry 的 ODR 链接安全。
 - legacy `.cpp` smoke target 只验证历史实验链路，不属于公开 header-only 产品面。
 
 ### P1：主线优先

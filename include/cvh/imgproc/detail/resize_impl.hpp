@@ -1,5 +1,7 @@
-#include "cvh/imgproc/imgproc.h"
-#include "cvh/core/parallel.h"
+#ifndef CVH_IMGPROC_DETAIL_RESIZE_IMPL_HPP
+#define CVH_IMGPROC_DETAIL_RESIZE_IMPL_HPP
+
+#include "fastpath_common.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -14,97 +16,9 @@ namespace cvh
 namespace detail
 {
 
-namespace
+namespace resize_fastpath
 {
-inline bool is_u8_fastpath_channels(int cn)
-{
-    return cn == 1 || cn == 3 || cn == 4;
-}
-
-inline bool should_parallelize_resize(int rows, int cols, int channels)
-{
-    return cvh::cpu::should_parallelize_1d_loop(
-        static_cast<std::size_t>(rows),
-        static_cast<std::size_t>(cols) * static_cast<std::size_t>(channels),
-        1LL << 16,
-        2);
-}
-
-template <class Fn>
-inline void parallel_for_index_if(bool do_parallel, int end, Fn&& fn)
-{
-    if (end <= 0)
-    {
-        return;
-    }
-
-    if (!do_parallel)
-    {
-        for (int i = 0; i < end; ++i)
-        {
-            fn(i);
-        }
-        return;
-    }
-
-    cvh::parallel_for_(
-        cvh::Range(0, end),
-        [&](const cvh::Range& range) {
-            for (int i = range.start; i < range.end; ++i)
-            {
-                fn(i);
-            }
-        },
-        static_cast<double>(end));
-}
-
-template <class Fn>
-inline void parallel_for_index_if_step(bool do_parallel, int begin, int end, int step, Fn&& fn)
-{
-    CV_Assert(step > 0);
-    if (begin >= end)
-    {
-        return;
-    }
-
-    const int count = (end - begin + step - 1) / step;
-    parallel_for_index_if(
-        do_parallel,
-        count,
-        [&](int idx) {
-            fn(begin + idx * step);
-        });
-}
-
-template <class Fn>
-inline void parallel_for_count_if(bool do_parallel, std::size_t count, Fn&& fn)
-{
-    if (count == 0)
-    {
-        return;
-    }
-
-    const std::size_t max_parallel_range = static_cast<std::size_t>(std::numeric_limits<int>::max());
-    if (!do_parallel || count > max_parallel_range)
-    {
-        for (std::size_t i = 0; i < count; ++i)
-        {
-            fn(i);
-        }
-        return;
-    }
-
-    cvh::parallel_for_(
-        cvh::Range(0, static_cast<int>(count)),
-        [&](const cvh::Range& range) {
-            for (int i = range.start; i < range.end; ++i)
-            {
-                fn(static_cast<std::size_t>(i));
-            }
-        },
-        static_cast<double>(count));
-}
-std::vector<int> build_x_ofs_nearest(int src_cols, int dst_cols, bool exact)
+inline std::vector<int> build_x_ofs_nearest(int src_cols, int dst_cols, bool exact)
 {
     std::vector<int> x_ofs(static_cast<std::size_t>(dst_cols), 0);
     if (exact)
@@ -126,7 +40,7 @@ std::vector<int> build_x_ofs_nearest(int src_cols, int dst_cols, bool exact)
     return x_ofs;
 }
 
-std::vector<int> build_y_ofs_nearest(int src_rows, int dst_rows, bool exact)
+inline std::vector<int> build_y_ofs_nearest(int src_rows, int dst_rows, bool exact)
 {
     std::vector<int> y_ofs(static_cast<std::size_t>(dst_rows), 0);
     if (exact)
@@ -148,7 +62,7 @@ std::vector<int> build_y_ofs_nearest(int src_rows, int dst_rows, bool exact)
     return y_ofs;
 }
 
-void resize_nearest_u8(const uchar* src_data,
+inline void resize_nearest_u8(const uchar* src_data,
                        std::size_t src_step,
                        uchar* dst_data,
                        std::size_t dst_step,
@@ -214,7 +128,7 @@ void resize_nearest_u8(const uchar* src_data,
     });
 }
 
-void resize_linear_u8(const uchar* src_data,
+inline void resize_linear_u8(const uchar* src_data,
                       std::size_t src_step,
                       uchar* dst_data,
                       std::size_t dst_step,
@@ -343,7 +257,7 @@ void resize_linear_u8(const uchar* src_data,
     });
 }
 
-bool try_resize_fastpath_u8(const Mat& src, Mat& dst, Size dsize, double fx, double fy, int interpolation)
+inline bool try_resize_fastpath_u8(const Mat& src, Mat& dst, Size dsize, double fx, double fy, int interpolation)
 {
     if (src.empty() || src.dims != 2 || src.depth() != CV_8U)
     {
@@ -372,6 +286,13 @@ bool try_resize_fastpath_u8(const Mat& src, Mat& dst, Size dsize, double fx, dou
         return false;
     }
 
+#if CVH_ENABLE_OPENCV_INTRIN
+    if (resize_linear_u8c1_downsample2_opencv_intrin_supported(src, dst_rows, dst_cols, interpolation))
+    {
+        return false;
+    }
+#endif
+
     dst.create(std::vector<int>{dst_rows, dst_cols}, src.type());
 
     const size_t src_step = src.step(0);
@@ -393,11 +314,11 @@ bool try_resize_fastpath_u8(const Mat& src, Mat& dst, Size dsize, double fx, dou
     return true;
 }
 
-} // namespace
+} // namespace resize_fastpath
 
-void resize_backend_impl(const Mat& src, Mat& dst, Size dsize, double fx, double fy, int interpolation)
+inline void resize_fast_impl(const Mat& src, Mat& dst, Size dsize, double fx, double fy, int interpolation)
 {
-    if (try_resize_fastpath_u8(src, dst, dsize, fx, fy, interpolation))
+    if (resize_fastpath::try_resize_fastpath_u8(src, dst, dsize, fx, fy, interpolation))
     {
         return;
     }
@@ -407,3 +328,5 @@ void resize_backend_impl(const Mat& src, Mat& dst, Size dsize, double fx, double
 
 } // namespace detail
 } // namespace cvh
+
+#endif // CVH_IMGPROC_DETAIL_RESIZE_IMPL_HPP

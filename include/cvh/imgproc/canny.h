@@ -12,9 +12,6 @@
 namespace cvh {
 namespace detail {
 
-using CannyImageFn = void (*)(const Mat&, Mat&, double, double, int, bool);
-using CannyDerivFn = void (*)(const Mat&, const Mat&, Mat&, double, double, bool);
-
 inline void canny_from_derivatives_fallback(const Mat& dx,
                                             const Mat& dy,
                                             Mat& edges,
@@ -231,45 +228,12 @@ inline void canny_fallback(const Mat& image,
     canny_from_derivatives_fallback(dx, dy, edges, threshold1, threshold2, L2gradient);
 }
 
-inline CannyImageFn& canny_image_dispatch()
-{
-    static CannyImageFn fn = &canny_fallback;
-    return fn;
-}
-
-inline CannyDerivFn& canny_deriv_dispatch()
-{
-    static CannyDerivFn fn = &canny_from_derivatives_fallback;
-    return fn;
-}
-
-inline void register_canny_image_backend(CannyImageFn fn)
-{
-    if (fn)
-    {
-        canny_image_dispatch() = fn;
-    }
-}
-
-inline void register_canny_deriv_backend(CannyDerivFn fn)
-{
-    if (fn)
-    {
-        canny_deriv_dispatch() = fn;
-    }
-}
-
-inline bool is_canny_image_backend_registered()
-{
-    return canny_image_dispatch() != &canny_fallback;
-}
-
-inline bool is_canny_deriv_backend_registered()
-{
-    return canny_deriv_dispatch() != &canny_from_derivatives_fallback;
-}
-
 }  // namespace detail
+}  // namespace cvh
+
+#include "detail/canny_impl.hpp"
+
+namespace cvh {
 
 inline void Canny(const Mat& image,
                   Mat& edges,
@@ -278,8 +242,7 @@ inline void Canny(const Mat& image,
                   int apertureSize = 3,
                   bool L2gradient = false)
 {
-    detail::ensure_backends_registered_once();
-    detail::canny_image_dispatch()(image, edges, threshold1, threshold2, apertureSize, L2gradient);
+    detail::canny_image_fast_impl(image, edges, threshold1, threshold2, apertureSize, L2gradient);
 }
 
 inline void Canny(const Mat& dx,
@@ -289,8 +252,7 @@ inline void Canny(const Mat& dx,
                   double threshold2,
                   bool L2gradient = false)
 {
-    detail::ensure_backends_registered_once();
-    detail::canny_deriv_dispatch()(dx, dy, edges, threshold1, threshold2, L2gradient);
+    detail::canny_deriv_fast_impl(dx, dy, edges, threshold1, threshold2, L2gradient);
 }
 
 }  // namespace cvh

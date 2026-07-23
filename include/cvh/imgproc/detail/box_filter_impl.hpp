@@ -1,20 +1,23 @@
-#include "fastpath_common.h"
+#ifndef CVH_IMGPROC_DETAIL_BOX_FILTER_IMPL_HPP
+#define CVH_IMGPROC_DETAIL_BOX_FILTER_IMPL_HPP
+
+#include "fastpath_common.hpp"
 
 namespace cvh
 {
 namespace detail
 {
 
-namespace
+namespace box_filter_fastpath
 {
-thread_local const char* g_last_boxfilter_dispatch_path = "fallback";
+inline thread_local const char* g_last_boxfilter_dispatch_path = "fallback";
 
 inline void set_last_boxfilter_dispatch_path(const char* path)
 {
     g_last_boxfilter_dispatch_path = path ? path : "fallback";
 }
 
-bool try_boxfilter_fastpath_u8(const Mat& src,
+inline bool try_boxfilter_fastpath_u8(const Mat& src,
                                Mat& dst,
                                int ddepth,
                                Size ksize,
@@ -336,7 +339,7 @@ bool try_boxfilter_fastpath_u8(const Mat& src,
     return true;
 }
 
-bool try_boxfilter_fastpath_f32(const Mat& src,
+inline bool try_boxfilter_fastpath_f32(const Mat& src,
                                 Mat& dst,
                                 int ddepth,
                                 Size ksize,
@@ -607,14 +610,14 @@ bool try_boxfilter_fastpath_f32(const Mat& src,
 }
 
 
-} // namespace
+} // namespace box_filter_fastpath
 
-const char* last_boxfilter_dispatch_path()
+inline const char* last_boxfilter_dispatch_path()
 {
-    return g_last_boxfilter_dispatch_path;
+    return box_filter_fastpath::g_last_boxfilter_dispatch_path;
 }
 
-void boxFilter_backend_impl(const Mat& src,
+inline void boxFilter_fast_impl(const Mat& src,
                             Mat& dst,
                             int ddepth,
                             Size ksize,
@@ -622,6 +625,7 @@ void boxFilter_backend_impl(const Mat& src,
                             bool normalize,
                             int borderType)
 {
+    using namespace box_filter_fastpath;
     set_last_boxfilter_dispatch_path("fallback");
 
     if (try_boxfilter_fastpath_u8(src, dst, ddepth, ksize, anchor, normalize, borderType))
@@ -655,3 +659,5 @@ void boxFilter_backend_impl(const Mat& src,
 
 } // namespace detail
 } // namespace cvh
+
+#endif // CVH_IMGPROC_DETAIL_BOX_FILTER_IMPL_HPP

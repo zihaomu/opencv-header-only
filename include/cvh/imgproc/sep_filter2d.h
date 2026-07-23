@@ -9,8 +9,6 @@
 namespace cvh {
 namespace detail {
 
-using SepFilter2DFn = void (*)(const Mat&, Mat&, int, const Mat&, const Mat&, Point, double, int);
-
 inline void sepfilter2d_collect_kernel(const Mat& kernel, std::vector<float>& coeffs, const char* kernel_name)
 {
     CV_Assert(!kernel.empty() && "sepFilter2D: kernel can not be empty");
@@ -191,26 +189,12 @@ inline void sepFilter2D_fallback(const Mat& src,
     }
 }
 
-inline SepFilter2DFn& sepfilter2d_dispatch()
-{
-    static SepFilter2DFn fn = &sepFilter2D_fallback;
-    return fn;
-}
-
-inline void register_sep_filter2d_backend(SepFilter2DFn fn)
-{
-    if (fn)
-    {
-        sepfilter2d_dispatch() = fn;
-    }
-}
-
-inline bool is_sep_filter2d_backend_registered()
-{
-    return sepfilter2d_dispatch() != &sepFilter2D_fallback;
-}
-
 }  // namespace detail
+}  // namespace cvh
+
+#include "detail/sep_filter2d_impl.hpp"
+
+namespace cvh {
 
 inline void sepFilter2D(const Mat& src,
                         Mat& dst,
@@ -221,8 +205,7 @@ inline void sepFilter2D(const Mat& src,
                         double delta = 0.0,
                         int borderType = BORDER_DEFAULT)
 {
-    detail::ensure_backends_registered_once();
-    detail::sepfilter2d_dispatch()(src, dst, ddepth, kernelX, kernelY, anchor, delta, borderType);
+    detail::sepFilter2D_fast_impl(src, dst, ddepth, kernelX, kernelY, anchor, delta, borderType);
 }
 
 }  // namespace cvh

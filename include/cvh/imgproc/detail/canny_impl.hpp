@@ -1,13 +1,16 @@
-#include "fastpath_common.h"
+#ifndef CVH_IMGPROC_DETAIL_CANNY_IMPL_HPP
+#define CVH_IMGPROC_DETAIL_CANNY_IMPL_HPP
+
+#include "fastpath_common.hpp"
 
 namespace cvh
 {
 namespace detail
 {
 
-namespace
+namespace canny_fastpath
 {
-bool try_canny_from_derivatives_fastpath_s16(const Mat& dx,
+inline bool try_canny_from_derivatives_fastpath_s16(const Mat& dx,
                                              const Mat& dy,
                                              Mat& edges,
                                              double threshold1,
@@ -213,17 +216,65 @@ bool try_canny_from_derivatives_fastpath_s16(const Mat& dx,
     return true;
 }
 
+inline bool try_canny_image_fastpath_u8(const Mat& image,
+                                 Mat& edges,
+                                 double threshold1,
+                                 double threshold2,
+                                 int apertureSize,
+                                 bool L2gradient)
+{
+    if (image.empty() || image.dims != 2 || image.type() != CV_8UC1)
+    {
+        return false;
+    }
+    if (apertureSize != 3 && apertureSize != 5)
+    {
+        return false;
+    }
 
-} // namespace
+    Mat src_local;
+    const Mat* src_ref = &image;
+    if (image.data == edges.data)
+    {
+        src_local = image.clone();
+        src_ref = &src_local;
+    }
 
-void canny_deriv_backend_impl(const Mat& dx,
-                              const Mat& dy,
+    Mat dx;
+    Mat dy;
+    const int sobel_border = BORDER_REPLICATE | BORDER_ISOLATED;
+    Sobel(*src_ref, dx, CV_16S, 1, 0, apertureSize, 1.0, 0.0, sobel_border);
+    Sobel(*src_ref, dy, CV_16S, 0, 1, apertureSize, 1.0, 0.0, sobel_border);
+    return try_canny_from_derivatives_fastpath_s16(dx, dy, edges, threshold1, threshold2, L2gradient);
+}
+
+} // namespace canny_fastpath
+
+inline void canny_image_fast_impl(const Mat& image,
                               Mat& edges,
                               double threshold1,
                               double threshold2,
+                              int apertureSize,
                               bool L2gradient)
 {
-    if (try_canny_from_derivatives_fastpath_s16(dx, dy, edges, threshold1, threshold2, L2gradient))
+    if (canny_fastpath::try_canny_image_fastpath_u8(
+            image, edges, threshold1, threshold2, apertureSize, L2gradient))
+    {
+        return;
+    }
+
+    canny_fallback(image, edges, threshold1, threshold2, apertureSize, L2gradient);
+}
+
+inline void canny_deriv_fast_impl(const Mat& dx,
+                                  const Mat& dy,
+                                  Mat& edges,
+                                  double threshold1,
+                                  double threshold2,
+                                  bool L2gradient)
+{
+    if (canny_fastpath::try_canny_from_derivatives_fastpath_s16(
+            dx, dy, edges, threshold1, threshold2, L2gradient))
     {
         return;
     }
@@ -233,3 +284,5 @@ void canny_deriv_backend_impl(const Mat& dx,
 
 } // namespace detail
 } // namespace cvh
+
+#endif // CVH_IMGPROC_DETAIL_CANNY_IMPL_HPP

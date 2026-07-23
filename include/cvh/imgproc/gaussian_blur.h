@@ -9,8 +9,6 @@
 namespace cvh {
 namespace detail {
 
-using GaussianBlurFn = void (*)(const Mat&, Mat&, Size, double, double, int);
-
 template <typename T>
 inline void gaussian_blur_fallback_impl_typed(const Mat& src,
                                               Mat& dst,
@@ -183,26 +181,12 @@ inline void gaussian_blur_fallback(const Mat& src,
     gaussian_blur_fallback_impl_typed<float>(src, dst, kx, ky, sigmaX, sigmaY, border_type);
 }
 
-inline GaussianBlurFn& gaussianblur_dispatch()
-{
-    static GaussianBlurFn fn = &gaussian_blur_fallback;
-    return fn;
-}
-
-inline void register_gaussianblur_backend(GaussianBlurFn fn)
-{
-    if (fn)
-    {
-        gaussianblur_dispatch() = fn;
-    }
-}
-
-inline bool is_gaussianblur_backend_registered()
-{
-    return gaussianblur_dispatch() != &gaussian_blur_fallback;
-}
-
 }  // namespace detail
+}  // namespace cvh
+
+#include "detail/gaussian_blur_impl.hpp"
+
+namespace cvh {
 
 inline void GaussianBlur(const Mat& src,
                          Mat& dst,
@@ -211,8 +195,7 @@ inline void GaussianBlur(const Mat& src,
                          double sigmaY = 0.0,
                          int borderType = BORDER_DEFAULT)
 {
-    detail::ensure_backends_registered_once();
-    detail::gaussianblur_dispatch()(src, dst, ksize, sigmaX, sigmaY, borderType);
+    detail::gaussianBlur_fast_impl(src, dst, ksize, sigmaX, sigmaY, borderType);
 }
 
 }  // namespace cvh

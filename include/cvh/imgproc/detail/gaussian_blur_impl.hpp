@@ -1,20 +1,23 @@
-#include "fastpath_common.h"
+#ifndef CVH_IMGPROC_DETAIL_GAUSSIAN_BLUR_IMPL_HPP
+#define CVH_IMGPROC_DETAIL_GAUSSIAN_BLUR_IMPL_HPP
+
+#include "fastpath_common.hpp"
 
 namespace cvh
 {
 namespace detail
 {
 
-namespace
+namespace gaussian_blur_fastpath
 {
-thread_local const char* g_last_gaussianblur_dispatch_path = "fallback";
+inline thread_local const char* g_last_gaussianblur_dispatch_path = "fallback";
 
 inline void set_last_gaussianblur_dispatch_path(const char* path)
 {
     g_last_gaussianblur_dispatch_path = path ? path : "fallback";
 }
 
-bool try_gaussian_blur_fastpath_u8(const Mat& src, Mat& dst, Size ksize, double sigmaX, double sigmaY, int borderType)
+inline bool try_gaussian_blur_fastpath_u8(const Mat& src, Mat& dst, Size ksize, double sigmaX, double sigmaY, int borderType)
 {
     if (src.empty() || src.dims != 2 || src.depth() != CV_8U)
     {
@@ -375,7 +378,7 @@ bool try_gaussian_blur_fastpath_u8(const Mat& src, Mat& dst, Size ksize, double 
     return true;
 }
 
-bool try_gaussian_blur_fastpath_f32(const Mat& src, Mat& dst, Size ksize, double sigmaX, double sigmaY, int borderType)
+inline bool try_gaussian_blur_fastpath_f32(const Mat& src, Mat& dst, Size ksize, double sigmaX, double sigmaY, int borderType)
 {
     if (src.empty() || src.dims != 2 || src.depth() != CV_32F)
     {
@@ -737,15 +740,16 @@ bool try_gaussian_blur_fastpath_f32(const Mat& src, Mat& dst, Size ksize, double
 }
 
 
-} // namespace
+} // namespace gaussian_blur_fastpath
 
-const char* last_gaussianblur_dispatch_path()
+inline const char* last_gaussianblur_dispatch_path()
 {
-    return g_last_gaussianblur_dispatch_path;
+    return gaussian_blur_fastpath::g_last_gaussianblur_dispatch_path;
 }
 
-void gaussianBlur_backend_impl(const Mat& src, Mat& dst, Size ksize, double sigmaX, double sigmaY, int borderType)
+inline void gaussianBlur_fast_impl(const Mat& src, Mat& dst, Size ksize, double sigmaX, double sigmaY, int borderType)
 {
+    using namespace gaussian_blur_fastpath;
     set_last_gaussianblur_dispatch_path("fallback");
 
     if (try_gaussian_blur_fastpath_u8(src, dst, ksize, sigmaX, sigmaY, borderType))
@@ -783,3 +787,5 @@ void gaussianBlur_backend_impl(const Mat& src, Mat& dst, Size ksize, double sigm
 
 } // namespace detail
 } // namespace cvh
+
+#endif // CVH_IMGPROC_DETAIL_GAUSSIAN_BLUR_IMPL_HPP

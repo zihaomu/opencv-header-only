@@ -1,13 +1,16 @@
-#include "fastpath_common.h"
+#ifndef CVH_IMGPROC_DETAIL_THRESHOLD_IMPL_HPP
+#define CVH_IMGPROC_DETAIL_THRESHOLD_IMPL_HPP
+
+#include "fastpath_common.hpp"
 
 namespace cvh
 {
 namespace detail
 {
 
-namespace
+namespace threshold_fastpath
 {
-bool try_threshold_fastpath_f32(const Mat& src, Mat& dst, double thresh, double maxval, int type, double* out_ret)
+inline bool try_threshold_fastpath_f32(const Mat& src, Mat& dst, double thresh, double maxval, int type, double* out_ret)
 {
     if (out_ret == nullptr)
     {
@@ -129,12 +132,12 @@ bool try_threshold_fastpath_f32(const Mat& src, Mat& dst, double thresh, double 
 }
 
 
-} // namespace
+} // namespace threshold_fastpath
 
-double threshold_backend_impl(const Mat& src, Mat& dst, double thresh, double maxval, int type)
+inline double threshold_fast_impl(const Mat& src, Mat& dst, double thresh, double maxval, int type)
 {
     double ret_value = 0.0;
-    if (try_threshold_fastpath_f32(src, dst, thresh, maxval, type, &ret_value))
+    if (threshold_fastpath::try_threshold_fastpath_f32(src, dst, thresh, maxval, type, &ret_value))
     {
         return ret_value;
     }
@@ -144,3 +147,5 @@ double threshold_backend_impl(const Mat& src, Mat& dst, double thresh, double ma
 
 } // namespace detail
 } // namespace cvh
+
+#endif // CVH_IMGPROC_DETAIL_THRESHOLD_IMPL_HPP

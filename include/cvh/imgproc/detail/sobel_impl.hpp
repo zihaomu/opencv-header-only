@@ -1,13 +1,16 @@
-#include "fastpath_common.h"
+#ifndef CVH_IMGPROC_DETAIL_SOBEL_IMPL_HPP
+#define CVH_IMGPROC_DETAIL_SOBEL_IMPL_HPP
+
+#include "fastpath_common.hpp"
 
 namespace cvh
 {
 namespace detail
 {
 
-namespace
+namespace sobel_fastpath
 {
-bool try_sobel_fastpath_u8(const Mat& src,
+inline bool try_sobel_fastpath_u8(const Mat& src,
                            Mat& dst,
                            int ddepth,
                            int dx,
@@ -321,9 +324,9 @@ bool try_sobel_fastpath_u8(const Mat& src,
 }
 
 
-} // namespace
+} // namespace sobel_fastpath
 
-void sobel_backend_impl(const Mat& src,
+inline void sobel_fast_impl(const Mat& src,
                         Mat& dst,
                         int ddepth,
                         int dx,
@@ -333,7 +336,8 @@ void sobel_backend_impl(const Mat& src,
                         double delta,
                         int borderType)
 {
-    if (try_sobel_fastpath_u8(src, dst, ddepth, dx, dy, ksize, scale, delta, borderType))
+    if (sobel_fastpath::try_sobel_fastpath_u8(
+            src, dst, ddepth, dx, dy, ksize, scale, delta, borderType))
     {
         return;
     }
@@ -343,3 +347,5 @@ void sobel_backend_impl(const Mat& src,
 
 } // namespace detail
 } // namespace cvh
+
+#endif // CVH_IMGPROC_DETAIL_SOBEL_IMPL_HPP

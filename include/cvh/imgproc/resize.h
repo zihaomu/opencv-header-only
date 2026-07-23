@@ -13,8 +13,6 @@
 namespace cvh {
 namespace detail {
 
-using ResizeFn = void (*)(const Mat&, Mat&, Size, double, double, int);
-
 template <typename T>
 inline T resize_interpolate_cast(float v)
 {
@@ -267,31 +265,22 @@ inline void resize_fallback(const Mat& src, Mat& dst, Size dsize, double fx, dou
     resize_fallback_impl_typed<float>(src, dst, interpolation);
 }
 
-inline ResizeFn& resize_dispatch()
-{
-    static ResizeFn fn = &resize_fallback;
-    return fn;
-}
-
-inline void register_resize_backend(ResizeFn fn)
-{
-    if (fn)
-    {
-        resize_dispatch() = fn;
-    }
-}
-
-inline bool is_resize_backend_registered()
-{
-    return resize_dispatch() != &resize_fallback;
-}
-
 }  // namespace detail
+}  // namespace cvh
+
+#include "detail/resize_impl.hpp"
+
+namespace cvh {
 
 inline void resize(const Mat& src, Mat& dst, Size dsize, double fx = 0.0, double fy = 0.0, int interpolation = INTER_LINEAR)
 {
-    detail::ensure_backends_registered_once();
-    detail::resize_dispatch()(src, dst, dsize, fx, fy, interpolation);
+    if (dst.data && dst.data == src.data)
+    {
+        Mat src_copy = src.clone();
+        detail::resize_fast_impl(src_copy, dst, dsize, fx, fy, interpolation);
+        return;
+    }
+    detail::resize_fast_impl(src, dst, dsize, fx, fy, interpolation);
 }
 
 }  // namespace cvh

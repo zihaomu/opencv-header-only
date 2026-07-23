@@ -133,26 +133,7 @@ enum BorderTypes
     BORDER_ISOLATED = 16,
 };
 
-#if defined(CVH_NATIVE)
-CV_EXPORTS void register_all_backends();
-#endif
-
 namespace detail {
-
-#if defined(CVH_NATIVE)
-CV_EXPORTS const char* last_boxfilter_dispatch_path();
-CV_EXPORTS const char* last_gaussianblur_dispatch_path();
-#else
-inline const char* last_boxfilter_dispatch_path()
-{
-    return "fallback";
-}
-
-inline const char* last_gaussianblur_dispatch_path()
-{
-    return "fallback";
-}
-#endif
 
 inline int resolve_resize_dim(int src_dim, int dsize_dim, double scale)
 {
@@ -279,17 +260,6 @@ inline std::vector<float> build_gaussian_kernel_1d(int ksize, double sigma)
     }
 
     return kernel;
-}
-
-inline void ensure_backends_registered_once()
-{
-#if defined(CVH_NATIVE)
-    static bool initialized = []() {
-        cvh::register_all_backends();
-        return true;
-    }();
-    (void)initialized;
-#endif
 }
 
 }  // namespace detail

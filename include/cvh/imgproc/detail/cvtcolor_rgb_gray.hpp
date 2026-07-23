@@ -1,14 +1,16 @@
-#include "fastpath_common.h"
-#include "cvtcolor_internal.h"
+#ifndef CVH_IMGPROC_DETAIL_CVTCOLOR_RGB_GRAY_HPP
+#define CVH_IMGPROC_DETAIL_CVTCOLOR_RGB_GRAY_HPP
+
+#include "fastpath_common.hpp"
 
 namespace cvh
 {
 namespace detail
 {
 
-namespace
+namespace cvtcolor_rgb_gray_fastpath
 {
-void cvtcolor_bgr2gray_u8(const uchar* src_data,
+inline void cvtcolor_bgr2gray_u8(const uchar* src_data,
                           std::size_t src_step,
                           uchar* dst_data,
                           std::size_t dst_step,
@@ -47,7 +49,7 @@ void cvtcolor_bgr2gray_u8(const uchar* src_data,
     });
 }
 
-void cvtcolor_gray2bgr_u8(const uchar* src_data,
+inline void cvtcolor_gray2bgr_u8(const uchar* src_data,
                           std::size_t src_step,
                           uchar* dst_data,
                           std::size_t dst_step,
@@ -93,7 +95,7 @@ void cvtcolor_gray2bgr_u8(const uchar* src_data,
 }
 
 template <typename T>
-void cvtcolor_gray_to_4ch_alpha(const uchar* src_data,
+inline void cvtcolor_gray_to_4ch_alpha(const uchar* src_data,
                                 std::size_t src_step,
                                 uchar* dst_data,
                                 std::size_t dst_step,
@@ -118,7 +120,7 @@ void cvtcolor_gray_to_4ch_alpha(const uchar* src_data,
     });
 }
 
-void cvtcolor_4ch_to_gray_u8(const uchar* src_data,
+inline void cvtcolor_4ch_to_gray_u8(const uchar* src_data,
                              std::size_t src_step,
                              uchar* dst_data,
                              std::size_t dst_step,
@@ -157,7 +159,7 @@ void cvtcolor_4ch_to_gray_u8(const uchar* src_data,
     });
 }
 
-void cvtcolor_4ch_to_gray_f32(const uchar* src_data,
+inline void cvtcolor_4ch_to_gray_f32(const uchar* src_data,
                               std::size_t src_step,
                               uchar* dst_data,
                               std::size_t dst_step,
@@ -192,7 +194,7 @@ void cvtcolor_4ch_to_gray_f32(const uchar* src_data,
 }
 
 template <typename T>
-void cvtcolor_swap_rb_3ch(const uchar* src_data,
+inline void cvtcolor_swap_rb_3ch(const uchar* src_data,
                           std::size_t src_step,
                           uchar* dst_data,
                           std::size_t dst_step,
@@ -239,7 +241,7 @@ void cvtcolor_swap_rb_3ch(const uchar* src_data,
 }
 
 template <typename T>
-void cvtcolor_3ch_to_4ch_alpha(const uchar* src_data,
+inline void cvtcolor_3ch_to_4ch_alpha(const uchar* src_data,
                                std::size_t src_step,
                                uchar* dst_data,
                                std::size_t dst_step,
@@ -279,7 +281,7 @@ void cvtcolor_3ch_to_4ch_alpha(const uchar* src_data,
 }
 
 template <typename T>
-void cvtcolor_4ch_to_3ch_drop_alpha(const uchar* src_data,
+inline void cvtcolor_4ch_to_3ch_drop_alpha(const uchar* src_data,
                                     std::size_t src_step,
                                     uchar* dst_data,
                                     std::size_t dst_step,
@@ -316,7 +318,7 @@ void cvtcolor_4ch_to_3ch_drop_alpha(const uchar* src_data,
 }
 
 template <typename T>
-void cvtcolor_swap_rb_4ch(const uchar* src_data,
+inline void cvtcolor_swap_rb_4ch(const uchar* src_data,
                           std::size_t src_step,
                           uchar* dst_data,
                           std::size_t dst_step,
@@ -352,7 +354,7 @@ void cvtcolor_swap_rb_4ch(const uchar* src_data,
 }
 
 template <typename T>
-void cvtcolor_3ch_to_yuv(const uchar* src_data,
+inline void cvtcolor_3ch_to_yuv(const uchar* src_data,
                          std::size_t src_step,
                          uchar* dst_data,
                          std::size_t dst_step,
@@ -420,7 +422,7 @@ void cvtcolor_3ch_to_yuv(const uchar* src_data,
 }
 
 template <typename T>
-void cvtcolor_yuv_to_3ch(const uchar* src_data,
+inline void cvtcolor_yuv_to_3ch(const uchar* src_data,
                          std::size_t src_step,
                          uchar* dst_data,
                          std::size_t dst_step,
@@ -487,7 +489,7 @@ void cvtcolor_yuv_to_3ch(const uchar* src_data,
     });
 }
 
-void cvtcolor_bgr2gray_f32(const uchar* src_data,
+inline void cvtcolor_bgr2gray_f32(const uchar* src_data,
                            std::size_t src_step,
                            uchar* dst_data,
                            std::size_t dst_step,
@@ -520,7 +522,7 @@ void cvtcolor_bgr2gray_f32(const uchar* src_data,
     });
 }
 
-void cvtcolor_gray2bgr_f32(const uchar* src_data,
+inline void cvtcolor_gray2bgr_f32(const uchar* src_data,
                            std::size_t src_step,
                            uchar* dst_data,
                            std::size_t dst_step,
@@ -558,9 +560,7 @@ void cvtcolor_gray2bgr_f32(const uchar* src_data,
 }
 
 
-} // namespace
-
-bool try_cvtcolor_fastpath_u8_rgb_gray(const Mat& src, Mat& dst, int code)
+inline bool try_cvtcolor_fastpath_u8_rgb_gray(const Mat& src, Mat& dst, int code)
 {
     if (src.empty() || src.dims != 2 || src.depth() != CV_8U)
     {
@@ -702,7 +702,7 @@ bool try_cvtcolor_fastpath_u8_rgb_gray(const Mat& src, Mat& dst, int code)
     return false;
 }
 
-bool try_cvtcolor_fastpath_f32_rgb_gray(const Mat& src, Mat& dst, int code)
+inline bool try_cvtcolor_fastpath_f32_rgb_gray(const Mat& src, Mat& dst, int code)
 {
     if (src.empty() || src.dims != 2 || src.depth() != CV_32F)
     {
@@ -844,5 +844,8 @@ bool try_cvtcolor_fastpath_f32_rgb_gray(const Mat& src, Mat& dst, int code)
     return false;
 }
 
+} // namespace cvtcolor_rgb_gray_fastpath
 } // namespace detail
 } // namespace cvh
+
+#endif // CVH_IMGPROC_DETAIL_CVTCOLOR_RGB_GRAY_HPP

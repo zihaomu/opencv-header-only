@@ -692,7 +692,7 @@ void append_imgproc_cases(const Args& args, std::vector<CompareRow>& rows)
                 dst,
                 args);
             const double opencv_ms = bench_opencv_gaussian(shape.rows, shape.cols, DepthId::U8, 1, 5, args.warmup, args.iters, args.repeats, seed);
-            append_row(rows, args, "imgproc", "GAUSSIAN", "5x5_replicate", "headers_baseline", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
+            append_row(rows, args, "imgproc", "GAUSSIAN", "5x5_replicate", "header_fastpath", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
         }
 
         {
@@ -704,7 +704,7 @@ void append_imgproc_cases(const Args& args, std::vector<CompareRow>& rows)
                 dst,
                 args);
             const double opencv_ms = bench_opencv_box(shape.rows, shape.cols, DepthId::U8, 1, 3, args.warmup, args.iters, args.repeats, seed);
-            append_row(rows, args, "imgproc", "BOX_FILTER", "3x3_replicate", "headers_baseline", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
+            append_row(rows, args, "imgproc", "BOX_FILTER", "3x3_replicate", "header_fastpath", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
         }
 
         {
@@ -718,7 +718,7 @@ void append_imgproc_cases(const Args& args, std::vector<CompareRow>& rows)
             }
             const double cvh_ms = measure_cvh_mat_ms([&]() { cvh::LUT(src, lut, dst); }, dst, args);
             const double opencv_ms = bench_opencv_lut(shape.rows, shape.cols, 1, args.warmup, args.iters, args.repeats, seed);
-            append_row(rows, args, "imgproc", "LUT", "invert_u8", "headers_baseline", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
+            append_row(rows, args, "imgproc", "LUT", "invert_u8", "header_fastpath", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
         }
 
         {
@@ -730,7 +730,7 @@ void append_imgproc_cases(const Args& args, std::vector<CompareRow>& rows)
                 dst,
                 args);
             const double opencv_ms = bench_opencv_copy_make_border(shape.rows, shape.cols, DepthId::U8, 1, 2, 2, 2, 2, args.warmup, args.iters, args.repeats, seed);
-            append_row(rows, args, "imgproc", "COPY_MAKE_BORDER", "2px_replicate", "headers_baseline", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
+            append_row(rows, args, "imgproc", "COPY_MAKE_BORDER", "2px_replicate", "header_fastpath", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
         }
 
         {
@@ -747,7 +747,7 @@ void append_imgproc_cases(const Args& args, std::vector<CompareRow>& rows)
                 args);
             const double opencv_ms = bench_opencv_filter2d(
                 shape.rows, shape.cols, DepthId::U8, 1, args.warmup, args.iters, args.repeats, seed);
-            append_row(rows, args, "imgproc", "FILTER2D", "3x3_replicate", "headers_baseline", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
+            append_row(rows, args, "imgproc", "FILTER2D", "3x3_replicate", "header_fastpath", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
         }
 
         {
@@ -770,7 +770,7 @@ void append_imgproc_cases(const Args& args, std::vector<CompareRow>& rows)
                 args);
             const double opencv_ms = bench_opencv_sep_filter2d(
                 shape.rows, shape.cols, DepthId::U8, 1, args.warmup, args.iters, args.repeats, seed);
-            append_row(rows, args, "imgproc", "SEP_FILTER2D", "3x3_replicate", "headers_baseline", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
+            append_row(rows, args, "imgproc", "SEP_FILTER2D", "3x3_replicate", "header_fastpath", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
         }
 
         {
@@ -782,7 +782,7 @@ void append_imgproc_cases(const Args& args, std::vector<CompareRow>& rows)
                 dst,
                 args);
             const double opencv_ms = bench_opencv_sobel(shape.rows, shape.cols, 1, args.warmup, args.iters, args.repeats, seed);
-            append_row(rows, args, "imgproc", "SOBEL", "dx1_ksize3_replicate", "headers_baseline", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
+            append_row(rows, args, "imgproc", "SOBEL", "dx1_ksize3_replicate", "header_fastpath", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
         }
 
         {
@@ -791,7 +791,7 @@ void append_imgproc_cases(const Args& args, std::vector<CompareRow>& rows)
             fill_u8(src, seed);
             const double cvh_ms = measure_cvh_mat_ms([&]() { cvh::Canny(src, dst, 50.0, 130.0, 3, false); }, dst, args);
             const double opencv_ms = bench_opencv_canny(shape.rows, shape.cols, args.warmup, args.iters, args.repeats, seed, 50.0, 130.0, 3, false);
-            append_row(rows, args, "imgproc", "CANNY", "aperture3_l1", "headers_baseline", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
+            append_row(rows, args, "imgproc", "CANNY", "aperture3_l1", "header_fastpath", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
         }
 
         {
@@ -803,7 +803,7 @@ void append_imgproc_cases(const Args& args, std::vector<CompareRow>& rows)
                 dst,
                 args);
             const double opencv_ms = bench_opencv_erode(shape.rows, shape.cols, 1, args.warmup, args.iters, args.repeats, seed);
-            append_row(rows, args, "imgproc", "ERODE", "3x3_replicate", "headers_baseline", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
+            append_row(rows, args, "imgproc", "ERODE", "3x3_replicate", "header_fastpath", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
         }
 
         {
@@ -815,7 +815,7 @@ void append_imgproc_cases(const Args& args, std::vector<CompareRow>& rows)
                 dst,
                 args);
             const double opencv_ms = bench_opencv_dilate(shape.rows, shape.cols, 1, args.warmup, args.iters, args.repeats, seed);
-            append_row(rows, args, "imgproc", "DILATE", "3x3_replicate", "headers_baseline", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
+            append_row(rows, args, "imgproc", "DILATE", "3x3_replicate", "header_fastpath", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
         }
 
         {

@@ -11,8 +11,6 @@
 namespace cvh {
 namespace detail {
 
-using CopyMakeBorderFn = void (*)(const Mat&, Mat&, int, int, int, int, int, const Scalar&);
-
 inline int copy_make_border_interpolate(int p, int len, int border_type)
 {
     if (border_type == BORDER_WRAP)
@@ -155,26 +153,12 @@ inline void copyMakeBorder_fallback(const Mat& src,
     copyMakeBorder_fallback_impl_typed<float>(src, dst, top, bottom, left, right, border_type, value);
 }
 
-inline CopyMakeBorderFn& copy_make_border_dispatch()
-{
-    static CopyMakeBorderFn fn = &copyMakeBorder_fallback;
-    return fn;
-}
-
-inline void register_copy_make_border_backend(CopyMakeBorderFn fn)
-{
-    if (fn)
-    {
-        copy_make_border_dispatch() = fn;
-    }
-}
-
-inline bool is_copy_make_border_backend_registered()
-{
-    return copy_make_border_dispatch() != &copyMakeBorder_fallback;
-}
-
 }  // namespace detail
+}  // namespace cvh
+
+#include "detail/copy_make_border_impl.hpp"
+
+namespace cvh {
 
 inline void copyMakeBorder(const Mat& src,
                            Mat& dst,
@@ -185,8 +169,7 @@ inline void copyMakeBorder(const Mat& src,
                            int borderType,
                            const Scalar& value = Scalar())
 {
-    detail::ensure_backends_registered_once();
-    detail::copy_make_border_dispatch()(src, dst, top, bottom, left, right, borderType, value);
+    detail::copy_make_border_fast_impl(src, dst, top, bottom, left, right, borderType, value);
 }
 
 }  // namespace cvh

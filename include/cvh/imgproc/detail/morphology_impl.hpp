@@ -1,13 +1,16 @@
-#include "fastpath_common.h"
+#ifndef CVH_IMGPROC_DETAIL_MORPHOLOGY_IMPL_HPP
+#define CVH_IMGPROC_DETAIL_MORPHOLOGY_IMPL_HPP
+
+#include "fastpath_common.hpp"
 
 namespace cvh
 {
 namespace detail
 {
 
-namespace
+namespace morphology_fastpath
 {
-bool try_morph_rect3x3_fastpath(const Mat& src,
+inline bool try_morph_rect3x3_fastpath(const Mat& src,
                                 Mat& dst,
                                 const Mat& kernel,
                                 Point anchor,
@@ -157,9 +160,9 @@ bool try_morph_rect3x3_fastpath(const Mat& src,
 }
 
 
-} // namespace
+} // namespace morphology_fastpath
 
-void erode_backend_impl(const Mat& src,
+inline void erode_fast_impl(const Mat& src,
                         Mat& dst,
                         const Mat& kernel,
                         Point anchor,
@@ -167,7 +170,8 @@ void erode_backend_impl(const Mat& src,
                         int borderType,
                         const Scalar& borderValue)
 {
-    if (try_morph_rect3x3_fastpath(src, dst, kernel, anchor, iterations, borderType, borderValue, true))
+    if (morphology_fastpath::try_morph_rect3x3_fastpath(
+            src, dst, kernel, anchor, iterations, borderType, borderValue, true))
     {
         return;
     }
@@ -175,5 +179,24 @@ void erode_backend_impl(const Mat& src,
     erode_fallback(src, dst, kernel, anchor, iterations, borderType, borderValue);
 }
 
+inline void dilate_fast_impl(const Mat& src,
+                             Mat& dst,
+                             const Mat& kernel,
+                             Point anchor,
+                             int iterations,
+                             int borderType,
+                             const Scalar& borderValue)
+{
+    if (morphology_fastpath::try_morph_rect3x3_fastpath(
+            src, dst, kernel, anchor, iterations, borderType, borderValue, false))
+    {
+        return;
+    }
+
+    dilate_fallback(src, dst, kernel, anchor, iterations, borderType, borderValue);
+}
+
 } // namespace detail
 } // namespace cvh
+
+#endif // CVH_IMGPROC_DETAIL_MORPHOLOGY_IMPL_HPP

@@ -10,8 +10,6 @@
 namespace cvh {
 namespace detail {
 
-using BoxFilterFn = void (*)(const Mat&, Mat&, int, Size, Point, bool, int);
-
 template <typename T>
 inline void boxFilter_fallback_impl_typed(const Mat& src, Mat& dst, Size ksize, Point anchor, bool normalize, int border_type)
 {
@@ -143,26 +141,12 @@ inline void boxFilter_fallback(const Mat& src, Mat& dst, int ddepth, Size ksize,
     boxFilter_fallback_impl_typed<float>(src, dst, ksize, Point(anchor_x, anchor_y), normalize, border_type);
 }
 
-inline BoxFilterFn& boxfilter_dispatch()
-{
-    static BoxFilterFn fn = &boxFilter_fallback;
-    return fn;
-}
-
-inline void register_boxfilter_backend(BoxFilterFn fn)
-{
-    if (fn)
-    {
-        boxfilter_dispatch() = fn;
-    }
-}
-
-inline bool is_boxfilter_backend_registered()
-{
-    return boxfilter_dispatch() != &boxFilter_fallback;
-}
-
 }  // namespace detail
+}  // namespace cvh
+
+#include "detail/box_filter_impl.hpp"
+
+namespace cvh {
 
 inline void boxFilter(const Mat& src,
                       Mat& dst,
@@ -172,8 +156,7 @@ inline void boxFilter(const Mat& src,
                       bool normalize = true,
                       int borderType = BORDER_DEFAULT)
 {
-    detail::ensure_backends_registered_once();
-    detail::boxfilter_dispatch()(src, dst, ddepth, ksize, anchor, normalize, borderType);
+    detail::boxFilter_fast_impl(src, dst, ddepth, ksize, anchor, normalize, borderType);
 }
 
 }  // namespace cvh

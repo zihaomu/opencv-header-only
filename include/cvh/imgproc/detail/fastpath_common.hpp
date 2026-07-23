@@ -1,8 +1,8 @@
-#ifndef CVH_IMGPROC_BACKEND_FASTPATH_COMMON_H
-#define CVH_IMGPROC_BACKEND_FASTPATH_COMMON_H
+#ifndef CVH_IMGPROC_DETAIL_FASTPATH_COMMON_HPP
+#define CVH_IMGPROC_DETAIL_FASTPATH_COMMON_HPP
 
-#include "cvh/imgproc/imgproc.h"
-#include "cvh/core/parallel.h"
+#include "common.h"
+#include "../../core/parallel.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -233,4 +233,4 @@ inline bool is_morph_rect3x3_kernel(const Mat& kernel, Point anchor)
 } // namespace detail
 } // namespace cvh
 
-#endif // CVH_IMGPROC_BACKEND_FASTPATH_COMMON_H
+#endif // CVH_IMGPROC_DETAIL_FASTPATH_COMMON_HPP

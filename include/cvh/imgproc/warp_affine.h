@@ -11,8 +11,6 @@
 namespace cvh {
 namespace detail {
 
-using WarpAffineFn = void (*)(const Mat&, Mat&, const Mat&, Size, int, int, const Scalar&);
-
 template <typename T>
 inline T warp_affine_cast(double v)
 {
@@ -257,25 +255,6 @@ inline void warpAffine_fallback(const Mat& src,
     warpAffine_fallback_impl_typed<float>(src, dst, M, dsize, flags, borderMode, borderValue);
 }
 
-inline WarpAffineFn& warp_affine_dispatch()
-{
-    static WarpAffineFn fn = &warpAffine_fallback;
-    return fn;
-}
-
-inline void register_warp_affine_backend(WarpAffineFn fn)
-{
-    if (fn)
-    {
-        warp_affine_dispatch() = fn;
-    }
-}
-
-inline bool is_warp_affine_backend_registered()
-{
-    return warp_affine_dispatch() != &warpAffine_fallback;
-}
-
 }  // namespace detail
 
 inline void warpAffine(const Mat& src,
@@ -286,8 +265,7 @@ inline void warpAffine(const Mat& src,
                        int borderMode = BORDER_CONSTANT,
                        const Scalar& borderValue = Scalar())
 {
-    detail::ensure_backends_registered_once();
-    detail::warp_affine_dispatch()(src, dst, M, dsize, flags, borderMode, borderValue);
+    detail::warpAffine_fallback(src, dst, M, dsize, flags, borderMode, borderValue);
 }
 
 }  // namespace cvh

@@ -48,12 +48,12 @@ benchmark/results/internal/<suite>/<profile>/meta.json
 | `cvh_benchmark_cvtcolor_bgr2gray_header` | `CV_8UC3` `BGR2GRAY` / `RGB2GRAY`，含 scalar/public/direct UI/micro rows。 | 可用于 imgproc 内部诊断。 |
 | `cvh_benchmark_resize_bilinear_header` | `CV_8UC1` `INTER_LINEAR` exact 2x downsample，含 scalar/public/direct UI/micro rows。 | 可用于 imgproc 内部诊断。 |
 
-当前需要迁移的 legacy benchmark：
+已迁移的 imgproc benchmark：
 
 | Target | 当前问题 | 目标 |
 |---|---|---|
-| `cvh_benchmark_imgproc_ops` | 仍链接旧 `cvh::native`。 | 并入或替换为 `cvh_benchmark_imgproc_header`。 |
-| `cvh_benchmark_imgproc_filter` | 仍链接旧 `cvh::native`，但已有 dispatch A/B 思路。 | 迁到 header-only filter suite，保留 forced fallback/fast-path 诊断能力。 |
+| `cvh_benchmark_imgproc_ops` | 只链接 `cvh::headers_fast`。 | 保留宽算子矩阵，用于迁移前后诊断。 |
+| `cvh_benchmark_imgproc_filter` | 只链接 `cvh::headers_fast`。 | 保留 forced fallback/fast-path 诊断能力。 |
 
 最小运行示例：
 

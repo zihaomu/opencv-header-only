@@ -1,14 +1,16 @@
-#include "fastpath_common.h"
-#include "cvtcolor_internal.h"
+#ifndef CVH_IMGPROC_DETAIL_CVTCOLOR_YUV422_HPP
+#define CVH_IMGPROC_DETAIL_CVTCOLOR_YUV422_HPP
+
+#include "fastpath_common.hpp"
 
 namespace cvh
 {
 namespace detail
 {
 
-namespace
+namespace cvtcolor_yuv422_fastpath
 {
-void cvtcolor_yuv422sp_to_3ch_u8(const uchar* src_data,
+inline void cvtcolor_yuv422sp_to_3ch_u8(const uchar* src_data,
                                  std::size_t src_step,
                                  uchar* dst_data,
                                  std::size_t dst_step,
@@ -46,7 +48,7 @@ void cvtcolor_yuv422sp_to_3ch_u8(const uchar* src_data,
     });
 }
 
-void cvtcolor_3ch_to_yuv422sp_u8(const uchar* src_data,
+inline void cvtcolor_3ch_to_yuv422sp_u8(const uchar* src_data,
                                  std::size_t src_step,
                                  uchar* dst_data,
                                  std::size_t dst_step,
@@ -95,7 +97,7 @@ void cvtcolor_3ch_to_yuv422sp_u8(const uchar* src_data,
     });
 }
 
-void cvtcolor_3ch_to_yuv422packed_u8(const uchar* src_data,
+inline void cvtcolor_3ch_to_yuv422packed_u8(const uchar* src_data,
                                      std::size_t src_step,
                                      uchar* dst_data,
                                      std::size_t dst_step,
@@ -167,7 +169,7 @@ inline uchar cvtcolor_yuv444sp_plane_byte_u8(const uchar* src_data,
              static_cast<std::size_t>(plane_index % cols));
 }
 
-void cvtcolor_yuv422packed_to_3ch_u8(const uchar* src_data,
+inline void cvtcolor_yuv422packed_to_3ch_u8(const uchar* src_data,
                                      std::size_t src_step,
                                      uchar* dst_data,
                                      std::size_t dst_step,
@@ -211,9 +213,7 @@ void cvtcolor_yuv422packed_to_3ch_u8(const uchar* src_data,
 }
 
 
-} // namespace
-
-bool try_cvtcolor_fastpath_u8_yuv422(const Mat& src, Mat& dst, int code)
+inline bool try_cvtcolor_fastpath_u8_yuv422(const Mat& src, Mat& dst, int code)
 {
     if (src.empty() || src.dims != 2 || src.depth() != CV_8U)
     {
@@ -321,5 +321,8 @@ bool try_cvtcolor_fastpath_u8_yuv422(const Mat& src, Mat& dst, int code)
     return false;
 }
 
+} // namespace cvtcolor_yuv422_fastpath
 } // namespace detail
 } // namespace cvh
+
+#endif // CVH_IMGPROC_DETAIL_CVTCOLOR_YUV422_HPP

@@ -9,8 +9,6 @@
 namespace cvh {
 namespace detail {
 
-using SobelFn = void (*)(const Mat&, Mat&, int, int, int, int, double, double, int);
-
 inline float sobel_sample_as_f32(const Mat& src, int y, int x, int c)
 {
     const size_t src_step = src.step(0);
@@ -248,26 +246,12 @@ inline void sobel_fallback(const Mat& src,
     }
 }
 
-inline SobelFn& sobel_dispatch()
-{
-    static SobelFn fn = &sobel_fallback;
-    return fn;
-}
-
-inline void register_sobel_backend(SobelFn fn)
-{
-    if (fn)
-    {
-        sobel_dispatch() = fn;
-    }
-}
-
-inline bool is_sobel_backend_registered()
-{
-    return sobel_dispatch() != &sobel_fallback;
-}
-
 }  // namespace detail
+}  // namespace cvh
+
+#include "detail/sobel_impl.hpp"
+
+namespace cvh {
 
 inline void Sobel(const Mat& src,
                   Mat& dst,
@@ -279,8 +263,7 @@ inline void Sobel(const Mat& src,
                   double delta = 0.0,
                   int borderType = BORDER_DEFAULT)
 {
-    detail::ensure_backends_registered_once();
-    detail::sobel_dispatch()(src, dst, ddepth, dx, dy, ksize, scale, delta, borderType);
+    detail::sobel_fast_impl(src, dst, ddepth, dx, dy, ksize, scale, delta, borderType);
 }
 
 }  // namespace cvh

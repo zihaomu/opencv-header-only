@@ -1,13 +1,16 @@
-#include "fastpath_common.h"
+#ifndef CVH_IMGPROC_DETAIL_LUT_IMPL_HPP
+#define CVH_IMGPROC_DETAIL_LUT_IMPL_HPP
+
+#include "fastpath_common.hpp"
 
 namespace cvh
 {
 namespace detail
 {
 
-namespace
+namespace lut_fastpath
 {
-bool try_lut_fastpath_u8(const Mat& src, const Mat& lut, Mat& dst)
+inline bool try_lut_fastpath_u8(const Mat& src, const Mat& lut, Mat& dst)
 {
     if (src.empty() || src.dims != 2 || src.depth() != CV_8U)
     {
@@ -125,11 +128,11 @@ bool try_lut_fastpath_u8(const Mat& src, const Mat& lut, Mat& dst)
 }
 
 
-} // namespace
+} // namespace lut_fastpath
 
-void lut_backend_impl(const Mat& src, const Mat& lut, Mat& dst)
+inline void lut_fast_impl(const Mat& src, const Mat& lut, Mat& dst)
 {
-    if (try_lut_fastpath_u8(src, lut, dst))
+    if (lut_fastpath::try_lut_fastpath_u8(src, lut, dst))
     {
         return;
     }
@@ -139,3 +142,5 @@ void lut_backend_impl(const Mat& src, const Mat& lut, Mat& dst)
 
 } // namespace detail
 } // namespace cvh
+
+#endif // CVH_IMGPROC_DETAIL_LUT_IMPL_HPP

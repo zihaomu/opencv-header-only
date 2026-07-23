@@ -9,8 +9,6 @@
 namespace cvh {
 namespace detail {
 
-using Filter2DFn = void (*)(const Mat&, Mat&, int, const Mat&, Point, double, int);
-
 inline double filter2d_kernel_value(const Mat& kernel, int y, int x)
 {
     return static_cast<double>(kernel.at<float>(y, x));
@@ -144,26 +142,12 @@ inline void filter2D_fallback(const Mat& src,
     }
 }
 
-inline Filter2DFn& filter2d_dispatch()
-{
-    static Filter2DFn fn = &filter2D_fallback;
-    return fn;
-}
-
-inline void register_filter2d_backend(Filter2DFn fn)
-{
-    if (fn)
-    {
-        filter2d_dispatch() = fn;
-    }
-}
-
-inline bool is_filter2d_backend_registered()
-{
-    return filter2d_dispatch() != &filter2D_fallback;
-}
-
 }  // namespace detail
+}  // namespace cvh
+
+#include "detail/filter2d_impl.hpp"
+
+namespace cvh {
 
 inline void filter2D(const Mat& src,
                      Mat& dst,
@@ -173,8 +157,7 @@ inline void filter2D(const Mat& src,
                      double delta = 0.0,
                      int borderType = BORDER_DEFAULT)
 {
-    detail::ensure_backends_registered_once();
-    detail::filter2d_dispatch()(src, dst, ddepth, kernel, anchor, delta, borderType);
+    detail::filter2D_fast_impl(src, dst, ddepth, kernel, anchor, delta, borderType);
 }
 
 }  // namespace cvh

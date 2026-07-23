@@ -79,114 +79,9 @@ int main()
         }
     }
 
-#if defined(CVH_EXPECT_NATIVE)
-    if (!cvh::detail::is_resize_backend_registered())
-    {
-        return 7;
-    }
-    if (!cvh::detail::is_cvtcolor_backend_registered())
-    {
-        return 8;
-    }
-    if (!cvh::detail::is_threshold_backend_registered())
-    {
-        return 9;
-    }
-    if (!cvh::detail::is_lut_backend_registered())
-    {
-        return 33;
-    }
-    if (!cvh::detail::is_sobel_backend_registered())
-    {
-        return 17;
-    }
-    if (!cvh::detail::is_canny_image_backend_registered() || !cvh::detail::is_canny_deriv_backend_registered())
-    {
-        return 26;
-    }
-    if (!cvh::detail::is_copy_make_border_backend_registered())
-    {
-        return 29;
-    }
-    if (!cvh::detail::is_filter2d_backend_registered())
-    {
-        return 41;
-    }
-    if (!cvh::detail::is_sep_filter2d_backend_registered())
-    {
-        return 45;
-    }
-    if (!cvh::detail::is_warp_affine_backend_registered())
-    {
-        return 37;
-    }
-    if (!cvh::detail::is_erode_backend_registered())
-    {
-        return 18;
-    }
-    if (!cvh::detail::is_dilate_backend_registered())
-    {
-        return 19;
-    }
-#else
-    if (cvh::detail::is_resize_backend_registered())
-    {
-        return 10;
-    }
-    if (cvh::detail::is_cvtcolor_backend_registered())
-    {
-        return 11;
-    }
-    if (cvh::detail::is_threshold_backend_registered())
-    {
-        return 12;
-    }
-    if (cvh::detail::is_lut_backend_registered())
-    {
-        return 34;
-    }
-    if (cvh::detail::is_sobel_backend_registered())
-    {
-        return 20;
-    }
-    if (cvh::detail::is_canny_image_backend_registered() || cvh::detail::is_canny_deriv_backend_registered())
-    {
-        return 27;
-    }
-    if (cvh::detail::is_copy_make_border_backend_registered())
-    {
-        return 30;
-    }
-    if (cvh::detail::is_filter2d_backend_registered())
-    {
-        return 42;
-    }
-    if (cvh::detail::is_sep_filter2d_backend_registered())
-    {
-        return 46;
-    }
-    if (cvh::detail::is_warp_affine_backend_registered())
-    {
-        return 38;
-    }
-    if (cvh::detail::is_erode_backend_registered())
-    {
-        return 21;
-    }
-    if (cvh::detail::is_dilate_backend_registered())
-    {
-        return 22;
-    }
-#endif
-
     cvh::Mat blur_dst;
     cvh::blur(src_gray, blur_dst, cvh::Size(3, 3), cvh::Point(-1, -1), cvh::BORDER_REPLICATE);
-    const char* expected_box_path =
-#if defined(CVH_EXPECT_NATIVE)
-        "box3x3";
-#else
-        "fallback";
-#endif
+    const char* expected_box_path = "box3x3";
     if (std::strcmp(cvh::detail::last_boxfilter_dispatch_path(), expected_box_path) != 0)
     {
         return 13;
@@ -194,12 +89,7 @@ int main()
 
     cvh::Mat blur5_dst;
     cvh::blur(src_gray, blur5_dst, cvh::Size(5, 5), cvh::Point(-1, -1), cvh::BORDER_REPLICATE);
-    const char* expected_box5_path =
-#if defined(CVH_EXPECT_NATIVE)
-        "box_generic";
-#else
-        "fallback";
-#endif
+    const char* expected_box5_path = "box_generic";
     if (std::strcmp(cvh::detail::last_boxfilter_dispatch_path(), expected_box5_path) != 0)
     {
         return 14;
@@ -207,12 +97,7 @@ int main()
 
     cvh::Mat gauss_dst;
     cvh::GaussianBlur(src_gray, gauss_dst, cvh::Size(5, 5), 0.0, 0.0, cvh::BORDER_REPLICATE);
-    const char* expected_gauss_path =
-#if defined(CVH_EXPECT_NATIVE)
-        "gauss_separable";
-#else
-        "fallback";
-#endif
+    const char* expected_gauss_path = "gauss_separable";
     if (std::strcmp(cvh::detail::last_gaussianblur_dispatch_path(), expected_gauss_path) != 0)
     {
         return 15;
@@ -220,12 +105,7 @@ int main()
 
     cvh::Mat gauss3_dst;
     cvh::GaussianBlur(src_gray, gauss3_dst, cvh::Size(3, 3), 0.0, 0.0, cvh::BORDER_REPLICATE);
-    const char* expected_gauss3_path =
-#if defined(CVH_EXPECT_NATIVE)
-        "gauss3x3";
-#else
-        "fallback";
-#endif
+    const char* expected_gauss3_path = "gauss3x3";
     if (std::strcmp(cvh::detail::last_gaussianblur_dispatch_path(), expected_gauss3_path) != 0)
     {
         return 16;

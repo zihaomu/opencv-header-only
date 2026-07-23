@@ -1,12 +1,14 @@
-#include "fastpath_common.h"
-#include "cvtcolor_internal.h"
+#ifndef CVH_IMGPROC_DETAIL_CVTCOLOR_YUV420_HPP
+#define CVH_IMGPROC_DETAIL_CVTCOLOR_YUV420_HPP
+
+#include "fastpath_common.hpp"
 
 namespace cvh
 {
 namespace detail
 {
 
-namespace
+namespace cvtcolor_yuv420_fastpath
 {
 inline uchar cvtcolor_yuv420p_plane_byte_u8(const uchar* src_data,
                                             std::size_t src_step,
@@ -21,7 +23,7 @@ inline uchar cvtcolor_yuv420p_plane_byte_u8(const uchar* src_data,
              static_cast<std::size_t>(logical_offset % cols));
 }
 
-void cvtcolor_yuv420sp_to_3ch_u8(const uchar* src_data,
+inline void cvtcolor_yuv420sp_to_3ch_u8(const uchar* src_data,
                                  std::size_t src_step,
                                  uchar* dst_data,
                                  std::size_t dst_step,
@@ -59,7 +61,7 @@ void cvtcolor_yuv420sp_to_3ch_u8(const uchar* src_data,
     });
 }
 
-void cvtcolor_3ch_to_yuv420sp_u8(const uchar* src_data,
+inline void cvtcolor_3ch_to_yuv420sp_u8(const uchar* src_data,
                                  std::size_t src_step,
                                  uchar* dst_data,
                                  std::size_t dst_step,
@@ -117,7 +119,7 @@ void cvtcolor_3ch_to_yuv420sp_u8(const uchar* src_data,
     });
 }
 
-void cvtcolor_3ch_to_yuv420p_u8(const uchar* src_data,
+inline void cvtcolor_3ch_to_yuv420p_u8(const uchar* src_data,
                                 std::size_t src_step,
                                 uchar* dst_data,
                                 std::size_t dst_step,
@@ -182,7 +184,7 @@ void cvtcolor_3ch_to_yuv420p_u8(const uchar* src_data,
     });
 }
 
-void cvtcolor_yuv420p_to_3ch_u8(const uchar* src_data,
+inline void cvtcolor_yuv420p_to_3ch_u8(const uchar* src_data,
                                 std::size_t src_step,
                                 uchar* dst_data,
                                 std::size_t dst_step,
@@ -218,9 +220,7 @@ void cvtcolor_yuv420p_to_3ch_u8(const uchar* src_data,
 }
 
 
-} // namespace
-
-bool try_cvtcolor_fastpath_u8_yuv420(const Mat& src, Mat& dst, int code)
+inline bool try_cvtcolor_fastpath_u8_yuv420(const Mat& src, Mat& dst, int code)
 {
     if (src.empty() || src.dims != 2 || src.depth() != CV_8U)
     {
@@ -328,5 +328,8 @@ bool try_cvtcolor_fastpath_u8_yuv420(const Mat& src, Mat& dst, int code)
     return false;
 }
 
+} // namespace cvtcolor_yuv420_fastpath
 } // namespace detail
 } // namespace cvh
+
+#endif // CVH_IMGPROC_DETAIL_CVTCOLOR_YUV420_HPP

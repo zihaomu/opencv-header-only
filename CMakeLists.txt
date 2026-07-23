@@ -23,7 +23,6 @@ if(NOT "${CVH_BUILD_FULL_BACKEND}" STREQUAL "")
     message(DEPRECATION "CVH_BUILD_FULL_BACKEND is deprecated and only forwards to the internal CVH_BUILD_NATIVE_BACKEND switch")
     set(CVH_BUILD_NATIVE_BACKEND "${CVH_BUILD_FULL_BACKEND}" CACHE BOOL "Internal/development-only: build legacy .cpp experiments; not installed/exported" FORCE)
 endif()
-option(CVH_BUILD_BACKEND_KERNEL_SOURCES "Internal/development-only: include legacy .cpp kernel sources" ON)
 option(CVH_BUILD_TESTS "Build all test targets (smoke + core)" ON)
 option(CVH_BUILD_BENCHMARKS "Build benchmark targets" ON)
 option(CVH_USE_OPENMP "Internal/development-only: enable OpenMP in legacy .cpp experiments when available" ON)
@@ -72,26 +71,6 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64|ARM64|AARCH64)$")
 endif()
 
 set(CVH_NATIVE_BACKEND_SOURCES
-    src/imgproc/resize.cpp
-    src/imgproc/cvtcolor.cpp
-    src/imgproc/cvtcolor_rgb_gray.cpp
-    src/imgproc/cvtcolor_yuv420.cpp
-    src/imgproc/cvtcolor_yuv422.cpp
-    src/imgproc/cvtcolor_yuv444.cpp
-    src/imgproc/threshold.cpp
-    src/imgproc/lut.cpp
-    src/imgproc/box_filter.cpp
-    src/imgproc/gaussian_blur.cpp
-    src/imgproc/sobel.cpp
-    src/imgproc/canny_image.cpp
-    src/imgproc/canny_deriv.cpp
-    src/imgproc/copy_make_border.cpp
-    src/imgproc/filter2d.cpp
-    src/imgproc/sep_filter2d.cpp
-    src/imgproc/warp_affine.cpp
-    src/imgproc/erode.cpp
-    src/imgproc/dilate.cpp
-    src/imgproc/backend_registry.cpp
     src/highgui/highgui.cpp
 )
 
@@ -149,29 +128,6 @@ if(CVH_ENABLE_NATIVE_BACKEND)
         endif()
     endif()
 
-    if(CVH_BUILD_BENCHMARKS)
-        add_executable(cvh_benchmark_imgproc_ops
-            benchmark/imgproc_ops_benchmark.cpp
-        )
-        target_link_libraries(cvh_benchmark_imgproc_ops PRIVATE cvh::native)
-        target_compile_features(cvh_benchmark_imgproc_ops PRIVATE cxx_std_17)
-        target_include_directories(cvh_benchmark_imgproc_ops PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}
-            ${CMAKE_CURRENT_SOURCE_DIR}/include
-        )
-
-        add_executable(cvh_benchmark_imgproc_filter
-            benchmark/imgproc_filter_benchmark.cpp
-        )
-        target_link_libraries(cvh_benchmark_imgproc_filter PRIVATE cvh::native)
-        target_compile_features(cvh_benchmark_imgproc_filter PRIVATE cxx_std_17)
-        target_include_directories(cvh_benchmark_imgproc_filter PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}
-            ${CMAKE_CURRENT_SOURCE_DIR}/include
-        )
-
-    endif()
-
     add_executable(cvh_example_highgui_imshow
         example/highgui_imshow.cpp
     )
@@ -185,6 +141,26 @@ if(CVH_ENABLE_NATIVE_BACKEND)
 endif()
 
 if(CVH_BUILD_BENCHMARKS)
+    add_executable(cvh_benchmark_imgproc_ops
+        benchmark/imgproc_ops_benchmark.cpp
+    )
+    target_link_libraries(cvh_benchmark_imgproc_ops PRIVATE cvh::headers_fast)
+    target_compile_features(cvh_benchmark_imgproc_ops PRIVATE cxx_std_17)
+    target_include_directories(cvh_benchmark_imgproc_ops PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+
+    add_executable(cvh_benchmark_imgproc_filter
+        benchmark/imgproc_filter_benchmark.cpp
+    )
+    target_link_libraries(cvh_benchmark_imgproc_filter PRIVATE cvh::headers_fast)
+    target_compile_features(cvh_benchmark_imgproc_filter PRIVATE cxx_std_17)
+    target_include_directories(cvh_benchmark_imgproc_filter PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+
     add_executable(cvh_benchmark_core_mat_header
         benchmark/core_mat_header_benchmark.cpp
     )
@@ -248,6 +224,12 @@ if(CVH_BUILD_TESTS)
         test/smoke/cvh_core_header_odr_peer.cpp
     )
     target_link_libraries(cvh_core_header_odr_smoke PRIVATE cvh::headers)
+
+    add_executable(cvh_imgproc_header_odr_smoke
+        test/smoke/cvh_imgproc_header_odr_main.cpp
+        test/smoke/cvh_imgproc_header_odr_peer.cpp
+    )
+    target_link_libraries(cvh_imgproc_header_odr_smoke PRIVATE cvh::headers_fast)
 
     add_executable(cvh_include_only_smoke test/smoke/cvh_include_only_smoke.cpp)
     target_include_directories(cvh_include_only_smoke PRIVATE
@@ -386,14 +368,12 @@ if(CVH_BUILD_TESTS)
         target_compile_definitions(cvh_mode_native_smoke PRIVATE CVH_EXPECT_NATIVE=1)
         target_link_libraries(cvh_mode_native_smoke PRIVATE cvh::native)
 
-        add_executable(cvh_resize_dispatch_native_smoke test/smoke/cvh_resize_dispatch_smoke.cpp)
-        target_compile_definitions(cvh_resize_dispatch_native_smoke PRIVATE CVH_EXPECT_NATIVE=1)
-        target_link_libraries(cvh_resize_dispatch_native_smoke PRIVATE cvh::native)
     endif()
 
     if(BUILD_TESTING)
         add_test(NAME cvh_header_compile_smoke COMMAND cvh_header_compile_smoke)
         add_test(NAME cvh_core_header_odr_smoke COMMAND cvh_core_header_odr_smoke)
+        add_test(NAME cvh_imgproc_header_odr_smoke COMMAND cvh_imgproc_header_odr_smoke)
         add_test(NAME cvh_include_only_smoke COMMAND cvh_include_only_smoke)
         add_test(NAME cvh_mode_lite_smoke COMMAND cvh_mode_lite_smoke)
         add_test(NAME cvh_headers_fast_smoke COMMAND cvh_headers_fast_smoke)
@@ -414,7 +394,6 @@ if(CVH_BUILD_TESTS)
             add_test(NAME cvh_test_highgui_native COMMAND cvh_test_highgui_native)
             add_test(NAME cvh_native_backend_smoke COMMAND cvh_native_backend_smoke)
             add_test(NAME cvh_mode_native_smoke COMMAND cvh_mode_native_smoke)
-            add_test(NAME cvh_resize_dispatch_native_smoke COMMAND cvh_resize_dispatch_native_smoke)
         endif()
     endif()
 

@@ -13,8 +13,6 @@
 namespace cvh {
 namespace detail {
 
-using CvtColorFn = void (*)(const Mat&, Mat&, int);
-
 inline uchar cvtcolor_bgr2gray_pixel_u8(int bb, int gg, int rr)
 {
     constexpr int kB = 7471;
@@ -1470,31 +1468,20 @@ inline void cvtColor_fallback(const Mat& src, Mat& dst, int code)
     CV_Error_(Error::StsBadArg, ("cvtColor: unsupported conversion code=%d", code));
 }
 
-inline CvtColorFn& cvtcolor_dispatch()
-{
-    static CvtColorFn fn = &cvtColor_fallback;
-    return fn;
-}
-
-inline void register_cvtcolor_backend(CvtColorFn fn)
-{
-    if (fn)
-    {
-        cvtcolor_dispatch() = fn;
-    }
-}
-
-inline bool is_cvtcolor_backend_registered()
-{
-    return cvtcolor_dispatch() != &cvtColor_fallback;
-}
-
 }  // namespace detail
+}  // namespace cvh
+
+#include "detail/cvtcolor_rgb_gray.hpp"
+#include "detail/cvtcolor_yuv420.hpp"
+#include "detail/cvtcolor_yuv422.hpp"
+#include "detail/cvtcolor_yuv444.hpp"
+#include "detail/cvtcolor_impl.hpp"
+
+namespace cvh {
 
 inline void cvtColor(const Mat& src, Mat& dst, int code)
 {
-    detail::ensure_backends_registered_once();
-    detail::cvtcolor_dispatch()(src, dst, code);
+    detail::cvtColor_fast_impl(src, dst, code);
 }
 
 }  // namespace cvh

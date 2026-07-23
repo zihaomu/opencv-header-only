@@ -9,8 +9,6 @@
 namespace cvh {
 namespace detail {
 
-using ThresholdFn = double (*)(const Mat&, Mat&, double, double, int);
-
 inline std::array<int, 256> histogram_u8_single_channel(const Mat& src)
 {
     CV_Assert(src.depth() == CV_8U && "threshold auto mode requires CV_8U source");
@@ -377,31 +375,16 @@ inline double threshold_fallback(const Mat& src, Mat& dst, double thresh, double
     return effective_thresh;
 }
 
-inline ThresholdFn& threshold_dispatch()
-{
-    static ThresholdFn fn = &threshold_fallback;
-    return fn;
-}
-
-inline void register_threshold_backend(ThresholdFn fn)
-{
-    if (fn)
-    {
-        threshold_dispatch() = fn;
-    }
-}
-
-inline bool is_threshold_backend_registered()
-{
-    return threshold_dispatch() != &threshold_fallback;
-}
-
 }  // namespace detail
+}  // namespace cvh
+
+#include "detail/threshold_impl.hpp"
+
+namespace cvh {
 
 inline double threshold(const Mat& src, Mat& dst, double thresh, double maxval, int type)
 {
-    detail::ensure_backends_registered_once();
-    return detail::threshold_dispatch()(src, dst, thresh, maxval, type);
+    return detail::threshold_fast_impl(src, dst, thresh, maxval, type);
 }
 
 }  // namespace cvh

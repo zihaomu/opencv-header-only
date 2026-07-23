@@ -79,16 +79,16 @@ Legend:
 | `core` | `norm`, `softmax`, `silu`, `rmsnorm`, `rope` | WIP | Declarations remain outside the accepted pure header-only operator contract. | No accepted fast path. |
 | `imgproc` | `resize` | Supported + fast path | `CV_8U` / `CV_32F`, `C1` / `C3` / `C4`, `INTER_NEAREST`, `INTER_NEAREST_EXACT`, `INTER_LINEAR`. | `CV_8UC1` exact 2x downsample with `INTER_LINEAR`. |
 | `imgproc` | `cvtColor` | Supported + fast path | `CV_8U` / `CV_32F` common BGR/RGB/GRAY/BGRA/RGBA conversions; `CV_8U` YUV encode/decode families. | `CV_8UC3` `BGR2GRAY` and `RGB2GRAY`. |
-| `imgproc` | `threshold` | Supported | `CV_8U` / `CV_32F` fixed thresholds; `OTSU` / `TRIANGLE` for `CV_8UC1`. | No accepted fast path. |
-| `imgproc` | `LUT` | Supported | `src=CV_8U`, `lut.total()==256`, LUT channels `1` or source channel count. | No accepted fast path. |
-| `imgproc` | `copyMakeBorder` | Supported | `CV_8U` / `CV_32F`, `BORDER_CONSTANT`, `REPLICATE`, `REFLECT`, `REFLECT_101`, `WRAP`. | No accepted fast path. |
-| `imgproc` | `filter2D` | Supported | `CV_8U` / `CV_32F` source, `CV_32FC1` kernel, `ddepth=-1/CV_8U/CV_32F`. | No accepted fast path. |
-| `imgproc` | `sepFilter2D` | Supported | `CV_8U` / `CV_32F` source, `CV_32FC1` vector kernels, `ddepth=-1/CV_8U/CV_32F`. | No accepted fast path. |
-| `imgproc` | `boxFilter`, `blur` | Supported | `CV_8U` / `CV_32F`, common border modes, `blur` as `boxFilter` semantic wrapper. | No accepted fast path. |
-| `imgproc` | `GaussianBlur` | Supported | `CV_8U` / `CV_32F`, odd kernel sizes and sigma-based separable path. | No accepted fast path. |
-| `imgproc` | `Sobel` | Supported | `CV_8U` / `CV_16S` / `CV_32F` input, `CV_16S` / `CV_32F` output, `ksize=3/5`, first-order derivatives. | No accepted fast path. |
-| `imgproc` | `Canny` | Supported | Image overload for `CV_8UC1`; derivative overload for `CV_16SC1`; `apertureSize=3/5`; L1/L2 gradient. | No accepted fast path. |
-| `imgproc` | `erode`, `dilate`, `morphologyEx` | Supported | `CV_8U`; `MORPH_ERODE`, `DILATE`, `OPEN`, `CLOSE`, `GRADIENT`, `TOPHAT`, `BLACKHAT`, `HITMISS`; `HITMISS` limited to `CV_8UC1`. | No accepted fast path. |
+| `imgproc` | `threshold` | Supported + fast path | `CV_8U` / `CV_32F` fixed thresholds; `OTSU` / `TRIANGLE` for `CV_8UC1`. | Row-parallel `CV_32F` fixed thresholds; other modes fall back. |
+| `imgproc` | `LUT` | Supported + fast path | `src=CV_8U`, `lut.total()==256`, LUT channels `1` or source channel count. | Row-parallel `CV_8U` table path. |
+| `imgproc` | `copyMakeBorder` | Supported + fast path | `CV_8U` / `CV_32F`, `BORDER_CONSTANT`, `REPLICATE`, `REFLECT`, `REFLECT_101`, `WRAP`. | Row-parallel `BORDER_REPLICATE`; other borders fall back. |
+| `imgproc` | `filter2D` | Supported + fast path | `CV_8U` / `CV_32F` source, `CV_32FC1` kernel, `ddepth=-1/CV_8U/CV_32F`. | Header row-parallel convolution for the accepted type matrix. |
+| `imgproc` | `sepFilter2D` | Supported + fast path | `CV_8U` / `CV_32F` source, `CV_32FC1` vector kernels, `ddepth=-1/CV_8U/CV_32F`. | Header row/column fast path for the accepted type matrix. |
+| `imgproc` | `boxFilter`, `blur` | Supported + fast path | `CV_8U` / `CV_32F`, common border modes, `blur` as `boxFilter` semantic wrapper. | Specialized 3x3 and generic separable header paths. |
+| `imgproc` | `GaussianBlur` | Supported + fast path | `CV_8U` / `CV_32F`, odd kernel sizes and sigma-based separable path. | Specialized 3x3 and generic separable header paths. |
+| `imgproc` | `Sobel` | Supported + fast path | `CV_8U` / `CV_16S` / `CV_32F` input, `CV_16S` / `CV_32F` output, `ksize=3/5`, first-order derivatives. | `CV_8U`, `ksize=3/5`, first-order header path. |
+| `imgproc` | `Canny` | Supported + fast path | Image overload for `CV_8UC1`; derivative overload for `CV_16SC1`; `apertureSize=3/5`; L1/L2 gradient. | Shared header magnitude/NMS/hysteresis path. |
+| `imgproc` | `erode`, `dilate`, `morphologyEx` | Supported + fast path | `CV_8U`; `MORPH_ERODE`, `DILATE`, `OPEN`, `CLOSE`, `GRADIENT`, `TOPHAT`, `BLACKHAT`, `HITMISS`; `HITMISS` limited to `CV_8UC1`. | Shared 3x3 rectangular min/max header path; generic kernels fall back. |
 | `imgcodecs` | `imread` | Supported | stb-backed `CV_8U` image load with `IMREAD_UNCHANGED`, `IMREAD_GRAYSCALE`, `IMREAD_COLOR`; OpenCV-style BGR/BGRA output for color reads. | Same behavior as baseline. |
 | `imgcodecs` | `imwrite` | Supported | `CV_8U` 2D `C1` / `C3` / `C4`; writes `png`, `jpg/jpeg`, `bmp`. | Same behavior as baseline. |
 | `highgui` | `imshow`, `waitKey` | Out of scope | Display/event-loop APIs are not part of the pure header-only product. Use `imwrite` or application-owned UI code. | Out of scope. |
@@ -103,6 +103,7 @@ The support table above is tied to the header-only test path:
 | Installed public targets and external package consumers | `scripts/check_header_only_contract.sh` |
 | `cvh::headers` macro/default behavior | `cvh_header_compile_smoke`, `cvh_include_only_smoke` |
 | `cvh::headers_fast` macro/default behavior | `cvh_headers_fast_smoke` |
+| Imgproc multi-TU ODR | `cvh_imgproc_header_odr_smoke` |
 | `core` supported baseline | `cvh_test_core_lite` |
 | Multi-translation-unit core ODR/link | `cvh_core_header_odr_smoke` |
 | `imgproc` supported operators | `cvh_test_imgproc` |
@@ -130,6 +131,10 @@ Current accepted fast paths:
 
 - `cvtColor`: `CV_8UC3` `BGR2GRAY` / `RGB2GRAY`
 - `resize`: `CV_8UC1` exact 2x downsample with `INTER_LINEAR`
+- general U8 resize and RGB/GRAY/YUV conversion families
+- threshold FP32, U8 LUT, and replicate copyMakeBorder
+- box/Gaussian/filter2D/sepFilter2D/Sobel
+- Canny image/derivative and 3x3 rectangular morphology
 
 Compare workspace:
 

@@ -10,8 +10,6 @@
 namespace cvh {
 namespace detail {
 
-using LUTFn = void (*)(const Mat&, const Mat&, Mat&);
-
 inline const uchar* lut_entry_base_ptr(const Mat& lut, int index)
 {
     CV_Assert(index >= 0 && index < 256);
@@ -96,31 +94,16 @@ inline void LUT_fallback(const Mat& src, const Mat& lut, Mat& dst)
     }
 }
 
-inline LUTFn& lut_dispatch()
-{
-    static LUTFn fn = &LUT_fallback;
-    return fn;
-}
-
-inline void register_lut_backend(LUTFn fn)
-{
-    if (fn)
-    {
-        lut_dispatch() = fn;
-    }
-}
-
-inline bool is_lut_backend_registered()
-{
-    return lut_dispatch() != &LUT_fallback;
-}
-
 }  // namespace detail
+}  // namespace cvh
+
+#include "detail/lut_impl.hpp"
+
+namespace cvh {
 
 inline void LUT(const Mat& src, const Mat& lut, Mat& dst)
 {
-    detail::ensure_backends_registered_once();
-    detail::lut_dispatch()(src, lut, dst);
+    detail::lut_fast_impl(src, lut, dst);
 }
 
 }  // namespace cvh

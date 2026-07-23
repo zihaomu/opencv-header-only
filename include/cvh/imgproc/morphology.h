@@ -10,8 +10,6 @@
 namespace cvh {
 namespace detail {
 
-using MorphologyFn = void (*)(const Mat&, Mat&, const Mat&, Point, int, int, const Scalar&);
-
 struct MorphKernelSpec
 {
     int width = 0;
@@ -271,45 +269,12 @@ inline void dilate_fallback(const Mat& src,
     morphology_fallback(src, dst, kernel, anchor, iterations, borderType, borderValue, false);
 }
 
-inline MorphologyFn& erode_dispatch()
-{
-    static MorphologyFn fn = &erode_fallback;
-    return fn;
-}
-
-inline MorphologyFn& dilate_dispatch()
-{
-    static MorphologyFn fn = &dilate_fallback;
-    return fn;
-}
-
-inline void register_erode_backend(MorphologyFn fn)
-{
-    if (fn)
-    {
-        erode_dispatch() = fn;
-    }
-}
-
-inline void register_dilate_backend(MorphologyFn fn)
-{
-    if (fn)
-    {
-        dilate_dispatch() = fn;
-    }
-}
-
-inline bool is_erode_backend_registered()
-{
-    return erode_dispatch() != &erode_fallback;
-}
-
-inline bool is_dilate_backend_registered()
-{
-    return dilate_dispatch() != &dilate_fallback;
-}
-
 }  // namespace detail
+}  // namespace cvh
+
+#include "detail/morphology_impl.hpp"
+
+namespace cvh {
 
 inline void erode(const Mat& src,
                   Mat& dst,
@@ -319,8 +284,7 @@ inline void erode(const Mat& src,
                   int borderType = BORDER_DEFAULT,
                   const Scalar& borderValue = Scalar::all(255.0))
 {
-    detail::ensure_backends_registered_once();
-    detail::erode_dispatch()(src, dst, kernel, anchor, iterations, borderType, borderValue);
+    detail::erode_fast_impl(src, dst, kernel, anchor, iterations, borderType, borderValue);
 }
 
 inline void dilate(const Mat& src,
@@ -331,8 +295,7 @@ inline void dilate(const Mat& src,
                    int borderType = BORDER_DEFAULT,
                    const Scalar& borderValue = Scalar::all(0.0))
 {
-    detail::ensure_backends_registered_once();
-    detail::dilate_dispatch()(src, dst, kernel, anchor, iterations, borderType, borderValue);
+    detail::dilate_fast_impl(src, dst, kernel, anchor, iterations, borderType, borderValue);
 }
 
 namespace detail {
@@ -443,33 +406,31 @@ inline void morphologyEx(const Mat& src,
                          int borderType = BORDER_CONSTANT,
                          const Scalar& borderValue = Scalar::all(0.0))
 {
-    detail::ensure_backends_registered_once();
-
     if (op == MORPH_ERODE)
     {
-        detail::erode_dispatch()(src, dst, kernel, anchor, iterations, borderType, borderValue);
+        detail::erode_fast_impl(src, dst, kernel, anchor, iterations, borderType, borderValue);
         return;
     }
 
     if (op == MORPH_DILATE)
     {
-        detail::dilate_dispatch()(src, dst, kernel, anchor, iterations, borderType, borderValue);
+        detail::dilate_fast_impl(src, dst, kernel, anchor, iterations, borderType, borderValue);
         return;
     }
 
     if (op == MORPH_OPEN)
     {
         Mat tmp;
-        detail::erode_dispatch()(src, tmp, kernel, anchor, iterations, borderType, borderValue);
-        detail::dilate_dispatch()(tmp, dst, kernel, anchor, iterations, borderType, borderValue);
+        detail::erode_fast_impl(src, tmp, kernel, anchor, iterations, borderType, borderValue);
+        detail::dilate_fast_impl(tmp, dst, kernel, anchor, iterations, borderType, borderValue);
         return;
     }
 
     if (op == MORPH_CLOSE)
     {
         Mat tmp;
-        detail::dilate_dispatch()(src, tmp, kernel, anchor, iterations, borderType, borderValue);
-        detail::erode_dispatch()(tmp, dst, kernel, anchor, iterations, borderType, borderValue);
+        detail::dilate_fast_impl(src, tmp, kernel, anchor, iterations, borderType, borderValue);
+        detail::erode_fast_impl(tmp, dst, kernel, anchor, iterations, borderType, borderValue);
         return;
     }
 
@@ -477,8 +438,8 @@ inline void morphologyEx(const Mat& src,
     {
         Mat dilated;
         Mat eroded;
-        detail::dilate_dispatch()(src, dilated, kernel, anchor, iterations, borderType, borderValue);
-        detail::erode_dispatch()(src, eroded, kernel, anchor, iterations, borderType, borderValue);
+        detail::dilate_fast_impl(src, dilated, kernel, anchor, iterations, borderType, borderValue);
+        detail::erode_fast_impl(src, eroded, kernel, anchor, iterations, borderType, borderValue);
         detail::morphology_gradient_u8(dilated, eroded, dst);
         return;
     }

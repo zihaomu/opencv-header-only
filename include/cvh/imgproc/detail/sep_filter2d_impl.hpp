@@ -1,13 +1,16 @@
-#include "fastpath_common.h"
+#ifndef CVH_IMGPROC_DETAIL_SEP_FILTER2D_IMPL_HPP
+#define CVH_IMGPROC_DETAIL_SEP_FILTER2D_IMPL_HPP
+
+#include "fastpath_common.hpp"
 
 namespace cvh
 {
 namespace detail
 {
 
-namespace
+namespace sep_filter2d_fastpath
 {
-bool try_sep_filter2d_fastpath(const Mat& src,
+inline bool try_sep_filter2d_fastpath(const Mat& src,
                                Mat& dst,
                                int ddepth,
                                const Mat& kernelX,
@@ -474,9 +477,9 @@ inline bool is_morph_rect3x3_kernel(const Mat& kernel, Point anchor)
 }
 
 
-} // namespace
+} // namespace sep_filter2d_fastpath
 
-void sep_filter2d_backend_impl(const Mat& src,
+inline void sepFilter2D_fast_impl(const Mat& src,
                                Mat& dst,
                                int ddepth,
                                const Mat& kernelX,
@@ -485,7 +488,8 @@ void sep_filter2d_backend_impl(const Mat& src,
                                double delta,
                                int borderType)
 {
-    if (try_sep_filter2d_fastpath(src, dst, ddepth, kernelX, kernelY, anchor, delta, borderType))
+    if (sep_filter2d_fastpath::try_sep_filter2d_fastpath(
+            src, dst, ddepth, kernelX, kernelY, anchor, delta, borderType))
     {
         return;
     }
@@ -495,3 +499,5 @@ void sep_filter2d_backend_impl(const Mat& src,
 
 } // namespace detail
 } // namespace cvh
+
+#endif // CVH_IMGPROC_DETAIL_SEP_FILTER2D_IMPL_HPP

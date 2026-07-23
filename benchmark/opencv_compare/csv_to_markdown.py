@@ -86,7 +86,7 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
     lines.append("- Core 的 `add/subtract/multiply/divide/transpose/GEMM` 已迁入 ODR-safe headers；本报告通过公共 API 测量，不链接 legacy core 对象。")
     lines.append("- OpenCV Universal Intrinsics 是默认 SIMD 方言，kernel 直接使用 OpenCV UI；项目已移除 xsimd 性能路径。")
     lines.append("- ARM 当前关注 NEON，本次实测平台为 Apple ARM；x86 目标是 SSE/AVX 系列，RVV 因 scalable vector 设计问题暂缓。")
-    lines.append("- 当前已验证的 UI 专用路径主要包括 `BGR/RGB2GRAY` 和 `CV_8UC1` 精确 2x `INTER_LINEAR` 下采样；其余本报告算子多数仍走继承的 header baseline。")
+    lines.append("- Imgproc legacy `.cpp` fast-path 已迁入 ODR-safe detail headers；resize/cvtColor UI、filter、LUT、border、Sobel、Canny 和 morphology 均从公共 header API 进入。")
     lines.append("")
 
     lines.append("## 高层优化结构")
@@ -96,6 +96,7 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
     lines.append("| 公共 API | OpenCV-compatible header API | 所有 case 均从 `cvh::headers_fast` 公共入口调用 |")
     lines.append("| SIMD 方言 | OpenCV Universal Intrinsics | 在 Apple ARM 上映射到 NEON |")
     lines.append("| 专用 kernel | `cvtColor`、特定 `resize` UI kernel | 记录为 `dispatch_path=opencv_ui`；core 计算当前仍为 baseline |")
+    lines.append("| Header fast-path | 行并行 filter、LUT、border、Sobel、Canny、morphology | 记录为 `dispatch_path=header_fastpath` |")
     lines.append("| 通用实现 | `cvh::headers` 中的 header baseline | 无专用 fast-path 时自动继承，记录为 `headers_baseline` |")
     lines.append("| 对照实现 | upstream OpenCV `core` / `imgproc` | 相同输入、尺寸、border 和线程配置 |")
     lines.append("")

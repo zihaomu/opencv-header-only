@@ -49,9 +49,15 @@ require_no_legacy_export() {
 
 "${ROOT_DIR}/scripts/check_public_headers.sh"
 
+if grep -R -n "src/imgproc" \
+    "${ROOT_DIR}/CMakeLists.txt" \
+    "${ROOT_DIR}/benchmark"; then
+  echo "CMake or benchmark code still references legacy src/imgproc files." >&2
+  exit 1
+fi
+
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
   -DCVH_BUILD_NATIVE_BACKEND=OFF \
-  -DCVH_BUILD_BACKEND_KERNEL_SOURCES=OFF \
   -DCVH_BUILD_TESTS=ON \
   -DCVH_BUILD_BENCHMARKS=OFF \
   >/dev/null
@@ -59,12 +65,13 @@ cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
 cmake --build "${BUILD_DIR}" -j --target \
   cvh_header_compile_smoke \
   cvh_core_header_odr_smoke \
+  cvh_imgproc_header_odr_smoke \
   cvh_include_only_smoke \
   cvh_headers_fast_smoke \
   >/dev/null
 
 ctest --test-dir "${BUILD_DIR}" --output-on-failure \
-  -R 'cvh_header_compile_smoke|cvh_core_header_odr_smoke|cvh_include_only_smoke|cvh_headers_fast_smoke'
+  -R 'cvh_header_compile_smoke|cvh_core_header_odr_smoke|cvh_imgproc_header_odr_smoke|cvh_include_only_smoke|cvh_headers_fast_smoke'
 
 cmake --install "${BUILD_DIR}" --prefix "${INSTALL_DIR}" >/dev/null
 require_no_legacy_export "${INSTALL_DIR}/lib/cmake/opencv_header_only"

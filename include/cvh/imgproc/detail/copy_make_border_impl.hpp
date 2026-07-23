@@ -1,13 +1,16 @@
-#include "fastpath_common.h"
+#ifndef CVH_IMGPROC_DETAIL_COPY_MAKE_BORDER_IMPL_HPP
+#define CVH_IMGPROC_DETAIL_COPY_MAKE_BORDER_IMPL_HPP
+
+#include "fastpath_common.hpp"
 
 namespace cvh
 {
 namespace detail
 {
 
-namespace
+namespace copy_make_border_fastpath
 {
-bool try_copy_make_border_fastpath_replicate(const Mat& src,
+inline bool try_copy_make_border_fastpath_replicate(const Mat& src,
                                              Mat& dst,
                                              int top,
                                              int bottom,
@@ -96,9 +99,9 @@ bool try_copy_make_border_fastpath_replicate(const Mat& src,
 }
 
 
-} // namespace
+} // namespace copy_make_border_fastpath
 
-void copy_make_border_backend_impl(const Mat& src,
+inline void copy_make_border_fast_impl(const Mat& src,
                                    Mat& dst,
                                    int top,
                                    int bottom,
@@ -107,7 +110,8 @@ void copy_make_border_backend_impl(const Mat& src,
                                    int borderType,
                                    const Scalar& value)
 {
-    if (try_copy_make_border_fastpath_replicate(src, dst, top, bottom, left, right, borderType))
+    if (copy_make_border_fastpath::try_copy_make_border_fastpath_replicate(
+            src, dst, top, bottom, left, right, borderType))
     {
         return;
     }
@@ -117,3 +121,5 @@ void copy_make_border_backend_impl(const Mat& src,
 
 } // namespace detail
 } // namespace cvh
+
+#endif // CVH_IMGPROC_DETAIL_COPY_MAKE_BORDER_IMPL_HPP
