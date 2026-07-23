@@ -1,6 +1,6 @@
 #include "cvh.h"
 #include "cvh/core/detail/dispatch_control.h"
-#include "src/core/kernel/transpose_kernel.h"
+#include "cvh/core/detail/transpose_kernel.hpp"
 #include "gtest/gtest.h"
 
 #include <cstdlib>
@@ -211,6 +211,30 @@ TEST(MatContract_TEST, reshape_total_mismatch_throws)
 {
     Mat src({2, 3}, CV_32F);
     EXPECT_THROW((void)src.reshape({5}), Exception);
+}
+
+TEST(MatContract_TEST, transpose_supports_non_contiguous_multichannel_roi)
+{
+    Mat padded({4, 7}, CV_8UC3);
+    fill_with_byte_pattern(padded);
+    Mat roi = padded(Range(1, 4), Range(2, 6));
+    ASSERT_FALSE(roi.isContinuous());
+
+    Mat dst = transpose(roi);
+    ASSERT_EQ(dst.size[0], roi.size[1]);
+    ASSERT_EQ(dst.size[1], roi.size[0]);
+    ASSERT_EQ(dst.type(), roi.type());
+
+    for (int row = 0; row < roi.size[0]; ++row)
+    {
+        for (int col = 0; col < roi.size[1]; ++col)
+        {
+            for (int ch = 0; ch < roi.channels(); ++ch)
+            {
+                EXPECT_EQ(dst.at<uchar>(col, row, ch), roi.at<uchar>(row, col, ch));
+            }
+        }
+    }
 }
 
 TEST(MatContract_TEST, convert_to_uint8_preserves_shape_and_saturates)

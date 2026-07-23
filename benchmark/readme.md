@@ -52,7 +52,6 @@ benchmark/results/internal/<suite>/<profile>/meta.json
 
 | Target | 当前问题 | 目标 |
 |---|---|---|
-| `cvh_benchmark_core_ops` | 仍链接旧 `cvh::native`。 | 拆成 `cvh_benchmark_core_mat_header`，只链接 `cvh::headers` / `cvh::headers_fast`。 |
 | `cvh_benchmark_imgproc_ops` | 仍链接旧 `cvh::native`。 | 并入或替换为 `cvh_benchmark_imgproc_header`。 |
 | `cvh_benchmark_imgproc_filter` | 仍链接旧 `cvh::native`，但已有 dispatch A/B 思路。 | 迁到 header-only filter suite，保留 forced fallback/fast-path 诊断能力。 |
 
@@ -273,7 +272,8 @@ Detailed execution steps live in
    - 输出 baseline/current/report/meta。
 
 4. **P-Bench-3：`core_mat` header-only target** - complete
-   - 从 `cvh_benchmark_core_ops` 拆出 `cvh_benchmark_core_mat_header`。
+   - 已删除旧 `cvh_benchmark_core_ops`，`cvh_benchmark_core_mat_header`
+     只链接 header-only targets。
    - 只链接 `cvh::headers` / `cvh::headers_fast`。
    - 覆盖 `Mat` create/copy/convert/layout 成本。
 

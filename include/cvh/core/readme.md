@@ -5,10 +5,11 @@
 `core` 是整个项目的底座，负责 `Mat`、基础数据类型、错误处理、基础算子和工具函数。  
 该目录最终必须独立支撑 header-only 使用，不依赖 `src/` 才能工作。
 
-## 当前状态（2026-03-10）
+## 当前状态（2026-07-23）
 
 - 已有 `Mat`、`define`、`system`、`basic_op` 等基础头文件。
-- 仍存在历史命名与实现迁移债务（例如旧命名残留、部分能力在 `src/core`）。
+- `src/core` 的 Mat/system/算术/transpose/GEMM/MatExpr 实现已迁入
+  ODR-safe headers，公共 core 不再依赖编译单元。
 - API 语义与 OpenCV 仍未完全对齐；已完成 type/channel 宏、连续多通道以及首批 2D submat+非连续步长语义，未完成项主要在通用 ND ROI 与高阶算子行为。
 
 ## 阶段计划
@@ -30,7 +31,8 @@
 ### P2：Core 能力闭环
 
 - 补齐高频逐元素操作、类型转换、规约等基础能力。
-- 将 `src/core` 里保留的通用实现逐步迁入 header-only 结构。
+- 保持 core accepted API 只由 header 提供，禁止重新引入 `src/core`
+  链接依赖。
 - 建立每个核心 API 的测试和示例映射关系。
 
 ### P3：性能层引入

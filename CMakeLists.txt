@@ -72,14 +72,6 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64|ARM64|AARCH64)$")
 endif()
 
 set(CVH_NATIVE_BACKEND_SOURCES
-    src/core/basic_op_scalar.cpp
-    src/core/kernel/transpose_kernel.cpp
-    src/core/mat.cpp
-    src/core/mat_gemm.cpp
-    src/core/mat_expr.cpp
-    src/core/mat_convert.cpp
-    src/core/system.cpp
-    src/core/utils.cpp
     src/imgproc/resize.cpp
     src/imgproc/cvtcolor.cpp
     src/imgproc/cvtcolor_rgb_gray.cpp
@@ -142,8 +134,6 @@ if(CVH_ENABLE_NATIVE_BACKEND)
     target_link_libraries(cvh_native_backend PUBLIC cvh::headers PRIVATE ${CVH_NATIVE_BACKEND_PRIVATE_LIBS})
     target_include_directories(cvh_native_backend
         PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/core
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/core/kernel
             ${CVH_NATIVE_BACKEND_PRIVATE_INCLUDE_DIRS}
     )
 
@@ -160,16 +150,6 @@ if(CVH_ENABLE_NATIVE_BACKEND)
     endif()
 
     if(CVH_BUILD_BENCHMARKS)
-        add_executable(cvh_benchmark_core_ops
-            benchmark/core_ops_benchmark.cpp
-        )
-        target_link_libraries(cvh_benchmark_core_ops PRIVATE cvh::native)
-        target_compile_features(cvh_benchmark_core_ops PRIVATE cxx_std_17)
-        target_include_directories(cvh_benchmark_core_ops PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}
-            ${CMAKE_CURRENT_SOURCE_DIR}/include
-        )
-
         add_executable(cvh_benchmark_imgproc_ops
             benchmark/imgproc_ops_benchmark.cpp
         )
@@ -190,51 +170,6 @@ if(CVH_ENABLE_NATIVE_BACKEND)
             ${CMAKE_CURRENT_SOURCE_DIR}/include
         )
 
-        if(CVH_ENABLE_OPENCV_COMPARE)
-            if(NOT EXISTS "${CVH_OPENCV_BENCH_DIR}")
-                message(FATAL_ERROR "CVH_ENABLE_OPENCV_COMPARE=ON but CVH_OPENCV_BENCH_DIR does not exist: ${CVH_OPENCV_BENCH_DIR}")
-            endif()
-
-            if(NOT OpenCV_DIR)
-                if(EXISTS "${CVH_OPENCV_BENCH_DIR}/build-slim/OpenCVConfig.cmake")
-                    set(OpenCV_DIR "${CVH_OPENCV_BENCH_DIR}/build-slim" CACHE PATH "Path to OpenCVConfig.cmake for compare benchmark" FORCE)
-                endif()
-            endif()
-
-            find_package(OpenCV REQUIRED COMPONENTS core imgproc)
-
-            add_executable(cvh_benchmark_compare
-                benchmark/opencv_compare_benchmark.cpp
-                benchmark/opencv_compare_opencv_backend.cpp
-            )
-            target_link_libraries(cvh_benchmark_compare PRIVATE cvh::native ${OpenCV_LIBS})
-            target_compile_features(cvh_benchmark_compare PRIVATE cxx_std_17)
-            target_include_directories(cvh_benchmark_compare PRIVATE
-                ${CMAKE_CURRENT_SOURCE_DIR}
-                ${CMAKE_CURRENT_SOURCE_DIR}/include
-                ${OpenCV_INCLUDE_DIRS}
-            )
-
-            add_executable(cvh_benchmark_compare_lite
-                benchmark/opencv_compare_benchmark.cpp
-                benchmark/opencv_compare_opencv_backend.cpp
-            )
-            target_link_libraries(cvh_benchmark_compare_lite PRIVATE
-                cvh::headers
-                ${OpenCV_LIBS}
-                $<TARGET_FILE:cvh_native_backend>
-                ${CVH_NATIVE_BACKEND_PRIVATE_LIBS}
-                ${CVH_NATIVE_BACKEND_LINK_DEPS}
-            )
-            add_dependencies(cvh_benchmark_compare_lite cvh_native_backend)
-            target_compile_features(cvh_benchmark_compare_lite PRIVATE cxx_std_17)
-            target_compile_definitions(cvh_benchmark_compare_lite PRIVATE CVH_LITE=1)
-            target_include_directories(cvh_benchmark_compare_lite PRIVATE
-                ${CMAKE_CURRENT_SOURCE_DIR}
-                ${CMAKE_CURRENT_SOURCE_DIR}/include
-                ${OpenCV_INCLUDE_DIRS}
-            )
-        endif()
     endif()
 
     add_executable(cvh_example_highgui_imshow
@@ -307,6 +242,12 @@ if(CVH_BUILD_TESTS)
 
     add_executable(cvh_header_compile_smoke test/smoke/cvh_header_compile_smoke.cpp)
     target_link_libraries(cvh_header_compile_smoke PRIVATE cvh::headers)
+
+    add_executable(cvh_core_header_odr_smoke
+        test/smoke/cvh_core_header_odr_main.cpp
+        test/smoke/cvh_core_header_odr_peer.cpp
+    )
+    target_link_libraries(cvh_core_header_odr_smoke PRIVATE cvh::headers)
 
     add_executable(cvh_include_only_smoke test/smoke/cvh_include_only_smoke.cpp)
     target_include_directories(cvh_include_only_smoke PRIVATE
@@ -397,34 +338,25 @@ if(CVH_BUILD_TESTS)
 
     set(CVH_CORE_TEST_LITE_SOURCES
         test/core/core_ops_test.cpp
-        test/core/mat_channel_contract_test.cpp
-        test/core/mat_layout_semantics_test.cpp
-        test/core/mat_shape_display_test.cpp
-        test/core/mat_opencv_compat_test.cpp
-        test/core/parallel_for_runtime_test.cpp
-        test/core/scalar_contract_test.cpp
-    )
-
-    set(CVH_CORE_TEST_NATIVE_SOURCES
-        test/core/core_ops_test.cpp
         test/core/binary_op_contract_test.cpp
+        test/core/gemm_pack_contract_test.cpp
         test/core/mat_channel_contract_test.cpp
         test/core/mat_layout_semantics_test.cpp
-        test/core/mat_shape_display_test.cpp
+        test/core/mat_contract_test.cpp
         test/core/mat_expr_scalar_compare_test.cpp
+        test/core/mat_shape_display_test.cpp
         test/core/mat_opencv_compat_test.cpp
-        test/core/parallel_for_runtime_test.cpp
         test/core/mat_scalar_ops_test.cpp
         test/core/mat_submat_test.cpp
         test/core/mat_upstream_channel_port_test.cpp
-        test/core/gemm_pack_contract_test.cpp
-        test/core/mat_contract_test.cpp
+        test/core/parallel_for_runtime_test.cpp
         test/core/scalar_contract_test.cpp
     )
 
     add_executable(cvh_test_core_lite
         ${CVH_CORE_TEST_LITE_SOURCES}
     )
+    add_executable(cvh_test_core ALIAS cvh_test_core_lite)
     target_link_libraries(cvh_test_core_lite PRIVATE cvh::headers gtest_main)
     target_compile_features(cvh_test_core_lite PRIVATE cxx_std_17)
     target_compile_definitions(cvh_test_core_lite PRIVATE M_ROOT_PATH="${CMAKE_CURRENT_SOURCE_DIR}")
@@ -461,6 +393,7 @@ if(CVH_BUILD_TESTS)
 
     if(BUILD_TESTING)
         add_test(NAME cvh_header_compile_smoke COMMAND cvh_header_compile_smoke)
+        add_test(NAME cvh_core_header_odr_smoke COMMAND cvh_core_header_odr_smoke)
         add_test(NAME cvh_include_only_smoke COMMAND cvh_include_only_smoke)
         add_test(NAME cvh_mode_lite_smoke COMMAND cvh_mode_lite_smoke)
         add_test(NAME cvh_headers_fast_smoke COMMAND cvh_headers_fast_smoke)
@@ -476,6 +409,7 @@ if(CVH_BUILD_TESTS)
         add_test(NAME cvh_test_imgproc COMMAND cvh_test_imgproc)
         add_test(NAME cvh_test_highgui COMMAND cvh_test_highgui)
         add_test(NAME cvh_test_core_lite COMMAND cvh_test_core_lite)
+        add_test(NAME cvh_test_core COMMAND cvh_test_core_lite)
         if(TARGET cvh_native_backend)
             add_test(NAME cvh_test_highgui_native COMMAND cvh_test_highgui_native)
             add_test(NAME cvh_native_backend_smoke COMMAND cvh_native_backend_smoke)
@@ -484,25 +418,6 @@ if(CVH_BUILD_TESTS)
         endif()
     endif()
 
-    if(TARGET cvh_native_backend)
-        add_executable(cvh_test_core_native
-            ${CVH_CORE_TEST_NATIVE_SOURCES}
-        )
-        add_executable(cvh_test_core ALIAS cvh_test_core_native)
-        target_link_libraries(cvh_test_core_native PRIVATE cvh::native gtest_main)
-        target_compile_features(cvh_test_core_native PRIVATE cxx_std_17)
-        target_compile_definitions(cvh_test_core_native PRIVATE M_ROOT_PATH="${CMAKE_CURRENT_SOURCE_DIR}")
-        target_include_directories(cvh_test_core_native PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}
-            ${CMAKE_CURRENT_SOURCE_DIR}/include
-            ${CMAKE_CURRENT_SOURCE_DIR}/test
-        )
-
-        if(BUILD_TESTING)
-            add_test(NAME cvh_test_core_native COMMAND cvh_test_core_native)
-            add_test(NAME cvh_test_core COMMAND cvh_test_core_native)
-        endif()
-    endif()
 endif()
 
 set(CVH_INSTALL_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/opencv_header_only" CACHE STRING "Install path for CMake package config files")

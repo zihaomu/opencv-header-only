@@ -39,4 +39,6 @@ Mat align_precision_sensitive_input(const Mat& input, RuntimePrecision precision
 
 }
 
+#include "utils.inl.h"
+
 #endif //CVH_UTILS_H

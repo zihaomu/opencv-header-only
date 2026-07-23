@@ -44,7 +44,7 @@ echo "ci_native_cmake_cache_begin"
 grep -E '^(CVH_BUILD_NATIVE_BACKEND|CVH_BUILD_FULL_BACKEND|CVH_BUILD_BACKEND_KERNEL_SOURCES|CVH_BUILD_TESTS|CVH_BUILD_BENCHMARKS|CMAKE_BUILD_TYPE):' "${BUILD_DIR}/CMakeCache.txt" || true
 echo "ci_native_cmake_cache_end"
 
-cmake --build "${BUILD_DIR}" --target cvh_test_core_native cvh_test_imgproc -j
+cmake --build "${BUILD_DIR}" --target cvh_test_core_lite cvh_test_imgproc -j
 
-run_gtest_with_case_log "${BUILD_DIR}/cvh_test_core_native" "cvh_test_core_native"
+run_gtest_with_case_log "${BUILD_DIR}/cvh_test_core_lite" "cvh_test_core_headers_under_native_config"
 run_gtest_with_case_log "${BUILD_DIR}/cvh_test_imgproc" "cvh_test_imgproc_lite_under_native_config"

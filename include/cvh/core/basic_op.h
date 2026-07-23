@@ -135,4 +135,8 @@ MAT_AUG_OPERATOR(*=, multiply(a, b, (Mat &) a))
 MAT_AUG_OPERATOR(/=, divide(a, b, (Mat &) a))
 
 }
+
+#include "detail/basic_op_impl.hpp"
+#include "detail/mat_expr_impl.hpp"
+
 #endif //CVH_BASIC_OP_H

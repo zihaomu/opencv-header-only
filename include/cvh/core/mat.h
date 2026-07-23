@@ -417,8 +417,6 @@ Mat gemm(const Mat& a, const Mat& b, const Mat& b_scales, bool transA = false, b
 
 #include "./mat.inl.h"
 
-#if defined(CVH_LITE)
-#include "./mat_lite_impl.h"
-#endif
+#include "./detail/mat_impl.hpp"
 
 #endif //CVH_MAT_H

@@ -21,6 +21,14 @@ enum class MatOpId
     Reshape,
 };
 
+enum class CoreBinaryOpId
+{
+    Add = 0,
+    Subtract,
+    Multiply,
+    Divide,
+};
+
 void configure_opencv_threads(int threads);
 
 double bench_opencv_mat_op(MatOpId op,
@@ -33,25 +41,51 @@ double bench_opencv_mat_op(MatOpId op,
                            int repeats,
                            std::uint32_t seed);
 
-double bench_opencv_add(int rows,
-                        int cols,
-                        DepthId depth,
-                        int channels,
-                        int warmup,
-                        int iters,
-                        int repeats,
-                        std::uint32_t seed_a,
-                        std::uint32_t seed_b);
+double bench_opencv_binary(CoreBinaryOpId op,
+                           int rows,
+                           int cols,
+                           DepthId depth,
+                           int channels,
+                           int warmup,
+                           int iters,
+                           int repeats,
+                           std::uint32_t seed_a,
+                           std::uint32_t seed_b);
 
-double bench_opencv_sub(int rows,
-                        int cols,
-                        DepthId depth,
-                        int channels,
-                        int warmup,
-                        int iters,
-                        int repeats,
-                        std::uint32_t seed_a,
-                        std::uint32_t seed_b);
+double bench_opencv_transpose(int rows,
+                              int cols,
+                              DepthId depth,
+                              int channels,
+                              int warmup,
+                              int iters,
+                              int repeats,
+                              std::uint32_t seed);
+
+bool validate_opencv_binary(CoreBinaryOpId op,
+                            int rows,
+                            int cols,
+                            DepthId depth,
+                            int channels,
+                            std::uint32_t seed_a,
+                            std::uint32_t seed_b,
+                            const void* cvh_data,
+                            std::uint64_t cvh_bytes);
+
+bool validate_opencv_transpose(int rows,
+                               int cols,
+                               DepthId depth,
+                               int channels,
+                               std::uint32_t seed,
+                               const void* cvh_data,
+                               std::uint64_t cvh_bytes);
+
+bool validate_opencv_gemm(int m,
+                          int k,
+                          int n,
+                          std::uint32_t seed_a,
+                          std::uint32_t seed_b,
+                          const void* cvh_data,
+                          std::uint64_t cvh_bytes);
 
 double bench_opencv_gemm(int m,
                          int k,

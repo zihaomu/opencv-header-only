@@ -1,6 +1,5 @@
-//
-// Created by mzh on 2024/1/31.
-//
+#ifndef CVH_CORE_DETAIL_GEMM_IMPL_HPP
+#define CVH_CORE_DETAIL_GEMM_IMPL_HPP
 
 #include "cvh/core/mat.h"
 #include "cvh/core/basic_op.h"
@@ -15,7 +14,7 @@
 namespace cvh
 {
 
-bool GemmPackedB::empty() const
+inline bool GemmPackedB::empty() const
 {
     return packed_fp32.empty() && packed_fp16.empty();
 }
@@ -577,7 +576,7 @@ void gemm_impl_row(const Mat& a, const Mat& b, const Mat* b_scales, Mat& c)
 
 // implementation of rox x column
 // TODO gemm support the different shape.
-Mat gemm(const Mat& a, const Mat& b, bool transA, bool transB)
+inline Mat gemm(const Mat& a, const Mat& b, bool transA, bool transB)
 {
     Mat out;
     if (transA == false && transB == true)
@@ -605,7 +604,7 @@ Mat gemm(const Mat& a, const Mat& b, bool transA, bool transB)
     return out;
 }
 
-GemmPackedB gemm_pack_b(const Mat& b, bool transB)
+inline GemmPackedB gemm_pack_b(const Mat& b, bool transB)
 {
     Mat packed_source;
     if (transB)
@@ -620,7 +619,7 @@ GemmPackedB gemm_pack_b(const Mat& b, bool transB)
     return gemm_pack_b_impl(packed_source);
 }
 
-Mat gemm(const Mat& a, const GemmPackedB& packed_b, bool transA)
+inline Mat gemm(const Mat& a, const GemmPackedB& packed_b, bool transA)
 {
     Mat a_use;
     if (transA)
@@ -637,7 +636,7 @@ Mat gemm(const Mat& a, const GemmPackedB& packed_b, bool transA)
     return out;
 }
 
-Mat gemm(const Mat& a, const Mat& b, const Mat& b_scales, bool transA, bool transB)
+inline Mat gemm(const Mat& a, const Mat& b, const Mat& b_scales, bool transA, bool transB)
 {
     CV_Assert(!b_scales.empty() && "Quantized gemm requires non-empty scales!");
     if (b.type() != CV_8S)
@@ -655,5 +654,7 @@ Mat gemm(const Mat& a, const Mat& b, const Mat& b_scales, bool transA, bool tran
     CV_Error_(Error::StsNotImplemented, ("INT8 gemm only supports transA=false, transB=true right now"));
     return {};
 }
+
+#endif  // CVH_CORE_DETAIL_GEMM_IMPL_HPP
 
 }

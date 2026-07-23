@@ -1,4 +1,6 @@
-#include "transpose_kernel.h"
+#ifndef CVH_CORE_DETAIL_TRANSPOSE_KERNEL_HPP
+#define CVH_CORE_DETAIL_TRANSPOSE_KERNEL_HPP
+
 #include "cvh/core/parallel.h"
 #include "cvh/core/detail/dispatch_control.h"
 #include "cvh/core/detail/openmp_utils.h"
@@ -102,12 +104,12 @@ inline void transpose2d_memcpy_fallback(const unsigned char* src,
 
 }  // namespace
 
-void transpose2d_kernel_blocked(const unsigned char* src,
-                                unsigned char* dst,
-                                int rows,
-                                int cols,
-                                size_t elem_size1,
-                                int channels)
+inline void transpose2d_kernel_blocked(const unsigned char* src,
+                                       unsigned char* dst,
+                                       int rows,
+                                       int cols,
+                                       size_t elem_size1,
+                                       int channels)
 {
     if (rows <= 0 || cols <= 0 || elem_size1 == 0 || channels <= 0)
     {
@@ -141,3 +143,5 @@ void transpose2d_kernel_blocked(const unsigned char* src,
 
 }  // namespace cpu
 }  // namespace cvh
+
+#endif  // CVH_CORE_DETAIL_TRANSPOSE_KERNEL_HPP

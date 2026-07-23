@@ -1,7 +1,9 @@
-#include "cvh/core/basic_op.h"
-#include "cvh/core/detail/dispatch_control.h"
-#include "cvh/core/saturate.h"
-#include "transpose_kernel.h"
+#ifndef CVH_CORE_DETAIL_BASIC_OP_IMPL_HPP
+#define CVH_CORE_DETAIL_BASIC_OP_IMPL_HPP
+
+#include "dispatch_control.h"
+#include "transpose_kernel.hpp"
+#include "../saturate.h"
 
 #include <algorithm>
 #include <cmath>
@@ -90,9 +92,9 @@ inline auto safe_div_value(T lhs, T rhs)
     {
         if (rhs == 0)
         {
-            return T(0);
+            return 0.0;
         }
-        return static_cast<T>(lhs / rhs);
+        return std::round(static_cast<double>(lhs) / static_cast<double>(rhs));
     }
     else if constexpr (std::is_same<T, hfloat>::value)
     {
@@ -907,7 +909,7 @@ void copy_split_channels(const Mat& src, Mat* dst)
 
 } // namespace
 
-void binaryFunc(BinaryOp op, const Mat& a, const Mat& b, Mat& c)
+inline void binaryFunc(BinaryOp op, const Mat& a, const Mat& b, Mat& c)
 {
     switch (op)
     {
@@ -1061,7 +1063,7 @@ void binaryFunc(BinaryOp op, const Mat& a, const Mat& b, Mat& c)
     }
 }
 
-void add(const Mat& a, const Mat& b, Mat& c)
+inline void add(const Mat& a, const Mat& b, Mat& c)
 {
     dispatch_mat_mat_binary_arith(a,
                                   b,
@@ -1070,7 +1072,7 @@ void add(const Mat& a, const Mat& b, Mat& c)
                                   "add(Mat,Mat)");
 }
 
-void add(const Mat& a, const Scalar& b, Mat& c)
+inline void add(const Mat& a, const Scalar& b, Mat& c)
 {
     dispatch_mat_scalar_binary_arith(a,
                                      b,
@@ -1080,7 +1082,7 @@ void add(const Mat& a, const Scalar& b, Mat& c)
                                      "add(Mat,Scalar)");
 }
 
-void add(const Scalar& a, const Mat& b, Mat& c)
+inline void add(const Scalar& a, const Mat& b, Mat& c)
 {
     dispatch_mat_scalar_binary_arith(b,
                                      a,
@@ -1090,17 +1092,17 @@ void add(const Scalar& a, const Mat& b, Mat& c)
                                      "add(Scalar,Mat)");
 }
 
-void addWeighted(const Mat& a, double alpha, const Mat& b, double beta, Mat& c)
+inline void addWeighted(const Mat& a, double alpha, const Mat& b, double beta, Mat& c)
 {
     dispatch_add_weighted(a, alpha, b, beta, c, "addWeighted");
 }
 
-void subtract(const Mat& a, Mat& c)
+inline void subtract(const Mat& a, Mat& c)
 {
     dispatch_unary_negate(a, c, "subtract(Mat)");
 }
 
-void subtract(const Mat& a, const Mat& b, Mat& c)
+inline void subtract(const Mat& a, const Mat& b, Mat& c)
 {
     dispatch_mat_mat_binary_arith(a,
                                   b,
@@ -1109,7 +1111,7 @@ void subtract(const Mat& a, const Mat& b, Mat& c)
                                   "subtract(Mat,Mat)");
 }
 
-void subtract(const Mat& a, const Scalar& b, Mat& c)
+inline void subtract(const Mat& a, const Scalar& b, Mat& c)
 {
     dispatch_mat_scalar_binary_arith(a,
                                      b,
@@ -1119,7 +1121,7 @@ void subtract(const Mat& a, const Scalar& b, Mat& c)
                                      "subtract(Mat,Scalar)");
 }
 
-void subtract(const Scalar& a, const Mat& b, Mat& c)
+inline void subtract(const Scalar& a, const Mat& b, Mat& c)
 {
     dispatch_mat_scalar_binary_arith(b,
                                      a,
@@ -1129,17 +1131,17 @@ void subtract(const Scalar& a, const Mat& b, Mat& c)
                                      "subtract(Scalar,Mat)");
 }
 
-void subtract(const Mat& a, double b, Mat& c)
+inline void subtract(const Mat& a, double b, Mat& c)
 {
     subtract(a, Scalar::all(b), c);
 }
 
-void subtract(double a, const Mat& b, Mat& c)
+inline void subtract(double a, const Mat& b, Mat& c)
 {
     subtract(Scalar::all(a), b, c);
 }
 
-void multiply(const Mat& a, const Mat& b, Mat& c)
+inline void multiply(const Mat& a, const Mat& b, Mat& c)
 {
     dispatch_mat_mat_binary_arith(a,
                                   b,
@@ -1148,7 +1150,7 @@ void multiply(const Mat& a, const Mat& b, Mat& c)
                                   "multiply(Mat,Mat)");
 }
 
-void multiply(const Mat& a, const Scalar& b, Mat& c)
+inline void multiply(const Mat& a, const Scalar& b, Mat& c)
 {
     dispatch_mat_scalar_binary_arith(a,
                                      b,
@@ -1158,7 +1160,7 @@ void multiply(const Mat& a, const Scalar& b, Mat& c)
                                      "multiply(Mat,Scalar)");
 }
 
-void multiply(const Scalar& a, const Mat& b, Mat& c)
+inline void multiply(const Scalar& a, const Mat& b, Mat& c)
 {
     dispatch_mat_scalar_binary_arith(b,
                                      a,
@@ -1168,7 +1170,7 @@ void multiply(const Scalar& a, const Mat& b, Mat& c)
                                      "multiply(Scalar,Mat)");
 }
 
-void divide(const Mat& a, const Mat& b, Mat& c)
+inline void divide(const Mat& a, const Mat& b, Mat& c)
 {
     dispatch_mat_mat_binary_arith(a,
                                   b,
@@ -1177,7 +1179,7 @@ void divide(const Mat& a, const Mat& b, Mat& c)
                                   "divide(Mat,Mat)");
 }
 
-void divide(const Mat& a, const Scalar& b, Mat& c)
+inline void divide(const Mat& a, const Scalar& b, Mat& c)
 {
     dispatch_mat_scalar_binary_arith(a,
                                      b,
@@ -1187,7 +1189,7 @@ void divide(const Mat& a, const Scalar& b, Mat& c)
                                      "divide(Mat,Scalar)");
 }
 
-void divide(const Scalar& a, const Mat& b, Mat& c)
+inline void divide(const Scalar& a, const Mat& b, Mat& c)
 {
     dispatch_mat_scalar_binary_arith(b,
                                      a,
@@ -1197,7 +1199,7 @@ void divide(const Scalar& a, const Mat& b, Mat& c)
                                      "divide(Scalar,Mat)");
 }
 
-void compare(const Mat& a, const Mat& b, Mat& c, int op)
+inline void compare(const Mat& a, const Mat& b, Mat& c, int op)
 {
     if (a.empty() && b.empty())
     {
@@ -1217,17 +1219,17 @@ void compare(const Mat& a, const Mat& b, Mat& c, int op)
     dispatch_mat_mat_compare(a, b, c, op, "compare(Mat,Mat)");
 }
 
-void compare(const Mat& a, const Scalar& b, Mat& c, int op)
+inline void compare(const Mat& a, const Scalar& b, Mat& c, int op)
 {
     dispatch_mat_scalar_compare(a, b, c, op, false, "compare(Mat,Scalar)");
 }
 
-void compare(const Scalar& a, const Mat& b, Mat& c, int op)
+inline void compare(const Scalar& a, const Mat& b, Mat& c, int op)
 {
     dispatch_mat_scalar_compare(b, a, c, op, true, "compare(Scalar,Mat)");
 }
 
-void merge(const Mat* src, size_t nsrc, Mat& dst)
+inline void merge(const Mat* src, size_t nsrc, Mat& dst)
 {
     int depth = 0;
     int dims = 0;
@@ -1238,7 +1240,7 @@ void merge(const Mat* src, size_t nsrc, Mat& dst)
     copy_merge_channels(src, nsrc, dst);
 }
 
-void merge(const std::vector<Mat>& src, Mat& dst)
+inline void merge(const std::vector<Mat>& src, Mat& dst)
 {
     if (src.empty())
     {
@@ -1247,7 +1249,7 @@ void merge(const std::vector<Mat>& src, Mat& dst)
     merge(src.data(), src.size(), dst);
 }
 
-void split(const Mat& src, Mat* dst)
+inline void split(const Mat& src, Mat* dst)
 {
     if (src.empty())
     {
@@ -1257,7 +1259,7 @@ void split(const Mat& src, Mat* dst)
     copy_split_channels(src, dst);
 }
 
-void split(const Mat& src, std::vector<Mat>& dst)
+inline void split(const Mat& src, std::vector<Mat>& dst)
 {
     if (src.empty())
     {
@@ -1267,7 +1269,7 @@ void split(const Mat& src, std::vector<Mat>& dst)
     split(src, dst.data());
 }
 
-Mat transpose(const Mat& input)
+inline Mat transpose(const Mat& input)
 {
     CV_Assert(!input.empty() && "The transpose function get empty input!");
     const MatShape input_shape = input.shape();
@@ -1289,7 +1291,7 @@ Mat transpose(const Mat& input)
     return transposeND(input, out_order);
 }
 
-Mat transposeND(const Mat& input, const std::vector<int> order)
+inline Mat transposeND(const Mat& input, const std::vector<int> order)
 {
     if (input.dims != static_cast<int>(order.size()))
     {
@@ -1347,7 +1349,15 @@ Mat transposeND(const Mat& input, const std::vector<int> order)
         const size_t plane_bytes = static_cast<size_t>(rows) * static_cast<size_t>(cols) * elem_size;
         const size_t batch = input.total() / static_cast<size_t>(rows * cols);
 
-        const unsigned char* src = input.data;
+        Mat contiguous_input;
+        const Mat* input_ptr = &input;
+        if (!input.isContinuous())
+        {
+            contiguous_input = input.clone();
+            input_ptr = &contiguous_input;
+        }
+
+        const unsigned char* src = input_ptr->data;
         unsigned char* dst = out.data;
         for (size_t batch_idx = 0; batch_idx < batch; ++batch_idx)
         {
@@ -1426,3 +1436,5 @@ Mat transposeND(const Mat& input, const std::vector<int> order)
 }
 
 } // namespace cvh
+
+#endif // CVH_CORE_DETAIL_BASIC_OP_IMPL_HPP

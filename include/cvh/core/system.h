@@ -239,8 +239,6 @@ raise an error (see cvh::error). The macro CV_Assert checks the condition in bot
 
 }
 
-#if defined(CVH_LITE)
 #include "./system.inl.h"
-#endif
 
 #endif //CVH_SYSTEM_H

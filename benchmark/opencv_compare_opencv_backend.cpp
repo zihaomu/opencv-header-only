@@ -6,6 +6,9 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cstring>
+#include <cmath>
+#include <iostream>
 #include <limits>
 
 namespace cvh_bench_compare {
@@ -112,6 +115,68 @@ double checksum(const cv::Mat& mat)
     return sum;
 }
 
+void run_binary(CoreBinaryOpId op, const cv::Mat& a, const cv::Mat& b, cv::Mat& dst)
+{
+    switch (op)
+    {
+        case CoreBinaryOpId::Add:
+            cv::add(a, b, dst);
+            return;
+        case CoreBinaryOpId::Subtract:
+            cv::subtract(a, b, dst);
+            return;
+        case CoreBinaryOpId::Multiply:
+            cv::multiply(a, b, dst);
+            return;
+        case CoreBinaryOpId::Divide:
+            cv::divide(a, b, dst);
+            return;
+    }
+}
+
+bool output_matches(const cv::Mat& expected,
+                    DepthId depth,
+                    const void* actual_data,
+                    std::uint64_t actual_bytes,
+                    int u8_tolerance = 0)
+{
+    const std::uint64_t expected_bytes =
+        static_cast<std::uint64_t>(expected.total()) * static_cast<std::uint64_t>(expected.elemSize());
+    if (!expected.isContinuous() || actual_data == nullptr || actual_bytes != expected_bytes)
+    {
+        return false;
+    }
+    if (depth == DepthId::U8)
+    {
+        const unsigned char* actual = static_cast<const unsigned char*>(actual_data);
+        for (std::size_t i = 0; i < static_cast<std::size_t>(expected_bytes); ++i)
+        {
+            if (std::abs(static_cast<int>(expected.data[i]) - static_cast<int>(actual[i])) >
+                u8_tolerance)
+            {
+                std::cerr << "OpenCV U8 mismatch at scalar " << i
+                          << ": expected=" << static_cast<int>(expected.data[i])
+                          << " actual=" << static_cast<int>(actual[i]) << "\n";
+                return false;
+            }
+        }
+        return true;
+    }
+
+    const float* expected_values = expected.ptr<float>();
+    const float* actual_values = static_cast<const float*>(actual_data);
+    const std::size_t count = expected.total() * static_cast<std::size_t>(expected.channels());
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        const float tolerance = 1e-5f * std::max(1.0f, std::fabs(expected_values[i]));
+        if (std::fabs(expected_values[i] - actual_values[i]) > tolerance)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 template <typename RunFn, typename ProbeFn>
 double measure_ms(RunFn&& run, ProbeFn&& probe, int warmup, int iters, int repeats)
 {
@@ -215,15 +280,16 @@ double bench_opencv_mat_op(MatOpId op,
     return -1.0;
 }
 
-double bench_opencv_add(int rows,
-                        int cols,
-                        DepthId depth,
-                        int channels,
-                        int warmup,
-                        int iters,
-                        int repeats,
-                        std::uint32_t seed_a,
-                        std::uint32_t seed_b)
+double bench_opencv_binary(CoreBinaryOpId op,
+                           int rows,
+                           int cols,
+                           DepthId depth,
+                           int channels,
+                           int warmup,
+                           int iters,
+                           int repeats,
+                           std::uint32_t seed_a,
+                           std::uint32_t seed_b)
 {
     const int type = CV_MAKETYPE(to_cv_depth(depth), channels);
     cv::Mat a(rows, cols, type);
@@ -234,37 +300,87 @@ double bench_opencv_add(int rows,
     fill_by_depth(b, depth, seed_b);
 
     return measure_ms(
-        [&]() { cv::add(a, b, dst); },
+        [&]() { run_binary(op, a, b, dst); },
         [&]() { return checksum(dst); },
         warmup,
         iters,
         repeats);
 }
 
-double bench_opencv_sub(int rows,
-                        int cols,
-                        DepthId depth,
-                        int channels,
-                        int warmup,
-                        int iters,
-                        int repeats,
-                        std::uint32_t seed_a,
-                        std::uint32_t seed_b)
+double bench_opencv_transpose(int rows,
+                              int cols,
+                              DepthId depth,
+                              int channels,
+                              int warmup,
+                              int iters,
+                              int repeats,
+                              std::uint32_t seed)
 {
     const int type = CV_MAKETYPE(to_cv_depth(depth), channels);
-    cv::Mat a(rows, cols, type);
-    cv::Mat b(rows, cols, type);
+    cv::Mat src(rows, cols, type);
     cv::Mat dst;
-
-    fill_by_depth(a, depth, seed_a);
-    fill_by_depth(b, depth, seed_b);
+    fill_by_depth(src, depth, seed);
 
     return measure_ms(
-        [&]() { cv::subtract(a, b, dst); },
+        [&]() { cv::transpose(src, dst); },
         [&]() { return checksum(dst); },
         warmup,
         iters,
         repeats);
+}
+
+bool validate_opencv_binary(CoreBinaryOpId op,
+                            int rows,
+                            int cols,
+                            DepthId depth,
+                            int channels,
+                            std::uint32_t seed_a,
+                            std::uint32_t seed_b,
+                            const void* cvh_data,
+                            std::uint64_t cvh_bytes)
+{
+    const int type = CV_MAKETYPE(to_cv_depth(depth), channels);
+    cv::Mat a(rows, cols, type);
+    cv::Mat b(rows, cols, type);
+    cv::Mat expected;
+    fill_by_depth(a, depth, seed_a);
+    fill_by_depth(b, depth, seed_b);
+    run_binary(op, a, b, expected);
+    const int u8_tolerance = op == CoreBinaryOpId::Divide ? 1 : 0;
+    return output_matches(expected, depth, cvh_data, cvh_bytes, u8_tolerance);
+}
+
+bool validate_opencv_transpose(int rows,
+                               int cols,
+                               DepthId depth,
+                               int channels,
+                               std::uint32_t seed,
+                               const void* cvh_data,
+                               std::uint64_t cvh_bytes)
+{
+    const int type = CV_MAKETYPE(to_cv_depth(depth), channels);
+    cv::Mat src(rows, cols, type);
+    cv::Mat expected;
+    fill_by_depth(src, depth, seed);
+    cv::transpose(src, expected);
+    return output_matches(expected, depth, cvh_data, cvh_bytes);
+}
+
+bool validate_opencv_gemm(int m,
+                          int k,
+                          int n,
+                          std::uint32_t seed_a,
+                          std::uint32_t seed_b,
+                          const void* cvh_data,
+                          std::uint64_t cvh_bytes)
+{
+    cv::Mat a(m, k, CV_32F);
+    cv::Mat b(k, n, CV_32F);
+    cv::Mat expected;
+    fill_f32(a, seed_a);
+    fill_f32(b, seed_b);
+    cv::gemm(a, b, 1.0, cv::Mat(), 0.0, expected, 0);
+    return output_matches(expected, DepthId::F32, cvh_data, cvh_bytes);
 }
 
 double bench_opencv_gemm(int m,

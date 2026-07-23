@@ -1,7 +1,7 @@
-#ifndef CVH_CORE_MAT_LITE_IMPL_H
-#define CVH_CORE_MAT_LITE_IMPL_H
+#ifndef CVH_CORE_DETAIL_MAT_IMPL_HPP
+#define CVH_CORE_DETAIL_MAT_IMPL_HPP
 
-#include "saturate.h"
+#include "../saturate.h"
 
 #include <algorithm>
 #include <climits>
@@ -1240,4 +1240,4 @@ inline void Mat::convertTo(Mat& m, int type_) const
 
 } // namespace cvh
 
-#endif // CVH_CORE_MAT_LITE_IMPL_H
+#endif // CVH_CORE_DETAIL_MAT_IMPL_HPP

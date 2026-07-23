@@ -486,7 +486,7 @@ Completion notes:
 
 ### P-Bench-8: Core C++ Cleanup Prerequisite
 
-Status: TODO.
+Status: complete.
 
 Purpose: remove the compiled-core dependency before claiming Mat arithmetic
 results for `cvh::headers_fast`.
@@ -507,9 +507,20 @@ DoD:
   `src/` paths.
 - Multi-translation-unit ODR tests pass.
 
+Completion notes:
+
+- Mat/system duplicate implementations and all accepted `src/core/*.cpp`
+  dependencies were removed.
+- Arithmetic, transpose, GEMM, utilities, and MatExpr now have ODR-safe header
+  definitions.
+- `cvh_core_header_odr_smoke` covers arithmetic, transpose, GEMM, and MatExpr
+  from two translation units.
+- The staged install contract consumer compiles and executes the same core
+  APIs without repository `src/` paths.
+
 ### P-Bench-9: Core Compute Correctness Gate
 
-Status: TODO; blocked by P-Bench-8.
+Status: complete.
 
 Purpose: establish correctness before publishing core compute performance.
 
@@ -534,9 +545,20 @@ DoD:
   `.cpp` symbols.
 - Tests link only `cvh::headers` or `cvh::headers_fast`.
 
+Completion notes:
+
+- Existing core contracts now run only against `cvh::headers`, including
+  continuous and non-contiguous Mat arithmetic.
+- Added non-contiguous multichannel ROI transpose coverage.
+- Mode B performs an upstream correctness preflight before timing every
+  arithmetic, transpose, and GEMM case.
+- U8 add/subtract/multiply and transpose are byte-exact. U8 divide declares
+  absolute tolerance `1` for OpenCV's optimized half-way rounding variation;
+  F32 and GEMM use relative tolerance.
+
 ### P-Bench-10: Mode B Core Compute Expansion
 
-Status: TODO; blocked by P-Bench-9.
+Status: complete.
 
 Purpose: add common Mat computation to the dated OpenCV upstream report.
 
@@ -562,6 +584,17 @@ DoD:
 - A not-yet-migrated operator is `UNSUPPORTED`, never silently omitted or
   satisfied by a compiled legacy object.
 
+Completion notes:
+
+- Added stable Mode B rows for add/subtract/multiply/divide across `CV_8U` and
+  `CV_32F`, C1/C3, VGA/720p/1080p.
+- Added transpose rows for the same type/channel/shape matrix.
+- Added FP32 NN GEMM `128^3`, `256^3`, and `512^3`, split into end-to-end and
+  pack-once variants.
+- Refreshed
+  `benchmark/opencv_compare/results/2026-07-23-opencv-upstream-performance.md`
+  with 126 stable single-thread cases.
+
 ## Suggested Execution Order
 
 1. Finish P-Bench-0 and commit documentation/artifact cleanup. Done.
@@ -572,10 +605,10 @@ DoD:
 6. Implement P-Bench-5 unified report/gate. Done.
 7. Implement P-Bench-6 OpenCV upstream compare. Done.
 8. Add P-Bench-7 CI integration after local behavior is stable. Done.
-9. Complete P-Bench-8 core C++ cleanup and header-only migration.
-10. Complete P-Bench-9 core compute correctness gate.
+9. Complete P-Bench-8 core C++ cleanup and header-only migration. Done.
+10. Complete P-Bench-9 core compute correctness gate. Done.
 11. Complete P-Bench-10 Mode B core compute expansion and refresh the dated
-    upstream report.
+    upstream report. Done.
 
 ## Acceptance Rule For New Fast Paths
 

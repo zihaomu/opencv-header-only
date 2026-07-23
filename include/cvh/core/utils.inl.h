@@ -1,8 +1,5 @@
-//
-// Created by mzh on 2024/8/5.
-//
-
-#include "cvh/core/utils.h"
+#ifndef CVH_CORE_UTILS_INL_H
+#define CVH_CORE_UTILS_INL_H
 
 #include <algorithm>
 #include <cctype>
@@ -42,7 +39,7 @@ void align_fp16_to_fp32(const hfloat* src, float* dst, size_t length)
 //  - Does not support infinities or NaN
 //  - Few, partially pipelinable, non-branching instructions,
 //  - Core opreations ~6 clock cycles on modern x86-64
-float fp16_to_fp32(const uint16_t in) {
+inline float fp16_to_fp32(const uint16_t in) {
     uint32_t t1;
     uint32_t t2;
     uint32_t t3;
@@ -75,7 +72,7 @@ float fp16_to_fp32(const uint16_t in) {
 //  - Does not support infinities or NaN
 //  - Few, partially pipelinable, non-branching instructions,
 //  - Core opreations ~10 clock cycles on modern x86-64
-uint16_t fp32_to_fp16(const float in) {
+inline uint16_t fp32_to_fp16(const float in) {
     uint32_t inu = *((uint32_t * ) & in);
     uint32_t t1;
     uint32_t t2;
@@ -102,12 +99,12 @@ uint16_t fp32_to_fp16(const float in) {
 //    *((uint16_t *) out) = t1;
 }
 
-std::string shape_to_str(const Mat& m)
+inline std::string shape_to_str(const Mat& m)
 {
     return shape_to_str(m.shape());
 }
 
-std::string shape_to_str(const MatShape& shape)
+inline std::string shape_to_str(const MatShape& shape)
 {
     int dims = shape.size();
     const auto& p = shape.data();
@@ -121,12 +118,12 @@ std::string shape_to_str(const MatShape& shape)
     return shape_str;
 }
 
-MatShape get_gemm_shape(const Mat& A, const Mat& B)
+inline MatShape get_gemm_shape(const Mat& A, const Mat& B)
 {
     return get_gemm_shape(A.shape(), B.shape());
 }
 
-MatShape get_gemm_shape(const MatShape& shape_a, const MatShape& shape_b)
+inline MatShape get_gemm_shape(const MatShape& shape_a, const MatShape& shape_b)
 {
     // 目前不处理 K x KxN 这种情况。
     CV_Assert(shape_a.size() >= 2 && shape_b.size() >= 2 && "Mat shapes on gemm function are miss matching!");
@@ -192,7 +189,7 @@ MatShape get_gemm_shape(const MatShape& shape_a, const MatShape& shape_b)
     return shape_c;
 }
 
-std::vector<int> argmax_tokens(const float* logits, int batch, int seq_len, int vocab_size) {
+inline std::vector<int> argmax_tokens(const float* logits, int batch, int seq_len, int vocab_size) {
     std::vector<int> token_ids(seq_len, -1);
 
     // 只取 batch=0 的情况
@@ -213,7 +210,7 @@ std::vector<int> argmax_tokens(const float* logits, int batch, int seq_len, int 
     return token_ids;
 }
 
-const char* runtime_precision_name(RuntimePrecision precision)
+inline const char* runtime_precision_name(RuntimePrecision precision)
 {
     switch (precision)
     {
@@ -227,7 +224,7 @@ const char* runtime_precision_name(RuntimePrecision precision)
     }
 }
 
-bool parse_runtime_precision(const std::string& text, RuntimePrecision& precision)
+inline bool parse_runtime_precision(const std::string& text, RuntimePrecision& precision)
 {
     std::string lower = text;
     std::transform(lower.begin(), lower.end(), lower.begin(),
@@ -252,7 +249,7 @@ bool parse_runtime_precision(const std::string& text, RuntimePrecision& precisio
     return false;
 }
 
-RuntimePrecision parse_runtime_precision(const std::string& text)
+inline RuntimePrecision parse_runtime_precision(const std::string& text)
 {
     RuntimePrecision precision = RuntimePrecision::FP32;
     if (!parse_runtime_precision(text, precision))
@@ -262,7 +259,7 @@ RuntimePrecision parse_runtime_precision(const std::string& text)
     return precision;
 }
 
-void align_precision_sensitive_input(const Mat& input, RuntimePrecision precision, Mat& output)
+inline void align_precision_sensitive_input(const Mat& input, RuntimePrecision precision, Mat& output)
 {
     CV_Assert(!input.empty() && "Precision alignment input can not be empty!");
     CV_Assert((input.type() == CV_32F || input.type() == CV_16F) &&
@@ -299,11 +296,13 @@ void align_precision_sensitive_input(const Mat& input, RuntimePrecision precisio
     }
 }
 
-Mat align_precision_sensitive_input(const Mat& input, RuntimePrecision precision)
+inline Mat align_precision_sensitive_input(const Mat& input, RuntimePrecision precision)
 {
     Mat output;
     align_precision_sensitive_input(input, precision, output);
     return output;
 }
+
+#endif  // CVH_CORE_UTILS_INL_H
 
 }

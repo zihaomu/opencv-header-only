@@ -58,12 +58,13 @@ cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
 
 cmake --build "${BUILD_DIR}" -j --target \
   cvh_header_compile_smoke \
+  cvh_core_header_odr_smoke \
   cvh_include_only_smoke \
   cvh_headers_fast_smoke \
   >/dev/null
 
 ctest --test-dir "${BUILD_DIR}" --output-on-failure \
-  -R 'cvh_header_compile_smoke|cvh_include_only_smoke|cvh_headers_fast_smoke'
+  -R 'cvh_header_compile_smoke|cvh_core_header_odr_smoke|cvh_include_only_smoke|cvh_headers_fast_smoke'
 
 cmake --install "${BUILD_DIR}" --prefix "${INSTALL_DIR}" >/dev/null
 require_no_legacy_export "${INSTALL_DIR}/lib/cmake/opencv_header_only"
@@ -125,7 +126,23 @@ int main()
     cvh::Mat dst;
     cvh::resize(src, dst, cvh::Size(1, 1), 0.0, 0.0, cvh::INTER_LINEAR);
 
-    return (dst.dims == 2 && dst.type() == CV_8UC1 && dst.size[0] == 1 && dst.size[1] == 1) ? 0 : 2;
+    cvh::Mat a({2, 2}, CV_32F);
+    cvh::Mat b({2, 2}, CV_32F);
+    a = 2.0f;
+    b = 3.0f;
+    cvh::Mat sum;
+    cvh::add(a, b, sum);
+    cvh::Mat transposed = cvh::transpose(sum);
+    cvh::Mat product = cvh::gemm(a, b);
+    cvh::Mat expression = a + b;
+
+    const bool core_ok =
+        reinterpret_cast<const float*>(transposed.data)[0] == 5.0f &&
+        reinterpret_cast<const float*>(product.data)[0] == 12.0f &&
+        reinterpret_cast<const float*>(expression.data)[0] == 5.0f;
+    const bool resize_ok =
+        dst.dims == 2 && dst.type() == CV_8UC1 && dst.size[0] == 1 && dst.size[1] == 1;
+    return core_ok && resize_ok ? 0 : 2;
 }
 EOF
 

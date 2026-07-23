@@ -180,6 +180,34 @@ void fill_u8(cvh::Mat& mat, std::uint32_t seed)
     }
 }
 
+void fill_f32(cvh::Mat& mat, std::uint32_t seed)
+{
+    const int rows = mat.size[0];
+    const int scalars_per_row = mat.size[1] * mat.channels();
+    std::uint32_t state = seed;
+    for (int y = 0; y < rows; ++y)
+    {
+        float* row = reinterpret_cast<float*>(mat.data + static_cast<std::size_t>(y) * mat.step(0));
+        for (int x = 0; x < scalars_per_row; ++x)
+        {
+            state = lcg_next(state);
+            row[x] = static_cast<float>(static_cast<int>(state & 0xFFFFu) - 32768) / 4096.0f;
+        }
+    }
+}
+
+void fill_by_depth(cvh::Mat& mat, DepthId depth, std::uint32_t seed)
+{
+    if (depth == DepthId::U8)
+    {
+        fill_u8(mat, seed);
+    }
+    else
+    {
+        fill_f32(mat, seed);
+    }
+}
+
 double safe_speedup(double cvh_ms, double opencv_ms)
 {
     return cvh_ms > 0.0 && opencv_ms > 0.0 ? opencv_ms / cvh_ms : 0.0;
@@ -374,6 +402,239 @@ void append_core_mat_cases(const Args& args, std::vector<CompareRow>& rows)
                 opencv_ms,
                 "micro_iters_x1000");
         }
+    }
+}
+
+void run_cvh_binary(CoreBinaryOpId op, const cvh::Mat& a, const cvh::Mat& b, cvh::Mat& dst)
+{
+    switch (op)
+    {
+        case CoreBinaryOpId::Add:
+            cvh::add(a, b, dst);
+            return;
+        case CoreBinaryOpId::Subtract:
+            cvh::subtract(a, b, dst);
+            return;
+        case CoreBinaryOpId::Multiply:
+            cvh::multiply(a, b, dst);
+            return;
+        case CoreBinaryOpId::Divide:
+            cvh::divide(a, b, dst);
+            return;
+    }
+}
+
+void require_correct(bool correct, const std::string& case_name)
+{
+    if (!correct)
+    {
+        std::cerr << "OpenCV correctness gate failed: " << case_name << "\n";
+        std::exit(3);
+    }
+}
+
+void append_core_compute_cases(const Args& args, std::vector<CompareRow>& rows)
+{
+    constexpr std::uint32_t seed_a = 0xB101u;
+    constexpr std::uint32_t seed_b = 0xB202u;
+    const std::vector<std::pair<CoreBinaryOpId, std::string>> binary_ops = {
+        {CoreBinaryOpId::Add, "ADD"},
+        {CoreBinaryOpId::Subtract, "SUBTRACT"},
+        {CoreBinaryOpId::Multiply, "MULTIPLY"},
+        {CoreBinaryOpId::Divide, "DIVIDE"},
+    };
+    const std::vector<std::pair<DepthId, std::string>> depths = {
+        {DepthId::U8, "CV_8U"},
+        {DepthId::F32, "CV_32F"},
+    };
+
+    for (const auto& shape : build_shapes(args.profile))
+    {
+        const std::string shape_name = shape_string(shape);
+        for (const auto& depth_case : depths)
+        {
+            for (const int channels : {1, 3})
+            {
+                const int type = CV_MAKETYPE(
+                    depth_case.first == DepthId::U8 ? CV_8U : CV_32F,
+                    channels);
+                cvh::Mat a({shape.rows, shape.cols}, type);
+                cvh::Mat b({shape.rows, shape.cols}, type);
+                fill_by_depth(a, depth_case.first, seed_a);
+                fill_by_depth(b, depth_case.first, seed_b);
+
+                for (const auto& op_case : binary_ops)
+                {
+                    cvh::Mat dst;
+                    run_cvh_binary(op_case.first, a, b, dst);
+                    const std::uint64_t output_bytes =
+                        static_cast<std::uint64_t>(dst.total()) * dst.elemSize();
+                    require_correct(
+                        validate_opencv_binary(
+                            op_case.first,
+                            shape.rows,
+                            shape.cols,
+                            depth_case.first,
+                            channels,
+                            seed_a,
+                            seed_b,
+                            dst.data,
+                            output_bytes),
+                        op_case.second + "/" + depth_case.second + "C" + std::to_string(channels) + "/" + shape_name);
+
+                    const double cvh_ms = measure_cvh_mat_ms(
+                        [&]() { run_cvh_binary(op_case.first, a, b, dst); },
+                        dst,
+                        args);
+                    const double opencv_ms = bench_opencv_binary(
+                        op_case.first,
+                        shape.rows,
+                        shape.cols,
+                        depth_case.first,
+                        channels,
+                        args.warmup,
+                        args.iters,
+                        args.repeats,
+                        seed_a,
+                        seed_b);
+                    append_row(
+                        rows,
+                        args,
+                        "core_mat",
+                        op_case.second,
+                        "mat_mat_continuous",
+                        "headers_baseline",
+                        depth_case.second,
+                        channels,
+                        shape_name,
+                        cvh_ms,
+                        opencv_ms,
+                        op_case.first == CoreBinaryOpId::Divide && depth_case.first == DepthId::U8
+                            ? "correctness=upstream_pass;u8_divide_abs_tolerance=1"
+                            : "correctness=upstream_pass");
+                }
+
+                cvh::Mat transposed = cvh::transpose(a);
+                const std::uint64_t transpose_bytes =
+                    static_cast<std::uint64_t>(transposed.total()) * transposed.elemSize();
+                require_correct(
+                    validate_opencv_transpose(
+                        shape.rows,
+                        shape.cols,
+                        depth_case.first,
+                        channels,
+                        seed_a,
+                        transposed.data,
+                        transpose_bytes),
+                    "TRANSPOSE/" + depth_case.second + "C" + std::to_string(channels) + "/" + shape_name);
+                const double cvh_ms = measure_cvh_mat_ms(
+                    [&]() { transposed = cvh::transpose(a); },
+                    transposed,
+                    args);
+                const double opencv_ms = bench_opencv_transpose(
+                    shape.rows,
+                    shape.cols,
+                    depth_case.first,
+                    channels,
+                    args.warmup,
+                    args.iters,
+                    args.repeats,
+                    seed_a);
+                append_row(
+                    rows,
+                    args,
+                    "core_mat",
+                    "TRANSPOSE",
+                    "continuous",
+                    "headers_baseline",
+                    depth_case.second,
+                    channels,
+                    shape_name,
+                    cvh_ms,
+                    opencv_ms,
+                    "correctness=upstream_pass");
+            }
+        }
+    }
+
+    std::vector<int> gemm_sizes {128};
+    if (args.profile == "stable" || args.profile == "full")
+    {
+        gemm_sizes = {128, 256, 512};
+    }
+    for (const int size : gemm_sizes)
+    {
+        cvh::Mat a({size, size}, CV_32F);
+        cvh::Mat b({size, size}, CV_32F);
+        fill_f32(a, seed_a);
+        fill_f32(b, seed_b);
+
+        Args gemm_args = args;
+        const std::uint64_t work =
+            static_cast<std::uint64_t>(size) * static_cast<std::uint64_t>(size) * static_cast<std::uint64_t>(size);
+        gemm_args.iters = std::min(args.iters, std::max(1, static_cast<int>((16u << 20) / work)));
+        gemm_args.warmup = std::min(args.warmup, 1);
+
+        cvh::Mat dst = cvh::gemm(a, b);
+        const std::uint64_t output_bytes =
+            static_cast<std::uint64_t>(dst.total()) * dst.elemSize();
+        require_correct(
+            validate_opencv_gemm(size, size, size, seed_a, seed_b, dst.data, output_bytes),
+            "GEMM/NN/" + std::to_string(size));
+        const double cvh_ms = measure_cvh_mat_ms([&]() { dst = cvh::gemm(a, b); }, dst, gemm_args);
+        const double opencv_ms = bench_opencv_gemm(
+            size,
+            size,
+            size,
+            gemm_args.warmup,
+            gemm_args.iters,
+            gemm_args.repeats,
+            seed_a,
+            seed_b);
+        append_row(
+            rows,
+            args,
+            "core_mat",
+            "GEMM",
+            "fp32_nn_end_to_end",
+            "headers_baseline",
+            "CV_32F",
+            1,
+            std::to_string(size) + "x" + std::to_string(size) + "x" + std::to_string(size),
+            cvh_ms,
+            opencv_ms,
+            "correctness=upstream_pass;iters=" + std::to_string(gemm_args.iters));
+
+        const cvh::GemmPackedB packed_b = cvh::gemm_pack_b(b);
+        dst = cvh::gemm(a, packed_b);
+        require_correct(
+            validate_opencv_gemm(size, size, size, seed_a, seed_b, dst.data, output_bytes),
+            "GEMM/NN/pack_once/" + std::to_string(size));
+        const double packed_cvh_ms =
+            measure_cvh_mat_ms([&]() { dst = cvh::gemm(a, packed_b); }, dst, gemm_args);
+        const double packed_opencv_ms = bench_opencv_gemm_prepack(
+            size,
+            size,
+            size,
+            gemm_args.warmup,
+            gemm_args.iters,
+            gemm_args.repeats,
+            seed_a,
+            seed_b);
+        append_row(
+            rows,
+            args,
+            "core_mat",
+            "GEMM",
+            "fp32_nn_pack_once",
+            "headers_baseline",
+            "CV_32F",
+            1,
+            std::to_string(size) + "x" + std::to_string(size) + "x" + std::to_string(size),
+            packed_cvh_ms,
+            packed_opencv_ms,
+            "correctness=upstream_pass;opencv_reuses_B_without_public_pack_handle;iters=" +
+                std::to_string(gemm_args.iters));
     }
 }
 
@@ -627,6 +888,7 @@ int main(int argc, char** argv)
     cvh_bench_compare::configure_opencv_threads(args.threads);
     std::vector<cvh_bench_compare::CompareRow> rows;
     cvh_bench_compare::append_core_mat_cases(args, rows);
+    cvh_bench_compare::append_core_compute_cases(args, rows);
     cvh_bench_compare::append_imgproc_cases(args, rows);
 
     if (!args.output_csv.empty())

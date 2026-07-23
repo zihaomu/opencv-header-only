@@ -73,8 +73,10 @@ Legend:
 | `core` | `Mat`, `Scalar`, `Range`, `Point`, `Size`, type/channel macros | Supported | Core data model and OpenCV-style type helpers. | Same behavior as baseline. |
 | `core` | `Mat::create`, `release`, `clone`, `copyTo`, `setTo`, `convertTo`, `reshape`, 2D ROI helpers | Supported | Covers common ownership, layout, continuous/non-contiguous, and conversion paths used by imgproc. | Same behavior as baseline. |
 | `core` | `parallel_for_`, thread controls | Supported | Header-only serial and standard-thread runtime. | Same behavior as baseline. |
-| `core` | `add`, `subtract`, `multiply`, `divide`, `compare`, `merge`, `split` | WIP | Public declarations exist, but these are not yet accepted as pure header-only supported operators. | No accepted fast path. |
-| `core` | `transpose`, `norm`, `softmax`, `silu`, `rmsnorm`, `rope`, GEMM-related helpers | WIP | Useful historical/AI-kernel work, but outside the current header-only OpenCV-operator contract. | No accepted fast path. |
+| `core` | `add`, `subtract`, `multiply`, `divide`, `compare`, `merge`, `split` | Supported | Header-only Mat-Mat/Mat-Scalar implementations with continuous and ROI coverage. | Inherits the scalar header baseline; SIMD specialization is pending. |
+| `core` | `transpose`, `transposeND` | Supported | Header-only blocked transpose with continuous, ROI, C1/C3/C4 and non-square coverage. | Inherits the scalar header baseline. |
+| `core` | `gemm`, `gemm_pack_b` | Supported | FP32 activation with FP32/FP16 weights, 2D/broadcast NN and packed-B; INT8 scales remain limited to the existing NT path. | Inherits the scalar header baseline. |
+| `core` | `norm`, `softmax`, `silu`, `rmsnorm`, `rope` | WIP | Declarations remain outside the accepted pure header-only operator contract. | No accepted fast path. |
 | `imgproc` | `resize` | Supported + fast path | `CV_8U` / `CV_32F`, `C1` / `C3` / `C4`, `INTER_NEAREST`, `INTER_NEAREST_EXACT`, `INTER_LINEAR`. | `CV_8UC1` exact 2x downsample with `INTER_LINEAR`. |
 | `imgproc` | `cvtColor` | Supported + fast path | `CV_8U` / `CV_32F` common BGR/RGB/GRAY/BGRA/RGBA conversions; `CV_8U` YUV encode/decode families. | `CV_8UC3` `BGR2GRAY` and `RGB2GRAY`. |
 | `imgproc` | `threshold` | Supported | `CV_8U` / `CV_32F` fixed thresholds; `OTSU` / `TRIANGLE` for `CV_8UC1`. | No accepted fast path. |
@@ -102,6 +104,7 @@ The support table above is tied to the header-only test path:
 | `cvh::headers` macro/default behavior | `cvh_header_compile_smoke`, `cvh_include_only_smoke` |
 | `cvh::headers_fast` macro/default behavior | `cvh_headers_fast_smoke` |
 | `core` supported baseline | `cvh_test_core_lite` |
+| Multi-translation-unit core ODR/link | `cvh_core_header_odr_smoke` |
 | `imgproc` supported operators | `cvh_test_imgproc` |
 | `imgcodecs` supported read/write subset | `cvh_test_imgcodecs` |
 | `highgui` header-only out-of-scope behavior | `cvh_test_highgui` |
@@ -112,7 +115,7 @@ These are target areas, but they are not yet supported promises in the pure head
 
 | Area | Candidate APIs / work | Current intent |
 |---|---|---|
-| Core array ops | `add/subtract/multiply/divide/compare/merge/split` | Move accepted implementations into headers, then require tests through `cvh::headers`. |
+| Core SIMD | `add/subtract/multiply/divide/transpose/GEMM` | Add UI or platform-specific paths only after the public header baseline is measured against upstream. |
 | AI preprocessing | `normalize`, HWC-to-CHW / CHW-to-HWC, tensor packing | Add as focused preprocessing utilities once `Mat` and imgproc behavior stay stable. |
 | SIMD expansion | general `resize`, broader `cvtColor`, YUV fast paths | Use direct OpenCV Universal Intrinsics style first; add platform-specific paths only when benchmark data justifies them. |
 | OpenCV compatibility | more flags, depths, borders, and edge cases | Expand only with explicit behavior contracts and regression tests. |

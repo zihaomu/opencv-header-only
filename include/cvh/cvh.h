@@ -11,6 +11,7 @@
 #include "core/parallel.h"
 #include "core/basic_op.h"
 #include "core/utils.h"
+#include "core/gemm.h"
 
 #include "imgproc/imgproc.h"
 #include "imgcodecs/imgcodecs.h"
