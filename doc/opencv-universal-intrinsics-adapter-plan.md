@@ -2033,7 +2033,7 @@ benchmark quick gate：
 
 P6.7：最终清理与提交边界
 
-状态：进行中，P6.7.2 已完成；下一步 P6.7.3。
+状态：已完成，P6.7.3 已完成；P6 direct OpenCV UI 收口完成。
 
 目标：
 
@@ -2182,7 +2182,7 @@ benchmark quick 复核：
 
 P6.7.3：提交边界
 
-状态：待开始。
+状态：已完成。
 
 目标：
 
@@ -2193,6 +2193,14 @@ P6.7.3：提交边界
 - 如果当前工作区只包含 P6 相关修改，P6.7 完成后可以直接提交。
 - commit message 建议描述为 direct OpenCV UI dialect、删除二次 facade、默认 OpenCV UI、迁移 checklist 和验证矩阵。
 - 提交前再次确认 `git status --short --branch`，避免夹带非 P6 修改。
+
+落地结果：
+
+- P6 direct OpenCV UI 改造已提交为 `87c743f Use direct OpenCV UI for header SIMD paths`。
+- 该提交包含 direct OpenCV UI gateway、`cvtColor` / `resize` direct UI 迁移、旧 adapter/facade 删除、smoke/contract 更新、迁移 checklist 和 P6.6/P6.7 验证记录。
+- 提交前 `git diff --check` 通过，且待提交范围均为 P6 direct OpenCV UI 相关修改。
+- 提交后 `git status --short --branch` 显示 `main...origin/main [ahead 5]`，无未提交修改。
+- P6.7.3 的本段记录作为 doc-only 收口提交单独提交，避免修改实现提交后再次混入代码变更。
 
 ## 成功标准
 
