@@ -11,7 +11,7 @@ cvh::headers
 cvh::headers_fast
 ```
 
-- `cvh::headers`：默认 header-only 入口，默认启用 OpenCV Universal Intrinsics facade，并保留 scalar fallback 正确性基线。
+- `cvh::headers`：默认 header-only 入口，默认启用 OpenCV Universal Intrinsics 作为内部 SIMD dialect，并保留 scalar fallback 正确性基线。
 - `cvh::headers_fast`：header-only fast profile，在 `cvh::headers` 之上启用额外平台 fast-profile toggles。
 
 历史 `.cpp` 实现只能作为 legacy/experimental 代码存在，不进入公开产品结构，也不作为公开 API 可用性的前提。
@@ -21,7 +21,7 @@ cvh::headers_fast
 - 提供接近 OpenCV 风格的基础数据结构和常用算子。
 - 保证用户仅包含 headers 或链接 interface target 即可使用。
 - 保持公开依赖、宏开关、安装导出和文档叙事一致。
-- 先建立 correctness contract，再引入 SIMD fast-path。
+- 先建立 correctness contract，再引入 benchmark-gated SIMD fast-path。
 - 用 benchmark 决定 fast-path 是否进入默认 OpenCV UI 路径或额外 fast profile。
 
 ## 非目标
@@ -118,10 +118,18 @@ cvh::headers_fast
 项目采用三条规则：
 
 - scalar fallback 是所有公开算子的 correctness 基线。
-- OpenCV Universal Intrinsics 是默认 portable SIMD 路径。
+- OpenCV Universal Intrinsics 是默认内部 SIMD dialect。业务 SIMD kernel 可以直接使用 `cv::v_*`、`cv::VTraits`、`CV_SIMD`、`CV_SIMD_WIDTH` 和 `vx_*`，但这些类型不构成 `cvh` 用户公开 API。
 - direct platform intrinsics 只能在 benchmark 证明 OpenCV Universal Intrinsics 不足时进入候选。
 
 xsimd 不再作为图像 kernel 的主性能路线。P5.3 已移除 public adapter surface、legacy `.cpp` xsimd kernel、内部 `XSimdOnly` dispatch、测试入口和 vendor 目录；默认 header-only target、`cvh::headers_fast`、安装导出和 header-only CI 都不能依赖它。
+
+`cvh::detail::simd` 二次 facade 不再作为未来路线。P6 开始，已接受的 OpenCV UI fast path 会迁移到 direct OpenCV UI 写法；scalar fallback 保持为显式 `*_scalar_impl` 或 benchmark helper，而不是伪装成 SIMD backend。
+
+当前 SIMD 平台范围只处理 ARM NEON 和 x86 AVX 系列。RVV 支持放入后续 TODO；SSE header/宏只作为 x86 OpenCV UI/AVX 编译链路的基础条件，不作为当前独立优化路线。
+
+从 OpenCV 迁移新的 SIMD kernel 时，使用
+`doc/opencv-ui-kernel-migration-checklist.md` 作为评审 checklist；迁移应尽量保留
+OpenCV UI 原始表达，只替换 OpenCV runtime/module 依赖。
 
 ## Documentation Rules
 
@@ -143,7 +151,7 @@ xsimd 不再作为图像 kernel 的主性能路线。P5.3 已移除 public adapt
 - 文档明确输入约束和未支持范围。
 - README 支持矩阵能追溯到 `scripts/ci_headers_all.sh` 中的 header-only test/gate。
 
-一个 fast-path 进入 `cvh::headers_fast`，至少需要：
+一个 SIMD fast-path 进入默认 OpenCV UI 路径或额外 fast profile，至少需要：
 
 - scalar fallback 已稳定。
 - fast-path 正确性与 scalar 对齐。
@@ -152,4 +160,4 @@ xsimd 不再作为图像 kernel 的主性能路线。P5.3 已移除 public adapt
 
 ## 当前结论
 
-项目价值来自“真实可用的纯 header-only OpenCV-style 子集”，而不是 header 和 `.cpp` 扩展的混合叙事。后续工作应优先收口公开面、补齐 header-only contract，再按 benchmark 扩展 `cvh::headers_fast`。
+项目价值来自“真实可用的纯 header-only OpenCV-style 子集”，而不是 header 和 `.cpp` 扩展的混合叙事。后续工作应优先收口公开面、补齐 header-only contract，再用 direct OpenCV UI 迁移和 benchmark gate 扩展内部 SIMD 能力。

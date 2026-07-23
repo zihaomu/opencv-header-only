@@ -28,7 +28,7 @@ Many real-world deployments only need a small and predictable part of OpenCV:
 
 | Target | Role | Behavior |
 |---|---|---|
-| `cvh::headers` | Default header-only target | Enables the vendored OpenCV Universal Intrinsics adapter by default and keeps platform-specific project fast toggles off. It does not compile `.cpp` files and does not enable xsimd. |
+| `cvh::headers` | Default header-only target | Enables the vendored OpenCV Universal Intrinsics headers by default as the internal SIMD dialect and keeps platform-specific project fast toggles off. It does not compile `.cpp` files and does not enable xsimd. |
 | `cvh::headers_fast` | Fast-profile target | Inherits `cvh::headers` and enables validated platform fast-profile toggles. It does not compile `.cpp` files and does not enable xsimd. |
 
 New public features should land in `cvh::headers` first. `cvh::headers_fast` should only add platform fast-profile toggles that have correctness tests and a benchmark reason to exist.
@@ -114,12 +114,14 @@ These are target areas, but they are not yet supported promises in the pure head
 |---|---|---|
 | Core array ops | `add/subtract/multiply/divide/compare/merge/split` | Move accepted implementations into headers, then require tests through `cvh::headers`. |
 | AI preprocessing | `normalize`, HWC-to-CHW / CHW-to-HWC, tensor packing | Add as focused preprocessing utilities once `Mat` and imgproc behavior stay stable. |
-| SIMD expansion | general `resize`, broader `cvtColor`, YUV fast paths | Use OpenCV Universal Intrinsics first; add platform-specific paths only when benchmark data justifies them. |
+| SIMD expansion | general `resize`, broader `cvtColor`, YUV fast paths | Use direct OpenCV Universal Intrinsics style first; add platform-specific paths only when benchmark data justifies them. |
 | OpenCV compatibility | more flags, depths, borders, and edge cases | Expand only with explicit behavior contracts and regression tests. |
 
 ## Performance
 
-Performance work is benchmark-driven. `cvh::headers` enables the OpenCV Universal Intrinsics SIMD facade by default while retaining scalar fallback code paths. `cvh::headers_fast` is reserved for additional platform fast-profile toggles.
+Performance work is benchmark-driven. `cvh::headers` enables OpenCV Universal Intrinsics as the internal SIMD dialect by default while retaining scalar fallback code paths. `cvh::headers_fast` is reserved for additional platform fast-profile toggles.
+
+Current SIMD platform work is limited to ARM NEON and the x86 AVX family. RVV support is a future TODO; SSE headers/macros exist only as x86 OpenCV UI/AVX prerequisites, not as a separate current optimization track.
 
 Current accepted fast paths:
 
@@ -128,7 +130,8 @@ Current accepted fast paths:
 
 Compare workspace:
 
-- [OpenCV Compare README](benchmark/opencv_compare/README.md)
+- [OpenCV Compare README](benchmark/opencv_compare/README.md) - legacy/internal compare modes, not public CMake targets
+- [OpenCV UI Kernel Migration Checklist](doc/opencv-ui-kernel-migration-checklist.md)
 
 Available Markdown reports:
 

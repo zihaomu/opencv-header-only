@@ -1,4 +1,5 @@
 #include "cvh.h"
+#include "cvh/core/simd/opencv_ui.h"
 
 #if !CVH_ENABLE_OPENCV_INTRIN
 #error "cvh_benchmark_cvtcolor_bgr2gray_header must be compiled with CVH_ENABLE_OPENCV_INTRIN=1"
@@ -196,7 +197,7 @@ std::string allocation_mode_name(AllocationMode mode)
 
 int simd_lanes()
 {
-    return static_cast<int>(cvh::detail::simd::u8_lanes());
+    return cv::VTraits<cv::v_uint8x16>::vlanes();
 }
 
 std::size_t tail_pixels(const ShapeCase& shape)
@@ -302,12 +303,12 @@ void run_rgb_opencv_intrin(const cvh::Mat& src, cvh::Mat& dst)
 
 void run_opencv_intrin_direct(const cvh::Mat& src, cvh::Mat& dst)
 {
-    cvh::detail::cvtcolor_bgr2gray_u8_simd_impl(src, dst);
+    cvh::detail::cvtcolor_bgr2gray_u8_opencv_intrin_impl(src, dst);
 }
 
 void run_rgb_opencv_intrin_direct(const cvh::Mat& src, cvh::Mat& dst)
 {
-    cvh::detail::cvtcolor_rgb2gray_u8_simd_impl(src, dst);
+    cvh::detail::cvtcolor_rgb2gray_u8_opencv_intrin_impl(src, dst);
 }
 
 void prepare_dst(cvh::Mat& dst, const cvh::Mat& src, AllocationMode allocation_mode)
@@ -370,12 +371,10 @@ Result measure(BenchFn fn,
 
 void run_micro_store_u8(const cvh::Mat&, const cvh::Mat&, const ShapeCase& shape, cvh::Mat& dst)
 {
-    namespace simd = cvh::detail::simd;
-
     dst.create(std::vector<int>{shape.rows, shape.cols}, CV_8UC1);
     const int lanes = simd_lanes();
-    const simd::u16 wide = simd::setall_u16(123);
-    const simd::u8 value = simd::pack_u16_to_u8(wide, wide);
+    const cv::v_uint16x8 wide = cv::v_setall_u16(static_cast<ushort>(123));
+    const cv::v_uint8x16 value = cv::v_pack(wide, wide);
 
     for (int y = 0; y < shape.rows; ++y)
     {
@@ -383,7 +382,7 @@ void run_micro_store_u8(const cvh::Mat&, const cvh::Mat&, const ShapeCase& shape
         int x = 0;
         for (; x + lanes <= shape.cols; x += lanes)
         {
-            simd::store_u8(dst_row + x, value);
+            cv::v_store(reinterpret_cast<uchar*>(dst_row + x), value);
         }
         for (; x < shape.cols; ++x)
         {
@@ -416,8 +415,6 @@ void run_micro_load_deinterleave_store_u8(const cvh::Mat& bgr,
                                           const ShapeCase& shape,
                                           cvh::Mat& dst)
 {
-    namespace simd = cvh::detail::simd;
-
     dst.create(std::vector<int>{shape.rows, shape.cols}, CV_8UC1);
     const int lanes = simd_lanes();
     for (int y = 0; y < shape.rows; ++y)
@@ -428,11 +425,15 @@ void run_micro_load_deinterleave_store_u8(const cvh::Mat& bgr,
         int x = 0;
         for (; x + lanes <= shape.cols; x += lanes)
         {
-            simd::u8 c0;
-            simd::u8 c1;
-            simd::u8 c2;
-            simd::load_deinterleave3_u8(src_row + static_cast<std::size_t>(x) * 3, c0, c1, c2);
-            simd::store_u8(dst_row + x, c0);
+            cv::v_uint8x16 c0;
+            cv::v_uint8x16 c1;
+            cv::v_uint8x16 c2;
+            cv::v_load_deinterleave(
+                reinterpret_cast<const uchar*>(src_row + static_cast<std::size_t>(x) * 3),
+                c0,
+                c1,
+                c2);
+            cv::v_store(reinterpret_cast<uchar*>(dst_row + x), c0);
         }
         for (; x < shape.cols; ++x)
         {
@@ -446,17 +447,15 @@ void run_micro_planar_widen_mul_pack_store_u8(const cvh::Mat&,
                                               const ShapeCase& shape,
                                               cvh::Mat& dst)
 {
-    namespace simd = cvh::detail::simd;
-
     dst.create(std::vector<int>{shape.rows, shape.cols}, CV_8UC1);
     const int lanes = simd_lanes();
     const std::size_t plane_size = static_cast<std::size_t>(shape.rows) * static_cast<std::size_t>(shape.cols);
     const std::uint8_t* b_plane = reinterpret_cast<const std::uint8_t*>(planar.data);
     const std::uint8_t* g_plane = b_plane + plane_size;
     const std::uint8_t* r_plane = g_plane + plane_size;
-    const simd::u16 weight_b = simd::setall_u16(7471);
-    const simd::u16 weight_g = simd::setall_u16(38470);
-    const simd::u16 weight_r = simd::setall_u16(19595);
+    const cv::v_uint16x8 weight_b = cv::v_setall_u16(static_cast<ushort>(7471));
+    const cv::v_uint16x8 weight_g = cv::v_setall_u16(static_cast<ushort>(38470));
+    const cv::v_uint16x8 weight_r = cv::v_setall_u16(static_cast<ushort>(19595));
 
     for (int y = 0; y < shape.rows; ++y)
     {
@@ -469,25 +468,25 @@ void run_micro_planar_widen_mul_pack_store_u8(const cvh::Mat&,
         int x = 0;
         for (; x + lanes <= shape.cols; x += lanes)
         {
-            const simd::u8 b8 = simd::load_u8(b_row + x);
-            const simd::u8 g8 = simd::load_u8(g_row + x);
-            const simd::u8 r8 = simd::load_u8(r_row + x);
+            const cv::v_uint8x16 b8 = cv::v_load(reinterpret_cast<const uchar*>(b_row + x));
+            const cv::v_uint8x16 g8 = cv::v_load(reinterpret_cast<const uchar*>(g_row + x));
+            const cv::v_uint8x16 r8 = cv::v_load(reinterpret_cast<const uchar*>(r_row + x));
 
-            simd::u16 b16_lo;
-            simd::u16 b16_hi;
-            simd::u16 g16_lo;
-            simd::u16 g16_hi;
-            simd::u16 r16_lo;
-            simd::u16 r16_hi;
-            simd::expand_u8(b8, b16_lo, b16_hi);
-            simd::expand_u8(g8, g16_lo, g16_hi);
-            simd::expand_u8(r8, r16_lo, r16_hi);
+            cv::v_uint16x8 b16_lo;
+            cv::v_uint16x8 b16_hi;
+            cv::v_uint16x8 g16_lo;
+            cv::v_uint16x8 g16_hi;
+            cv::v_uint16x8 r16_lo;
+            cv::v_uint16x8 r16_hi;
+            cv::v_expand(b8, b16_lo, b16_hi);
+            cv::v_expand(g8, g16_lo, g16_hi);
+            cv::v_expand(r8, r16_lo, r16_hi);
 
-            const simd::u16 y16_lo = cvh::detail::cvtcolor_bgr2gray_u8_wide_simd(
+            const cv::v_uint16x8 y16_lo = cvh::detail::cvtcolor_bgr2gray_u8_wide_opencv_intrin(
                 b16_lo, g16_lo, r16_lo, weight_b, weight_g, weight_r);
-            const simd::u16 y16_hi = cvh::detail::cvtcolor_bgr2gray_u8_wide_simd(
+            const cv::v_uint16x8 y16_hi = cvh::detail::cvtcolor_bgr2gray_u8_wide_opencv_intrin(
                 b16_hi, g16_hi, r16_hi, weight_b, weight_g, weight_r);
-            simd::store_u8(dst_row + x, simd::pack_u16_to_u8(y16_lo, y16_hi));
+            cv::v_store(reinterpret_cast<uchar*>(dst_row + x), cv::v_pack(y16_lo, y16_hi));
         }
 
         for (; x < shape.cols; ++x)

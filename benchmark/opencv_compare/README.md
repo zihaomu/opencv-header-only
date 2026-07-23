@@ -2,6 +2,11 @@
 
 This directory is dedicated to **cvh vs official OpenCV** speed comparison.
 
+This workspace is an internal benchmark harness. Its `native` / `lite`
+implementation names are legacy compare modes used by the scripts and CSV
+schema; they are not public product targets. The public product targets remain
+`cvh::headers` and `cvh::headers_fast`.
+
 ## Reports
 
 - Quick report: [opencv_compare_quick.md](opencv_compare_quick.md)
@@ -38,7 +43,7 @@ You can override with environment variables:
 - `CVH_COMPARE_BUILD_TYPE` (`Release|RelWithDebInfo|Debug`, default `Release`)
 - `CVH_COMPARE_OUTPUT_MD` (override Markdown output path)
 - `CVH_COMPARE_OUTPUT_META` (override metadata JSON output path)
-- `CVH_COMPARE_IMPLS` (`native|lite|native,lite`, default `native,lite`; `full` is a deprecated alias for `native`)
+- `CVH_COMPARE_IMPLS` (`native|lite|native,lite`, default `native,lite`; internal compare modes only; `full` is a deprecated alias for `native`)
 
 ## Compare Profiles
 
@@ -71,6 +76,10 @@ Run only one implementation mode:
 ./benchmark/opencv_compare/run_compare.sh --profile quick --impls lite
 ```
 
+These names select benchmark binaries inside this workspace. They should not be
+used in README/API documentation as replacement names for `cvh::headers` or
+`cvh::headers_fast`.
+
 3. Generate/update baseline CSV + Markdown + metadata:
 
 ```bash
@@ -80,7 +89,7 @@ Run only one implementation mode:
 Default CSV path:
 
 - `benchmark/opencv_compare/results/current_compare_quick.csv`
-  - includes `impl` column to distinguish `native` and `lite` rows.
+  - includes `impl` column to distinguish internal `native` and `lite` compare rows.
 
 Default Markdown path:
 
@@ -97,7 +106,9 @@ The main repo adds:
 - `CVH_ENABLE_OPENCV_COMPARE` (default `OFF`)
 - `CVH_OPENCV_BENCH_DIR` (default `benchmark/opencv_compare/opencv-bench-slim`)
 
-When compare is enabled, targets `cvh_benchmark_compare` (native) and `cvh_benchmark_compare_lite` (lite) are built.
+When compare is enabled, internal benchmark targets `cvh_benchmark_compare`
+(`native` mode) and `cvh_benchmark_compare_lite` (`lite` mode) are built. These
+targets are not part of the public package surface.
 
 ## Bench Scope
 

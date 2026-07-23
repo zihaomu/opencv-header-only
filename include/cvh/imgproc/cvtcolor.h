@@ -4,10 +4,9 @@
 #include "../detail/config.h"
 #include "detail/common.h"
 #if CVH_ENABLE_OPENCV_INTRIN
-#include "../core/simd/simd.h"
+#include "../core/simd/opencv_ui.h"
 #endif
 
-#include <cstdint>
 #include <type_traits>
 #include <vector>
 
@@ -66,31 +65,31 @@ inline void cvtcolor_rgb2gray_u8_scalar_impl(const Mat& src, Mat& dst)
 }
 
 #if CVH_ENABLE_OPENCV_INTRIN
-inline simd::u16 cvtcolor_bgr2gray_u8_wide_simd(const simd::u16& bb,
-                                                const simd::u16& gg,
-                                                const simd::u16& rr,
-                                                const simd::u16& weight_b,
-                                                const simd::u16& weight_g,
-                                                const simd::u16& weight_r)
+inline cv::v_uint16x8 cvtcolor_bgr2gray_u8_wide_opencv_intrin(const cv::v_uint16x8& bb,
+                                                              const cv::v_uint16x8& gg,
+                                                              const cv::v_uint16x8& rr,
+                                                              const cv::v_uint16x8& weight_b,
+                                                              const cv::v_uint16x8& weight_g,
+                                                              const cv::v_uint16x8& weight_r)
 {
-    simd::u32 b0;
-    simd::u32 b1;
-    simd::u32 g0;
-    simd::u32 g1;
-    simd::u32 r0;
-    simd::u32 r1;
-    simd::mul_expand_u16(bb, weight_b, b0, b1);
-    simd::mul_expand_u16(gg, weight_g, g0, g1);
-    simd::mul_expand_u16(rr, weight_r, r0, r1);
+    cv::v_uint32x4 b0;
+    cv::v_uint32x4 b1;
+    cv::v_uint32x4 g0;
+    cv::v_uint32x4 g1;
+    cv::v_uint32x4 r0;
+    cv::v_uint32x4 r1;
+    cv::v_mul_expand(bb, weight_b, b0, b1);
+    cv::v_mul_expand(gg, weight_g, g0, g1);
+    cv::v_mul_expand(rr, weight_r, r0, r1);
 
-    const simd::u32 y0 = simd::add(simd::add(b0, g0), r0);
-    const simd::u32 y1 = simd::add(simd::add(b1, g1), r1);
+    const cv::v_uint32x4 y0 = cv::v_add(cv::v_add(b0, g0), r0);
+    const cv::v_uint32x4 y1 = cv::v_add(cv::v_add(b1, g1), r1);
 
-    return simd::rshr_pack_u32_to_u16<16>(y0, y1);
+    return cv::v_rshr_pack<16>(y0, y1);
 }
 
 template <bool rgb_order>
-inline void cvtcolor_color3_to_gray_u8_simd_impl(const Mat& src, Mat& dst)
+inline void cvtcolor_color3_to_gray_u8_opencv_intrin_impl(const Mat& src, Mat& dst)
 {
     CV_Assert(src.channels() == 3 && "cvtColor(BGR/RGB2GRAY): source must have 3 channels");
 
@@ -101,10 +100,10 @@ inline void cvtcolor_color3_to_gray_u8_simd_impl(const Mat& src, Mat& dst)
     dst.create(std::vector<int>{rows, cols}, CV_8UC1);
     const size_t dst_step = dst.step(0);
 
-    const simd::u16 weight_b = simd::setall_u16(7471);
-    const simd::u16 weight_g = simd::setall_u16(38470);
-    const simd::u16 weight_r = simd::setall_u16(19595);
-    const int lanes = static_cast<int>(simd::u8_lanes());
+    const cv::v_uint16x8 weight_b = cv::v_setall_u16(static_cast<ushort>(7471));
+    const cv::v_uint16x8 weight_g = cv::v_setall_u16(static_cast<ushort>(38470));
+    const cv::v_uint16x8 weight_r = cv::v_setall_u16(static_cast<ushort>(19595));
+    const int lanes = cv::VTraits<cv::v_uint8x16>::vlanes();
     constexpr int b_index = rgb_order ? 2 : 0;
     constexpr int r_index = rgb_order ? 0 : 2;
 
@@ -116,35 +115,31 @@ inline void cvtcolor_color3_to_gray_u8_simd_impl(const Mat& src, Mat& dst)
         int x = 0;
         for (; x + lanes <= cols; x += lanes)
         {
-            simd::u8 c0;
-            simd::u8 c1;
-            simd::u8 c2;
-            simd::load_deinterleave3_u8(
-                reinterpret_cast<const std::uint8_t*>(src_row + static_cast<size_t>(x) * 3),
-                c0,
-                c1,
-                c2);
+            cv::v_uint8x16 c0;
+            cv::v_uint8x16 c1;
+            cv::v_uint8x16 c2;
+            cv::v_load_deinterleave(src_row + static_cast<size_t>(x) * 3, c0, c1, c2);
 
-            const simd::u8& b8 = rgb_order ? c2 : c0;
-            const simd::u8& g8 = c1;
-            const simd::u8& r8 = rgb_order ? c0 : c2;
+            const cv::v_uint8x16& b8 = rgb_order ? c2 : c0;
+            const cv::v_uint8x16& g8 = c1;
+            const cv::v_uint8x16& r8 = rgb_order ? c0 : c2;
 
-            simd::u16 b16_lo;
-            simd::u16 b16_hi;
-            simd::u16 g16_lo;
-            simd::u16 g16_hi;
-            simd::u16 r16_lo;
-            simd::u16 r16_hi;
-            simd::expand_u8(b8, b16_lo, b16_hi);
-            simd::expand_u8(g8, g16_lo, g16_hi);
-            simd::expand_u8(r8, r16_lo, r16_hi);
+            cv::v_uint16x8 b16_lo;
+            cv::v_uint16x8 b16_hi;
+            cv::v_uint16x8 g16_lo;
+            cv::v_uint16x8 g16_hi;
+            cv::v_uint16x8 r16_lo;
+            cv::v_uint16x8 r16_hi;
+            cv::v_expand(b8, b16_lo, b16_hi);
+            cv::v_expand(g8, g16_lo, g16_hi);
+            cv::v_expand(r8, r16_lo, r16_hi);
 
-            const simd::u16 y16_lo = cvtcolor_bgr2gray_u8_wide_simd(
+            const cv::v_uint16x8 y16_lo = cvtcolor_bgr2gray_u8_wide_opencv_intrin(
                 b16_lo, g16_lo, r16_lo, weight_b, weight_g, weight_r);
-            const simd::u16 y16_hi = cvtcolor_bgr2gray_u8_wide_simd(
+            const cv::v_uint16x8 y16_hi = cvtcolor_bgr2gray_u8_wide_opencv_intrin(
                 b16_hi, g16_hi, r16_hi, weight_b, weight_g, weight_r);
-            const simd::u8 y8 = simd::pack_u16_to_u8(y16_lo, y16_hi);
-            simd::store_u8(reinterpret_cast<std::uint8_t*>(dst_row + x), y8);
+            const cv::v_uint8x16 y8 = cv::v_pack(y16_lo, y16_hi);
+            cv::v_store(dst_row + x, y8);
         }
 
         for (; x < cols; ++x)
@@ -158,14 +153,14 @@ inline void cvtcolor_color3_to_gray_u8_simd_impl(const Mat& src, Mat& dst)
     }
 }
 
-inline void cvtcolor_bgr2gray_u8_simd_impl(const Mat& src, Mat& dst)
+inline void cvtcolor_bgr2gray_u8_opencv_intrin_impl(const Mat& src, Mat& dst)
 {
-    cvtcolor_color3_to_gray_u8_simd_impl<false>(src, dst);
+    cvtcolor_color3_to_gray_u8_opencv_intrin_impl<false>(src, dst);
 }
 
-inline void cvtcolor_rgb2gray_u8_simd_impl(const Mat& src, Mat& dst)
+inline void cvtcolor_rgb2gray_u8_opencv_intrin_impl(const Mat& src, Mat& dst)
 {
-    cvtcolor_color3_to_gray_u8_simd_impl<true>(src, dst);
+    cvtcolor_color3_to_gray_u8_opencv_intrin_impl<true>(src, dst);
 }
 #endif
 
@@ -177,7 +172,7 @@ inline void cvtcolor_color3_to_gray_fallback_impl(const Mat& src, Mat& dst)
     if constexpr (std::is_same_v<T, uchar>)
     {
 #if CVH_ENABLE_OPENCV_INTRIN
-        cvtcolor_color3_to_gray_u8_simd_impl<rgb_order>(src, dst);
+        cvtcolor_color3_to_gray_u8_opencv_intrin_impl<rgb_order>(src, dst);
 #else
         cvtcolor_color3_to_gray_u8_scalar_impl<rgb_order>(src, dst);
 #endif

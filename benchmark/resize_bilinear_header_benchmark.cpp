@@ -1,5 +1,5 @@
 #include "cvh.h"
-#include "cvh/core/simd/simd.h"
+#include "cvh/core/simd/opencv_ui.h"
 
 #if !CVH_ENABLE_OPENCV_INTRIN
 #error "cvh_benchmark_resize_bilinear_header must be compiled with CVH_ENABLE_OPENCV_INTRIN=1"
@@ -207,7 +207,7 @@ std::string allocation_mode_name(AllocationMode mode)
 
 int simd_lanes()
 {
-    return static_cast<int>(cvh::detail::simd::u8_lanes());
+    return cv::VTraits<cv::v_uint8x16>::vlanes();
 }
 
 std::size_t output_pixels(const ResizeCase& shape)

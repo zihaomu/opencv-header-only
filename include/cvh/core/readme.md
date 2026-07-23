@@ -35,9 +35,10 @@
 
 ### P3：性能层引入
 
-- 在不破坏 API 的前提下引入 OpenCV Universal Intrinsics 和必要的平台专项 header-only 优化。
+- 在不破坏 API 的前提下引入 direct OpenCV Universal Intrinsics 写法和必要的平台专项 header-only 优化。
 - 历史 xsimd 路径已从当前代码面移除，不再作为本目录的优化方向。
-- 性能路径与标量路径保持统一语义并双向回归测试。
+- 不再把二次 SIMD facade 作为未来主路线；OpenCV UI 只作为 `cvh` 内部 SIMD dialect，不构成用户公开 API。
+- 性能路径与显式标量 fallback 保持统一语义并双向回归测试。
 
 ## 非目标与边界
 

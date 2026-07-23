@@ -92,7 +92,7 @@ EOF
 
 cat > "${HEADERS_CONSUMER_DIR}/main.cpp" <<'EOF'
 #include <cvh/cvh.h>
-#include <cvh/core/simd/simd.h>
+#include <cvh/core/simd/opencv_ui.h>
 
 #include <cstring>
 
@@ -114,7 +114,7 @@ cat > "${HEADERS_CONSUMER_DIR}/main.cpp" <<'EOF'
 
 int main()
 {
-    if (std::strcmp(cvh::detail::simd::backend_name(), "opencv_intrin") != 0)
+    if (std::strcmp(cvh::detail::opencv_ui_backend_name(), "opencv_intrin") != 0)
     {
         return 1;
     }
@@ -159,7 +159,7 @@ EOF
 
 cat > "${FAST_CONSUMER_DIR}/main.cpp" <<'EOF'
 #include <cvh/cvh.h>
-#include <cvh/core/simd/simd.h>
+#include <cvh/core/simd/opencv_ui.h>
 
 #include <cstring>
 
@@ -181,7 +181,7 @@ cat > "${FAST_CONSUMER_DIR}/main.cpp" <<'EOF'
 
 int main()
 {
-    if (std::strcmp(cvh::detail::simd::backend_name(), "opencv_intrin") != 0)
+    if (std::strcmp(cvh::detail::opencv_ui_backend_name(), "opencv_intrin") != 0)
     {
         return 1;
     }

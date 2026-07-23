@@ -67,7 +67,7 @@
 - 可执行程序：`cvh_benchmark_cvtcolor_bgr2gray_header`
   - 源码：`benchmark/cvtcolor_bgr2gray_header_benchmark.cpp`
   - 覆盖：header-only `CV_8UC3 BGR2GRAY/RGB2GRAY`
-  - 对比：同一输入下的 scalar direct helper、`cvh::cvtColor` 公共入口、`detail::*_simd_impl` 直接入口
+  - 对比：同一输入下的 scalar direct helper、`cvh::cvtColor` 公共入口、direct OpenCV UI detail 入口
   - 分配模式：`reuse` 预分配并复用输出 `Mat`，`recreate` 每次调用前 `dst.release()` 强制重建输出 buffer
   - micro rows：`MICRO_STORE_U8`、`MICRO_SCALAR_READ3_WRITE1_U8`、`MICRO_LOAD_DEINTERLEAVE_STORE_U8`、`MICRO_PLANAR_LOAD3_WIDEN_MUL_PACK_STORE_U8`
   - `full` profile 额外覆盖非 16 对齐宽度：`63x480`、`641x479`、`1919x1080`、`3839x2160`
@@ -247,5 +247,5 @@ cmake --build build-opencv-intrin-p3-bench -j --target cvh_benchmark_resize_bili
   - `benchmark/current_imgproc_quick.csv`
   - `benchmark/baseline_imgproc_full.csv`
   - `benchmark/current_imgproc_full.csv`
-- OpenCV Universal Intrinsics adapter 计划引用的 header-only 诊断 CSV 可随计划阶段单独保留。
+- OpenCV UI direct migration 计划引用的 header-only 诊断 CSV 可随计划阶段单独保留。
 - 阶段性中间产物（如 `*_b2.csv`、`*_d1.csv`、`*_e3.csv`、`*_ci_*.csv`）用于开发期验证，收口后应清理。

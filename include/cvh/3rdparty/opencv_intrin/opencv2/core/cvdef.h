@@ -124,7 +124,7 @@ typedef std::uint64_t uint64;
 #endif
 
 #if CV_RVV || CV_RVV071
-#error "CVH OpenCV Universal Intrinsics RVV is deferred; use NEON or SSE/AVX paths until a scalable facade exists"
+#error "CVH OpenCV Universal Intrinsics RVV is deferred; use NEON or AVX paths until a scalable design exists"
 #endif
 
 #ifndef CV_LSX

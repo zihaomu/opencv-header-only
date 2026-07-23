@@ -4,10 +4,9 @@
 #include "../detail/config.h"
 #include "detail/common.h"
 #if CVH_ENABLE_OPENCV_INTRIN
-#include "../core/simd/simd.h"
+#include "../core/simd/opencv_ui.h"
 #endif
 
-#include <cstdint>
 #include <type_traits>
 #include <vector>
 
@@ -65,7 +64,7 @@ inline void resize_linear_u8c1_downsample2_opencv_intrin_impl(const Mat& src, Ma
 
     const size_t src_step = src.step(0);
     const size_t dst_step = dst.step(0);
-    const int lanes = static_cast<int>(simd::u8_lanes());
+    const int lanes = cv::VTraits<cv::v_uint8x16>::vlanes();
 
     for (int y = 0; y < dst_rows; ++y)
     {
@@ -76,41 +75,33 @@ inline void resize_linear_u8c1_downsample2_opencv_intrin_impl(const Mat& src, Ma
         int x = 0;
         for (; x + lanes <= dst_cols; x += lanes)
         {
-            simd::u8 r0_even;
-            simd::u8 r0_odd;
-            simd::u8 r1_even;
-            simd::u8 r1_odd;
-            simd::load_deinterleave2_u8(
-                reinterpret_cast<const std::uint8_t*>(src_row0 + static_cast<size_t>(x) * 2),
-                r0_even,
-                r0_odd);
-            simd::load_deinterleave2_u8(
-                reinterpret_cast<const std::uint8_t*>(src_row1 + static_cast<size_t>(x) * 2),
-                r1_even,
-                r1_odd);
+            cv::v_uint8x16 r0_even;
+            cv::v_uint8x16 r0_odd;
+            cv::v_uint8x16 r1_even;
+            cv::v_uint8x16 r1_odd;
+            cv::v_load_deinterleave(src_row0 + static_cast<size_t>(x) * 2, r0_even, r0_odd);
+            cv::v_load_deinterleave(src_row1 + static_cast<size_t>(x) * 2, r1_even, r1_odd);
 
-            simd::u16 r0_even_lo;
-            simd::u16 r0_even_hi;
-            simd::u16 r0_odd_lo;
-            simd::u16 r0_odd_hi;
-            simd::u16 r1_even_lo;
-            simd::u16 r1_even_hi;
-            simd::u16 r1_odd_lo;
-            simd::u16 r1_odd_hi;
-            simd::expand_u8(r0_even, r0_even_lo, r0_even_hi);
-            simd::expand_u8(r0_odd, r0_odd_lo, r0_odd_hi);
-            simd::expand_u8(r1_even, r1_even_lo, r1_even_hi);
-            simd::expand_u8(r1_odd, r1_odd_lo, r1_odd_hi);
+            cv::v_uint16x8 r0_even_lo;
+            cv::v_uint16x8 r0_even_hi;
+            cv::v_uint16x8 r0_odd_lo;
+            cv::v_uint16x8 r0_odd_hi;
+            cv::v_uint16x8 r1_even_lo;
+            cv::v_uint16x8 r1_even_hi;
+            cv::v_uint16x8 r1_odd_lo;
+            cv::v_uint16x8 r1_odd_hi;
+            cv::v_expand(r0_even, r0_even_lo, r0_even_hi);
+            cv::v_expand(r0_odd, r0_odd_lo, r0_odd_hi);
+            cv::v_expand(r1_even, r1_even_lo, r1_even_hi);
+            cv::v_expand(r1_odd, r1_odd_lo, r1_odd_hi);
 
-            const simd::u16 sum_lo = simd::add(
-                simd::add(r0_even_lo, r0_odd_lo),
-                simd::add(r1_even_lo, r1_odd_lo));
-            const simd::u16 sum_hi = simd::add(
-                simd::add(r0_even_hi, r0_odd_hi),
-                simd::add(r1_even_hi, r1_odd_hi));
-            simd::store_u8(
-                reinterpret_cast<std::uint8_t*>(dst_row + x),
-                simd::rshr_pack_u16_to_u8<2>(sum_lo, sum_hi));
+            const cv::v_uint16x8 sum_lo = cv::v_add(
+                cv::v_add(r0_even_lo, r0_odd_lo),
+                cv::v_add(r1_even_lo, r1_odd_lo));
+            const cv::v_uint16x8 sum_hi = cv::v_add(
+                cv::v_add(r0_even_hi, r0_odd_hi),
+                cv::v_add(r1_even_hi, r1_odd_hi));
+            cv::v_store(dst_row + x, cv::v_rshr_pack<2>(sum_lo, sum_hi));
         }
 
         for (; x < dst_cols; ++x)

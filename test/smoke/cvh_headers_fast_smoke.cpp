@@ -1,5 +1,5 @@
 #include "cvh/cvh.h"
-#include "cvh/core/simd/simd.h"
+#include "cvh/core/simd/opencv_ui.h"
 
 #include <cstring>
 
@@ -21,7 +21,7 @@
 
 int main()
 {
-    if (std::strcmp(cvh::detail::simd::backend_name(), "opencv_intrin") != 0)
+    if (std::strcmp(cvh::detail::opencv_ui_backend_name(), "opencv_intrin") != 0)
     {
         return 1;
     }

@@ -98,9 +98,9 @@ Local compatibility shims:
 
 ## Local Policy
 
-- Do not import `cv_hal_*`, `CALL_HAL`, `custom_hal.hpp`, or OpenCV module dispatch machinery in this adapter tree.
+- Do not import `cv_hal_*`, `CALL_HAL`, `custom_hal.hpp`, or OpenCV module dispatch machinery in this vendor tree.
 - Do not add an OpenCV binary or build-time dependency.
-- Keep all business kernels behind `cvh::detail::simd` instead of including this tree directly.
+- Keep direct uses of OpenCV UI inside `include/cvh/**` implementation headers; do not expose `cv::v_*` types as `cvh` public API.
 - Use `scripts/sync_opencv_intrin.py --check` before committing changes to this vendor tree.
 - Run the P5.4 correctness and benchmark gates before updating the recorded upstream commit.
 
@@ -112,7 +112,7 @@ Local compatibility shims:
 
 ## Current Scope
 
-`cvh::headers` enables this adapter by default for benchmark-gated header-only fast paths. `cvh::headers_fast` inherits the adapter and only adds extra platform fast-profile toggles. Current accepted paths are:
+`cvh::headers` enables these OpenCV UI headers by default for benchmark-gated header-only fast paths. `cvh::headers_fast` inherits them and only adds extra platform fast-profile toggles. Current accepted paths are:
 
 - `CV_8UC3` `BGR2GRAY` / `RGB2GRAY`
 - `CV_8UC1` exact 2x `INTER_LINEAR` resize
@@ -123,7 +123,7 @@ Platform UI headers currently imported by policy:
 - ARM: `intrin_neon.hpp`
 - x86: `intrin_sse_em.hpp`, `intrin_sse.hpp`, `intrin_avx.hpp`, `intrin_avx512.hpp`
 
-SSE/AVX may be enabled from compiler feature macros by the local `cvdef.h` shim. RVV is intentionally deferred and is not vendored or enabled in `cvh::headers_fast` because the current `cvh::detail::simd` facade is fixed-lane and cannot model scalable RVV semantics.
+x86 AVX-family paths may be enabled from compiler feature macros by the local `cvdef.h` shim. SSE headers/macros exist only as x86 OpenCV UI/AVX prerequisites. RVV is intentionally deferred and is not vendored or enabled because the current NEON/AVX porting target is fixed-lane OpenCV UI code; scalable RVV needs a separate design and remains a future TODO.
 """
 
 
