@@ -92,6 +92,9 @@ EOF
 
 cat > "${HEADERS_CONSUMER_DIR}/main.cpp" <<'EOF'
 #include <cvh/cvh.h>
+#include <cvh/core/simd/simd.h>
+
+#include <cstring>
 
 #ifndef CVH_LITE
 #error "cvh::headers must keep the header-only compatibility macro"
@@ -101,8 +104,8 @@ cat > "${HEADERS_CONSUMER_DIR}/main.cpp" <<'EOF'
 #error "cvh::headers must not enable legacy .cpp mode"
 #endif
 
-#if CVH_ENABLE_OPENCV_INTRIN
-#error "cvh::headers must not enable OpenCV Universal Intrinsics by default"
+#if !CVH_ENABLE_OPENCV_INTRIN
+#error "cvh::headers must enable OpenCV Universal Intrinsics by default"
 #endif
 
 #if CVH_ENABLE_PLATFORM_INTRINSICS
@@ -111,13 +114,18 @@ cat > "${HEADERS_CONSUMER_DIR}/main.cpp" <<'EOF'
 
 int main()
 {
+    if (std::strcmp(cvh::detail::simd::backend_name(), "opencv_intrin") != 0)
+    {
+        return 1;
+    }
+
     cvh::Mat src({2, 2}, CV_8UC1);
     src = 7;
 
     cvh::Mat dst;
     cvh::resize(src, dst, cvh::Size(1, 1), 0.0, 0.0, cvh::INTER_LINEAR);
 
-    return (dst.dims == 2 && dst.type() == CV_8UC1 && dst.size[0] == 1 && dst.size[1] == 1) ? 0 : 1;
+    return (dst.dims == 2 && dst.type() == CV_8UC1 && dst.size[0] == 1 && dst.size[1] == 1) ? 0 : 2;
 }
 EOF
 

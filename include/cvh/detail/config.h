@@ -2,8 +2,8 @@
 #define CVH_DETAIL_CONFIG_H
 
 // Public package contract:
-// - cvh::headers: pure header-only baseline
-// - cvh::headers_fast: pure header-only baseline plus accepted SIMD fast paths
+// - cvh::headers: pure header-only default with the OpenCV UI SIMD facade enabled
+// - cvh::headers_fast: pure header-only default plus platform fast-profile toggles
 //
 // CVH_LITE remains the default compatibility macro for plain header users.
 // CVH_NATIVE/CVH_FULL are legacy internal switches for development-only .cpp
@@ -32,7 +32,7 @@
 #endif
 
 #ifndef CVH_ENABLE_OPENCV_INTRIN
-#define CVH_ENABLE_OPENCV_INTRIN 0
+#define CVH_ENABLE_OPENCV_INTRIN 1
 #endif
 
 #ifndef CVH_ENABLE_PLATFORM_INTRINSICS

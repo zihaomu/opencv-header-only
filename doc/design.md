@@ -11,8 +11,8 @@ cvh::headers
 cvh::headers_fast
 ```
 
-- `cvh::headers`：默认 header-only baseline，优先保证 API 可用性、可移植性和标量 fallback 正确性。
-- `cvh::headers_fast`：header-only 加速 profile，只启用已经通过 correctness gate 和 benchmark gate 的 SIMD fast-path。
+- `cvh::headers`：默认 header-only 入口，默认启用 OpenCV Universal Intrinsics facade，并保留 scalar fallback 正确性基线。
+- `cvh::headers_fast`：header-only fast profile，在 `cvh::headers` 之上启用额外平台 fast-profile toggles。
 
 历史 `.cpp` 实现只能作为 legacy/experimental 代码存在，不进入公开产品结构，也不作为公开 API 可用性的前提。
 
@@ -22,7 +22,7 @@ cvh::headers_fast
 - 保证用户仅包含 headers 或链接 interface target 即可使用。
 - 保持公开依赖、宏开关、安装导出和文档叙事一致。
 - 先建立 correctness contract，再引入 SIMD fast-path。
-- 用 benchmark 决定 fast-path 是否进入 `cvh::headers_fast`。
+- 用 benchmark 决定 fast-path 是否进入默认 OpenCV UI 路径或额外 fast profile。
 
 ## 非目标
 
@@ -38,7 +38,7 @@ cvh::headers_fast
 
 - `include/` 内可独立完成编译。
 - `cvh::headers` 不依赖 `src/`。
-- `cvh::headers_fast` 不依赖 `src/`，只通过 interface include 和 compile definitions 启用已验证 fast-path。
+- `cvh::headers_fast` 不依赖 `src/`，只通过 interface compile definitions 启用额外平台 fast-profile toggles。
 - 每个标记为 Supported 的算子必须有 header-only correctness test。
 - 没有 header-only 实现或链接不过的 API 必须标记为 WIP 或移出公开入口。
 
@@ -50,19 +50,19 @@ cvh::headers_fast
 
 要求：
 
-- 不默认启用 OpenCV Universal Intrinsics。
+- 默认启用 OpenCV Universal Intrinsics。
 - 不默认启用 xsimd。
 - 不要求 OpenCV 库或其它二进制依赖。
-- 以 scalar fallback 和标准 C++ 实现为基线。
+- 保留 scalar fallback 和标准 C++ 实现作为 correctness 基线。
 
 ### `cvh::headers_fast`
 
-加速入口，适合愿意接受平台 SIMD 宏和已验证 fast-path 的用户。
+加速入口，适合愿意接受额外平台 fast-profile toggles 的用户。
 
 要求：
 
 - 继承 `cvh::headers`。
-- 传播 `CVH_ENABLE_OPENCV_INTRIN=1`。
+- 不需要传播 `CVH_ENABLE_OPENCV_INTRIN=1`，该宏已经默认开启。
 - 传播 `CVH_ENABLE_PLATFORM_INTRINSICS=1`。
 - 不传播 `CVH_ENABLE_XSIMD=1`。
 - 不编译或链接 `.cpp`。
@@ -118,7 +118,7 @@ cvh::headers_fast
 项目采用三条规则：
 
 - scalar fallback 是所有公开算子的 correctness 基线。
-- OpenCV Universal Intrinsics 是 `cvh::headers_fast` 的主要 portable SIMD 路径。
+- OpenCV Universal Intrinsics 是默认 portable SIMD 路径。
 - direct platform intrinsics 只能在 benchmark 证明 OpenCV Universal Intrinsics 不足时进入候选。
 
 xsimd 不再作为图像 kernel 的主性能路线。P5.3 已移除 public adapter surface、legacy `.cpp` xsimd kernel、内部 `XSimdOnly` dispatch、测试入口和 vendor 目录；默认 header-only target、`cvh::headers_fast`、安装导出和 header-only CI 都不能依赖它。

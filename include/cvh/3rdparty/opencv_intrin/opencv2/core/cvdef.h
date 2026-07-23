@@ -4,10 +4,6 @@
 #include <cstdint>
 #include <cstdlib>
 
-#if defined(CV_NEON) && CV_NEON && (defined(__ARM_NEON) || defined(__aarch64__) || defined(_M_ARM64))
-#include <arm_neon.h>
-#endif
-
 #ifndef CVH_DEFINE_H
 typedef unsigned char uchar;
 typedef signed char schar;
@@ -67,22 +63,46 @@ typedef std::uint64_t uint64;
 #endif
 #endif
 
+#ifndef CV_StaticAssert
+#define CV_StaticAssert(condition, reason) static_assert((condition), reason)
+#endif
+
 #ifndef CV_UNUSED
 #define CV_UNUSED(name) (void)(name)
 #endif
 
 #ifndef CV_SSE2
+#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#define CV_SSE2 1
+#else
 #define CV_SSE2 0
 #endif
+#endif
+
 #ifndef CV_AVX2
+#if defined(__AVX2__)
+#define CV_AVX2 1
+#else
 #define CV_AVX2 0
 #endif
+#endif
+
 #ifndef CV_AVX512_SKX
+#if defined(__AVX512F__) && defined(__AVX512BW__) && defined(__AVX512DQ__) && defined(__AVX512CD__)
+#define CV_AVX512_SKX 1
+#else
 #define CV_AVX512_SKX 0
 #endif
+#endif
+
 #ifndef CV_NEON
+#if defined(__ARM_NEON) || defined(__ARM_NEON__) || defined(__aarch64__) || defined(_M_ARM64)
+#define CV_NEON 1
+#else
 #define CV_NEON 0
 #endif
+#endif
+
 #ifndef CV_FP16
 #define CV_FP16 0
 #endif
@@ -98,9 +118,15 @@ typedef std::uint64_t uint64;
 #ifndef CV_RVV
 #define CV_RVV 0
 #endif
+
 #ifndef CV_RVV071
 #define CV_RVV071 0
 #endif
+
+#if CV_RVV || CV_RVV071
+#error "CVH OpenCV Universal Intrinsics RVV is deferred; use NEON or SSE/AVX paths until a scalable facade exists"
+#endif
+
 #ifndef CV_LSX
 #define CV_LSX 0
 #endif
@@ -112,6 +138,14 @@ typedef std::uint64_t uint64;
 #endif
 #ifndef CV_SIMD_SCALABLE_64F
 #define CV_SIMD_SCALABLE_64F 0
+#endif
+
+#if (CV_SSE2 || CV_AVX2 || CV_AVX512_SKX) && (defined(__i386__) || defined(__x86_64__) || defined(_M_IX86) || defined(_M_X64))
+#include <immintrin.h>
+#endif
+
+#if CV_NEON && (defined(__ARM_NEON) || defined(__ARM_NEON__) || defined(__aarch64__) || defined(_M_ARM64))
+#include <arm_neon.h>
 #endif
 
 namespace cv {

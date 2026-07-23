@@ -9,8 +9,8 @@
 ### P0：基础 smoke
 
 - `cvh_header_compile_smoke`：验证公开头可编译。
-- `cvh_include_only_smoke`：验证仅 `-Iinclude` 场景可编译运行。
-- `cvh_headers_fast_smoke`：验证 `cvh::headers_fast` 只启用 OpenCV Universal Intrinsics，不启用 `.cpp` 模式。
+- `cvh_include_only_smoke`：验证直接 include 场景可编译运行，包含主 `include/` 和 vendored OpenCV UI include root。
+- `cvh_headers_fast_smoke`：验证 `cvh::headers_fast` 继承默认 OpenCV Universal Intrinsics，并启用平台 fast-profile toggles，不启用 `.cpp` 模式。
 - legacy `.cpp` smoke target 只验证历史实验链路，不属于公开 header-only 产品面。
 
 ### P1：主线优先

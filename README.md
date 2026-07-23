@@ -28,14 +28,14 @@ Many real-world deployments only need a small and predictable part of OpenCV:
 
 | Target | Role | Behavior |
 |---|---|---|
-| `cvh::headers` | Default header-only baseline | Stable scalar fallback behavior, minimal assumptions, no experimental fast paths enabled by default. |
-| `cvh::headers_fast` | Opt-in header-only fast profile | Enables validated SIMD fast paths through the vendored OpenCV Universal Intrinsics adapter and platform intrinsic toggles. It does not compile `.cpp` files and does not enable xsimd. |
+| `cvh::headers` | Default header-only target | Enables the vendored OpenCV Universal Intrinsics adapter by default and keeps platform-specific project fast toggles off. It does not compile `.cpp` files and does not enable xsimd. |
+| `cvh::headers_fast` | Fast-profile target | Inherits `cvh::headers` and enables validated platform fast-profile toggles. It does not compile `.cpp` files and does not enable xsimd. |
 
-New public features should land in `cvh::headers` first. `cvh::headers_fast` should only enable paths that have correctness tests and a benchmark reason to exist.
+New public features should land in `cvh::headers` first. `cvh::headers_fast` should only add platform fast-profile toggles that have correctness tests and a benchmark reason to exist.
 
 ## Usage
 
-For direct include usage, only headers from `include/` are required:
+For CMake users, `cvh::headers` propagates all required include roots. For non-CMake direct include usage, add both `include/` and `include/cvh/3rdparty/opencv_intrin/` to the compiler include path.
 
 ```cpp
 #include <cvh/cvh.h>
@@ -55,7 +55,7 @@ find_package(opencv_header_only CONFIG REQUIRED)
 target_link_libraries(app PRIVATE cvh::headers_fast)
 ```
 
-Users should prefer `cvh::headers_fast` over manually combining `CVH_ENABLE_OPENCV_INTRIN`, `CVH_ENABLE_PLATFORM_INTRINSICS`, or vendored OpenCV UI include paths.
+Users should not need to define `CVH_ENABLE_OPENCV_INTRIN`; it is enabled by default. Use `cvh::headers_fast` only when the platform fast-profile toggles are desired.
 
 xsimd is not part of the accepted runtime path. P5.3 removed the legacy `.cpp` xsimd kernels, public adapter surface, tests, dispatch mode, and vendored xsimd tree.
 
@@ -64,7 +64,7 @@ xsimd is not part of the accepted runtime path. P5.3 removed the legacy `.cpp` x
 Legend:
 
 - **Supported:** implemented inline in headers and covered by the header-only test path.
-- **Supported + fast path:** supported by the baseline target, with an additional validated SIMD path in `cvh::headers_fast`.
+- **Supported + fast path:** supported by the default target, with validated OpenCV Universal Intrinsics paths enabled by default and extra platform fast-profile toggles available through `cvh::headers_fast`.
 - **WIP:** target API or historical implementation exists, but it is not yet accepted as part of the pure header-only contract.
 - **Out of scope:** intentionally not promised by the pure header-only product.
 
@@ -119,7 +119,7 @@ These are target areas, but they are not yet supported promises in the pure head
 
 ## Performance
 
-Performance work is benchmark-driven. `cvh::headers` is the correctness-first baseline. `cvh::headers_fast` is where validated header-only SIMD paths are enabled.
+Performance work is benchmark-driven. `cvh::headers` enables the OpenCV Universal Intrinsics SIMD facade by default while retaining scalar fallback code paths. `cvh::headers_fast` is reserved for additional platform fast-profile toggles.
 
 Current accepted fast paths:
 

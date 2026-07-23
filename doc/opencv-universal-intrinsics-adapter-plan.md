@@ -2,6 +2,8 @@
 
 P5.3.5 更新：xsimd 已从 public adapter、legacy runtime、测试入口和 vendor 目录中移除。当前 accepted header-only fast profile 只包含 scalar fallback + OpenCV Universal Intrinsics；direct platform intrinsics 仍是 benchmark-gated 候选。下文早期阶段中的 xsimd 内容只作为历史上下文记录，不再代表公开推荐用法。
 
+P5.4.1b 更新：`CVH_ENABLE_OPENCV_INTRIN` 改为默认开启，不再作为用户打开加速的选项。`cvh::headers` 默认使用 OpenCV Universal Intrinsics facade，同时继续保留 scalar fallback 作为 correctness/benchmark 对照；`cvh::headers_fast` 只负责额外平台 fast-profile toggles。
+
 ## 背景
 
 `opencv-header-only` 的长期方向是纯 header-only。当前 header-only 层的 CPU 加速主要考虑：
@@ -95,9 +97,9 @@ cvh::detail::simd::pack_u16_to_u8
 
 历史 xsimd adapter 已在 P5.3 移除，不作为 accepted header-only fast profile，也不作为内部 legacy/experimental 路径继续维护。
 
-### 3. 默认纯净
+### 3. 默认纯净（历史判断，P5.4.1b 已更新）
 
-Lite 默认仍应保持最小依赖。
+早期判断中 Lite 默认保持最小依赖：
 
 建议默认：
 
@@ -107,6 +109,15 @@ CVH_ENABLE_PLATFORM_INTRINSICS=0
 ```
 
 用户显式启用 header-only 加速 profile 时通过 `cvh::headers_fast` 打开已验证能力。
+
+P5.4.1b 后当前策略改为：
+
+```cpp
+CVH_ENABLE_OPENCV_INTRIN=1
+CVH_ENABLE_PLATFORM_INTRINSICS=0
+```
+
+OpenCV Universal Intrinsics 属于默认 header-only CPU SIMD facade；额外 direct platform toggles 仍由 `cvh::headers_fast` 控制。
 
 ### 4. adapter 是内部实现细节
 
@@ -1021,7 +1032,7 @@ P3 总体验收：
 
 状态：已完成，P4.0/P4.1/P4.2/P4.3/P4.4/P4.5 已完成。
 
-P4 目标是在不改变默认 `cvh::headers` 行为的前提下，增加纯 header-only 加速 profile：
+P4 当时的目标是在不改变默认 `cvh::headers` 行为的前提下，增加纯 header-only 加速 profile；P5.4.1b 已将 OpenCV Universal Intrinsics 改为默认开启，因此本节保留为历史记录：
 
 ```cmake
 cvh::headers_fast
@@ -1029,19 +1040,21 @@ cvh::headers_fast
 
 项目对外确立公开 header-only 使用结构：
 
-- `cvh::headers`：默认 header-only baseline，最小依赖、最少平台分支，不默认启用 SIMD 加速实验路径。
-- `cvh::headers_fast`：header-only + 已验证 SIMD fast-path，只传播宏和 include，不编译或链接 `.cpp`。
+- `cvh::headers`：P5.4.1b 后默认启用 OpenCV Universal Intrinsics facade，保留 scalar fallback 作为 correctness/benchmark 对照。
+- `cvh::headers_fast`：P5.4.1b 后只传播额外平台 fast-profile toggles，不编译或链接 `.cpp`。
 
 说明：历史 `.cpp` 实现只作为 legacy/experimental 代码存在，不进入 `opencv-header-only` 的公开产品叙事。
 
 P4 明确不让 `cvh::headers_fast` 启用 xsimd；P5.3 已进一步完成 public adapter、legacy runtime、测试入口和 vendor 目录移除。xsimd 不再作为 header-only fast profile 或 legacy `.cpp` 实验路径维护。
 
-`cvh::headers_fast` 首轮只传播：
+P4 首轮 `cvh::headers_fast` 曾传播：
 
 ```cmake
 CVH_ENABLE_OPENCV_INTRIN=1
 CVH_ENABLE_PLATFORM_INTRINSICS=1
 ```
+
+P5.4.1b 后 `CVH_ENABLE_OPENCV_INTRIN=1` 成为 `cvh::headers` 默认值，`cvh::headers_fast` 不再需要传播该宏。
 
 首批纳入范围只限已通过 gate 的 header-only SIMD fast-path：
 
@@ -1248,8 +1261,8 @@ P5.1：Header-only Contract Gate
   - 构建 `cvh_header_compile_smoke`、`cvh_include_only_smoke`、`cvh_headers_fast_smoke`。
   - 安装 package 到临时目录，检查 installed CMake targets 只包含 `cvh::headers` / `cvh::headers_fast`。
   - 用外部最小 CMake 工程分别消费 `cvh::headers` 和 `cvh::headers_fast`。
-  - `cvh::headers` consumer 验证默认不启用 OpenCV UI、platform intrinsics、xsimd 或 legacy `.cpp` 模式。
-  - `cvh::headers_fast` consumer 验证启用 OpenCV UI/platform intrinsics，且不启用 xsimd 或 legacy `.cpp` 模式。
+  - `cvh::headers` consumer 验证默认启用 OpenCV UI，不启用 platform intrinsics、xsimd 或 legacy `.cpp` 模式。
+  - `cvh::headers_fast` consumer 验证继承默认 OpenCV UI、启用 platform intrinsics，且不启用 xsimd 或 legacy `.cpp` 模式。
   - 即使 `CVH_BUILD_NATIVE_BACKEND=ON`，installed package 仍不能导出 legacy `.cpp` target。
 - 新增 `scripts/ci_headers_all.sh` 作为新的 header-only CI 入口。
 - `scripts/ci_lite_all.sh` 改为 deprecated compatibility wrapper，转发到 `scripts/ci_headers_all.sh`。
@@ -1266,7 +1279,7 @@ P5.1：Header-only Contract Gate
 验收结果：
 
 - `./scripts/check_header_only_contract.sh` 通过；默认 header-only install/export 和打开 legacy `.cpp` build option 后的 install/export 都只暴露 `cvh::headers` / `cvh::headers_fast`。
-- 外部 `cvh::headers` consumer 验证 `CVH_ENABLE_OPENCV_INTRIN=0`、`CVH_ENABLE_PLATFORM_INTRINSICS=0`、`CVH_ENABLE_XSIMD=0`，且能执行最小 `cvh::resize`。
+- 外部 `cvh::headers` consumer 验证 `CVH_ENABLE_OPENCV_INTRIN=1`、`CVH_ENABLE_PLATFORM_INTRINSICS=0`、`CVH_ENABLE_XSIMD=0`，且能执行最小 `cvh::resize`。
 - 外部 `cvh::headers_fast` consumer 验证 `CVH_ENABLE_OPENCV_INTRIN=1`、`CVH_ENABLE_PLATFORM_INTRINSICS=1`、`CVH_ENABLE_XSIMD=0`，且能执行 exact 2x `cvh::resize`。
 - `./scripts/ci_headers_all.sh` 通过；`cvh_test_core_lite` 25 tests、`cvh_test_imgproc` 141 tests、`cvh_test_imgcodecs` 7 tests + 1 skipped、`cvh_test_highgui` 4 tests。
 - `./scripts/ci_lite_all.sh` 通过 deprecated wrapper 验证，会提示迁移到 `scripts/ci_headers_all.sh` 并转发执行同一套 header-only gate。
@@ -1493,12 +1506,177 @@ P5.3.5：验证
 
 P5.4：OpenCV UI 常态维护
 
-状态：待开始。
+状态：进行中，P5.4.1b 已完成；下一步 P5.4.2。
 
 - 固定 OpenCV upstream 版本。
 - 每次升级通过同步脚本。
 - 每次升级必须跑正确性和性能矩阵。
 - benchmark 退化超过阈值则不升级。
+
+P5.4 不继续扩 kernel 面，目标是把 OpenCV Universal Intrinsics vendor 树变成可长期升级、可审计、可拒绝退化的维护对象。
+
+P5.4.0：审计当前 OpenCV UI vendor 状态
+
+状态：已完成。
+
+- 当前 OpenCV 源树：`/Users/zmu/work/my_project/ocvh/opencv`。
+- 当前 OpenCV describe：`4.13.0-457-gd48bf69f65`。
+- 当前 OpenCV commit：`d48bf69f65444a13f8a34b8982b083c1b78fa0e8`。
+- 当前 OpenCV version header：`4.14.0-pre`。
+- 当前 vendor 文件仅包含 OpenCV UI 白名单、`LICENSE.opencv`、`UPSTREAM.md` 和本地 shim。
+- `scripts/sync_opencv_intrin.py --check` 在 P5.4.0 起作为 OpenCV UI vendor 维护 gate。
+
+P5.4.1：强化 sync 脚本和 UPSTREAM 元数据 gate
+
+状态：已完成。
+
+- `scripts/sync_opencv_intrin.py --check` 必须同时验证：
+  - vendored OpenCV whitelist 文件与本地 OpenCV 源树一致。
+  - `include/cvh/3rdparty/opencv_intrin/UPSTREAM.md` 中的 repository、describe、commit、version header 与本地 OpenCV 源树一致。
+  - `include/cvh/3rdparty/opencv_intrin/` 中不存在白名单之外的 OpenCV 文件。
+  - 本地 shim 全部存在，且不被 sync 脚本从 OpenCV 源树覆盖。
+- 非 `--check` 模式同步 whitelist 文件，并重新生成 `UPSTREAM.md`。
+- `UPSTREAM.md` 明确当前 accepted fast path 只包含 `BGR2GRAY/RGB2GRAY` 和 exact 2x `CV_8UC1 INTER_LINEAR resize`。
+
+落地结果：
+
+- `scripts/sync_opencv_intrin.py` 新增 OpenCV version header 解析，并用本地 OpenCV 源树生成 `UPSTREAM.md`。
+- `scripts/sync_opencv_intrin.py --check` 现在同时检查：
+  - whitelist 文件内容是否与本地 OpenCV 源树一致。
+  - `UPSTREAM.md` 是否与当前 repository / describe / commit / OpenCV version header 一致。
+  - `include/cvh/3rdparty/opencv_intrin/` 是否存在 whitelist 外的意外文件。
+  - `opencv2/core/cvdef.h`、`opencv2/core/saturate.hpp`、`opencv2/core/utility.hpp` 三个本地 shim 是否存在。
+- `include/cvh/3rdparty/opencv_intrin/UPSTREAM.md` 已由同步脚本重新生成，删除早期 P1/P3.2 临时叙事，改为维护合同和当前 accepted fast path。
+
+验证结果：
+
+- `scripts/sync_opencv_intrin.py` 通过，重新生成 whitelist vendor 文件和 `UPSTREAM.md`。
+- `scripts/sync_opencv_intrin.py --check` 通过，当前锁定 `4.13.0-457-gd48bf69f65 d48bf69f65444a13f8a34b8982b083c1b78fa0e8`。
+- `python3 -m py_compile scripts/sync_opencv_intrin.py` 通过。
+- `./scripts/check_header_only_contract.sh` 通过。
+- `./scripts/ci_headers_all.sh` 通过。
+- `cmake -S . -B build-p54-opencv-intrin -DCVH_BUILD_NATIVE_BACKEND=OFF -DCVH_BUILD_TESTS=ON -DCVH_BUILD_BENCHMARKS=ON` 通过。
+- `cmake --build build-p54-opencv-intrin --target cvh_headers_fast_smoke cvh_opencv_intrin_smoke cvh_simd_facade_opencv_intrin_smoke cvh_cvtcolor_opencv_intrin_smoke cvh_resize_opencv_intrin_smoke cvh_benchmark_cvtcolor_bgr2gray_header cvh_benchmark_resize_bilinear_header -j` 通过。
+- `ctest --test-dir build-p54-opencv-intrin --output-on-failure -R 'cvh_headers_fast_smoke|cvh_opencv_intrin_smoke|cvh_simd_facade_opencv_intrin_smoke|cvh_cvtcolor_opencv_intrin_smoke|cvh_resize_opencv_intrin_smoke'` 通过。
+- `git diff --check` 通过。
+
+P5.4.1a：平台 UI header 白名单扩展（NEON/SSE/AVX）
+
+状态：已完成。
+
+目标：
+
+- 让 `include/cvh/3rdparty/opencv_intrin/` 覆盖 portable fallback、NEON 和 OpenCV UI 的 x86 header。
+- SSE/AVX 可以作为 `cvh::headers_fast` 在 x86 上的实际候选 backend。
+- RVV 暂不进入 vendor 和 accepted backend；当前阶段只关注 NEON 与 AVX。
+
+落地策略：
+
+- 新增同步白名单：
+  - `intrin_sse_em.hpp`
+  - `intrin_sse.hpp`
+  - `intrin_avx.hpp`
+  - `intrin_avx512.hpp`
+- `opencv2/core/cvdef.h` 按编译器 feature macro 自动打开 `CV_SSE2`、`CV_AVX2`、`CV_AVX512_SKX` 和 `CV_NEON`。
+- `CV_RVV` 和 `CV_RVV071` 默认保持 `0`，且手动启用会 hard error。原因是当前 `cvh::detail::simd` facade 使用固定 lane 类型（如 `v_uint8x16` / `v_uint16x8`），不能表达 RVV scalable lane 语义；RVV 需要后续单独设计 scalable facade 后再评估。
+- 新增 x86-only smoke：`cvh_opencv_intrin_x86_smoke`，只在 x86 CMake processor 上构建，并用 `-mavx2` / `/arch:AVX2` 验证 SSE2/AVX2 UI header 能编译和跑通 facade 基础操作。
+
+验收：
+
+- `scripts/sync_opencv_intrin.py --check` 必须接受新增 x86 白名单，并拒绝 RVV header 或其它白名单外文件。
+- ARM 当前机器不会构建 x86 smoke；x86 CI 或 x86 本机应构建并运行 `cvh_opencv_intrin_x86_smoke`。
+- RVV 在 scalable facade 没完成前不进入 vendor、不进入 `cvh::headers_fast` accepted backend。
+
+验证结果：
+
+- `scripts/sync_opencv_intrin.py --check` 通过，新增 SSE/AVX/AVX512 whitelist 在维护边界内，RVV header 不在 vendor 边界内。
+- `python3 -m py_compile scripts/sync_opencv_intrin.py` 通过。
+- `/usr/bin/c++ -std=c++17 -arch x86_64 -mavx2 ... cvh_opencv_intrin_x86_smoke.cpp` compile-only 通过；这验证 SSE2/AVX2 UI header 和当前 fixed-lane facade 能在 x86_64 AVX2 目标下编译。
+- 当前 ARM64 机器上 `cvh_opencv_intrin_x86_smoke` 不生成，符合 x86-only 条件 target 设计。
+- `cmake -S . -B build-p54-platform-intrin -DCVH_BUILD_NATIVE_BACKEND=OFF -DCVH_BUILD_TESTS=ON -DCVH_BUILD_BENCHMARKS=ON` 通过。
+- `cmake --build build-p54-platform-intrin --target cvh_headers_fast_smoke cvh_opencv_intrin_smoke cvh_simd_facade_opencv_intrin_smoke cvh_cvtcolor_opencv_intrin_smoke cvh_resize_opencv_intrin_smoke cvh_benchmark_cvtcolor_bgr2gray_header cvh_benchmark_resize_bilinear_header -j` 通过。
+- `ctest --test-dir build-p54-platform-intrin --output-on-failure -R 'cvh_headers_fast_smoke|cvh_opencv_intrin_smoke|cvh_simd_facade_opencv_intrin_smoke|cvh_cvtcolor_opencv_intrin_smoke|cvh_resize_opencv_intrin_smoke'` 通过。
+- `./scripts/check_header_only_contract.sh` 通过。
+- `./scripts/ci_headers_all.sh` 通过。
+- `git diff --check` 通过。
+
+P5.4.1b：OpenCV UI 默认开启
+
+状态：已完成。
+
+目标：
+
+- `CVH_ENABLE_OPENCV_INTRIN` 默认值从 `0` 改为 `1`，不再要求用户通过宏或 `cvh::headers_fast` 打开 OpenCV Universal Intrinsics。
+- `cvh::headers` 默认传播 vendored OpenCV UI include root，保证 CMake consumer 只链接 `cvh::headers` 即可编译。
+- `cvh::headers_fast` 不再传播 `CVH_ENABLE_OPENCV_INTRIN=1`，只保留 `CVH_ENABLE_PLATFORM_INTRINSICS=1` 等额外 fast-profile toggles。
+- scalar fallback 仍保留，并通过内部 smoke/benchmark 显式 `CVH_ENABLE_OPENCV_INTRIN=0` 作为正确性和性能对照。
+
+落地结果：
+
+- `include/cvh/detail/config.h` 中 `CVH_ENABLE_OPENCV_INTRIN` 默认改为 `1`。
+- `cvh_headers` target 传播 `include/cvh/3rdparty/opencv_intrin` build/install include root。
+- `cvh_headers_fast` 删除冗余的 `CVH_ENABLE_OPENCV_INTRIN=1` compile definition。
+- `cvh_opencv_intrin_smoke` / `cvh_simd_facade_opencv_intrin_smoke` 不再手写开启宏，只保留 `CV_FORCE_SIMD128_CPP=1` 覆盖 portable UI 编译路径。
+- `cvh_simd_facade_scalar_smoke` 显式 `CVH_ENABLE_OPENCV_INTRIN=0`，继续保留 scalar facade gate。
+- `scripts/check_header_only_contract.sh` 的 `cvh::headers` external consumer 改为验证 OpenCV UI 默认开启，且 platform intrinsics 仍默认关闭。
+- 直接 include smoke 增加 vendored OpenCV UI include root；非 CMake 直接使用时同样需要提供该 include root。
+
+验收：
+
+- `cvh::headers` consumer 可以不手写 `CVH_ENABLE_OPENCV_INTRIN` 即获得 `opencv_intrin` backend。
+- `cvh::headers_fast` consumer 仍验证 `CVH_ENABLE_PLATFORM_INTRINSICS=1`，且不传播 xsimd 或 legacy `.cpp` 模式。
+- scalar fallback 只能作为内部显式 opt-out 对照路径，不再作为用户默认路径。
+
+验证结果：
+
+- `scripts/sync_opencv_intrin.py --check` 通过。
+- `python3 -m py_compile scripts/sync_opencv_intrin.py` 通过。
+- `cmake -S . -B build-p54-default-opencv-intrin -DCVH_BUILD_NATIVE_BACKEND=OFF -DCVH_BUILD_TESTS=ON -DCVH_BUILD_BENCHMARKS=ON` 通过。
+- `cmake --build build-p54-default-opencv-intrin --target cvh_header_compile_smoke cvh_include_only_smoke cvh_headers_fast_smoke cvh_opencv_intrin_smoke cvh_simd_facade_scalar_smoke cvh_simd_facade_opencv_intrin_smoke cvh_cvtcolor_opencv_intrin_smoke cvh_resize_opencv_intrin_smoke cvh_benchmark_cvtcolor_bgr2gray_header cvh_benchmark_resize_bilinear_header -j` 通过。
+- `ctest --test-dir build-p54-default-opencv-intrin --output-on-failure -R 'cvh_header_compile_smoke|cvh_include_only_smoke|cvh_headers_fast_smoke|cvh_opencv_intrin_smoke|cvh_simd_facade_scalar_smoke|cvh_simd_facade_opencv_intrin_smoke|cvh_cvtcolor_opencv_intrin_smoke|cvh_resize_opencv_intrin_smoke'` 通过。
+- `./scripts/check_header_only_contract.sh` 通过；external `cvh::headers` consumer 默认获得 `opencv_intrin` backend。
+- `./scripts/ci_headers_all.sh` 通过。
+- `/usr/bin/c++ -std=c++17 -arch x86_64 -mavx2 ... cvh_opencv_intrin_x86_smoke.cpp` 在不手写 `CVH_ENABLE_OPENCV_INTRIN=1` 的情况下 compile-only 通过。
+- `CV_RVV=1` 负向 compile 检查仍按预期报错 `RVV is deferred`。
+- `git diff --check` 通过。
+
+P5.4.2：正确性 gate 固化
+
+状态：待开始。
+
+- 固化 OpenCV UI adapter smoke：
+  - `cvh_opencv_intrin_smoke`
+  - `cvh_simd_facade_opencv_intrin_smoke`
+  - `cvh_cvtcolor_opencv_intrin_smoke`
+  - `cvh_resize_opencv_intrin_smoke`
+  - `cvh_headers_fast_smoke`
+- 升级 OpenCV UI 后必须跑 `./scripts/check_header_only_contract.sh` 和 `./scripts/ci_headers_all.sh`。
+- 若 local shim 或 whitelist 变化，需要补充 smoke 覆盖。
+
+P5.4.3：性能 gate 和阈值
+
+状态：待开始。
+
+- 固化 header-only benchmark 输入矩阵：
+  - `cvh_benchmark_cvtcolor_bgr2gray_header`
+  - `cvh_benchmark_resize_bilinear_header`
+- 对 accepted fast path 建立最小性能阈值：
+  - `BGR2GRAY/RGB2GRAY`：相对 scalar baseline 不应退化到无收益区间。
+  - exact 2x `CV_8UC1 INTER_LINEAR resize`：必须保持显著快于 scalar fallback。
+- 非 accepted fast path fallback case 不作为性能通过条件，但必须保持正确性。
+- benchmark gate 默认作为维护/升级 gate，不塞进普通 header-only CI。
+
+P5.4.4：OpenCV UI 升级 runbook
+
+状态：待开始。
+
+- 升级流程必须是：
+  1. 切换或更新本地 OpenCV 源树到目标 commit。
+  2. 运行 `scripts/sync_opencv_intrin.py` 更新 vendor 和 `UPSTREAM.md`。
+  3. 运行 `scripts/sync_opencv_intrin.py --check`。
+  4. 运行 P5.4.2 correctness gate。
+  5. 运行 P5.4.3 benchmark gate。
+  6. 只有 correctness 通过且 benchmark 未超过退化阈值，才允许提交 upstream commit 更新。
 
 ## 成功标准
 

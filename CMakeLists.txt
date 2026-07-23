@@ -55,17 +55,16 @@ target_include_directories(cvh_headers INTERFACE
 target_compile_features(cvh_headers INTERFACE cxx_std_17)
 
 set(CVH_OPENCV_INTRIN_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include/cvh/3rdparty/opencv_intrin")
+target_include_directories(cvh_headers INTERFACE
+    $<BUILD_INTERFACE:${CVH_OPENCV_INTRIN_INCLUDE_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/cvh/3rdparty/opencv_intrin>
+)
 
 add_library(cvh_headers_fast INTERFACE)
 add_library(cvh::headers_fast ALIAS cvh_headers_fast)
 set_target_properties(cvh_headers_fast PROPERTIES EXPORT_NAME headers_fast)
 target_link_libraries(cvh_headers_fast INTERFACE cvh_headers)
-target_include_directories(cvh_headers_fast INTERFACE
-    $<BUILD_INTERFACE:${CVH_OPENCV_INTRIN_INCLUDE_DIR}>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/cvh/3rdparty/opencv_intrin>
-)
 target_compile_definitions(cvh_headers_fast INTERFACE
-    CVH_ENABLE_OPENCV_INTRIN=1
     CVH_ENABLE_PLATFORM_INTRINSICS=1
 )
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64|ARM64|AARCH64)$")
@@ -271,7 +270,10 @@ if(CVH_BUILD_TESTS)
     target_link_libraries(cvh_header_compile_smoke PRIVATE cvh::headers)
 
     add_executable(cvh_include_only_smoke test/smoke/cvh_include_only_smoke.cpp)
-    target_include_directories(cvh_include_only_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_include_directories(cvh_include_only_smoke PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CVH_OPENCV_INTRIN_INCLUDE_DIR}
+    )
     target_compile_features(cvh_include_only_smoke PRIVATE cxx_std_17)
 
     add_executable(cvh_mode_lite_smoke test/smoke/cvh_mode_smoke.cpp)
@@ -288,20 +290,25 @@ if(CVH_BUILD_TESTS)
 
     add_executable(cvh_opencv_intrin_smoke test/smoke/cvh_opencv_intrin_smoke.cpp)
     target_link_libraries(cvh_opencv_intrin_smoke PRIVATE cvh::headers)
-    target_compile_definitions(cvh_opencv_intrin_smoke PRIVATE CVH_ENABLE_OPENCV_INTRIN=1 CV_FORCE_SIMD128_CPP=1)
-    target_include_directories(cvh_opencv_intrin_smoke PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/cvh/3rdparty/opencv_intrin
-    )
+    target_compile_definitions(cvh_opencv_intrin_smoke PRIVATE CV_FORCE_SIMD128_CPP=1)
 
     add_executable(cvh_simd_facade_scalar_smoke test/smoke/cvh_simd_facade_smoke.cpp)
     target_link_libraries(cvh_simd_facade_scalar_smoke PRIVATE cvh::headers)
+    target_compile_definitions(cvh_simd_facade_scalar_smoke PRIVATE CVH_ENABLE_OPENCV_INTRIN=0)
 
     add_executable(cvh_simd_facade_opencv_intrin_smoke test/smoke/cvh_simd_facade_smoke.cpp)
     target_link_libraries(cvh_simd_facade_opencv_intrin_smoke PRIVATE cvh::headers)
-    target_compile_definitions(cvh_simd_facade_opencv_intrin_smoke PRIVATE CVH_ENABLE_OPENCV_INTRIN=1 CV_FORCE_SIMD128_CPP=1)
-    target_include_directories(cvh_simd_facade_opencv_intrin_smoke PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/cvh/3rdparty/opencv_intrin
-    )
+    target_compile_definitions(cvh_simd_facade_opencv_intrin_smoke PRIVATE CV_FORCE_SIMD128_CPP=1)
+
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64|i386|i686|x86|X86)$")
+        add_executable(cvh_opencv_intrin_x86_smoke test/smoke/cvh_opencv_intrin_x86_smoke.cpp)
+        target_link_libraries(cvh_opencv_intrin_x86_smoke PRIVATE cvh::headers_fast)
+        if(MSVC)
+            target_compile_options(cvh_opencv_intrin_x86_smoke PRIVATE /arch:AVX2)
+        else()
+            target_compile_options(cvh_opencv_intrin_x86_smoke PRIVATE -mavx2)
+        endif()
+    endif()
 
     add_executable(cvh_cvtcolor_opencv_intrin_smoke test/smoke/cvh_cvtcolor_opencv_intrin_smoke.cpp)
     target_link_libraries(cvh_cvtcolor_opencv_intrin_smoke PRIVATE cvh::headers_fast)
@@ -431,6 +438,9 @@ if(CVH_BUILD_TESTS)
         add_test(NAME cvh_opencv_intrin_smoke COMMAND cvh_opencv_intrin_smoke)
         add_test(NAME cvh_simd_facade_scalar_smoke COMMAND cvh_simd_facade_scalar_smoke)
         add_test(NAME cvh_simd_facade_opencv_intrin_smoke COMMAND cvh_simd_facade_opencv_intrin_smoke)
+        if(TARGET cvh_opencv_intrin_x86_smoke)
+            add_test(NAME cvh_opencv_intrin_x86_smoke COMMAND cvh_opencv_intrin_x86_smoke)
+        endif()
         add_test(NAME cvh_cvtcolor_opencv_intrin_smoke COMMAND cvh_cvtcolor_opencv_intrin_smoke)
         add_test(NAME cvh_resize_opencv_intrin_smoke COMMAND cvh_resize_opencv_intrin_smoke)
         add_test(NAME cvh_test_imgcodecs COMMAND cvh_test_imgcodecs)
