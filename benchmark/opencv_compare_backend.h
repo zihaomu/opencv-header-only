@@ -55,6 +55,14 @@ enum class ImgprocColorOpId
     YuvNv12ToBgr,
 };
 
+enum class GeometrySamplingBenchOpId
+{
+    RemapFloatLinear = 0,
+    RemapFixedLinear,
+    WarpPerspectiveLinear,
+    GetRectSubPix,
+};
+
 void configure_opencv_threads(int threads);
 
 double bench_opencv_mat_op(MatOpId op,
@@ -240,6 +248,15 @@ double bench_opencv_warp_affine(int rows,
                                 int iters,
                                 int repeats,
                                 std::uint32_t seed);
+
+double bench_opencv_geometry_sampling(
+    GeometrySamplingBenchOpId op,
+    int rows,
+    int cols,
+    int warmup,
+    int iters,
+    int repeats,
+    std::uint32_t seed);
 
 double bench_opencv_sobel(int rows, int cols, int channels, int warmup, int iters, int repeats, std::uint32_t seed);
 double bench_opencv_canny(int rows,

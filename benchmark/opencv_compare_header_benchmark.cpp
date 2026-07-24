@@ -1,6 +1,7 @@
 #include "cvh.h"
 #include "common/benchmark_common.h"
 #include "opencv_compare_backend.h"
+#include "opencv_compare_phase1_benchmark.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -286,6 +287,34 @@ void append_unsupported_row(std::vector<CompareRow>& rows,
     row.status = "UNSUPPORTED";
     row.note = note;
     rows.push_back(row);
+}
+
+void append_phase1_cases(const Args& args, std::vector<CompareRow>& rows)
+{
+    const Phase1BenchmarkConfig config {
+        args.profile,
+        args.warmup,
+        args.iters,
+        args.repeats,
+    };
+    for (const Phase1BenchmarkResult& result :
+         run_phase1_benchmarks(config))
+    {
+        append_row(
+            rows,
+            args,
+            result.suite,
+            result.op,
+            result.variant,
+            result.dispatch_path,
+            result.depth,
+            result.channels,
+            result.shape,
+            result.cvh_ms,
+            result.opencv_ms,
+            result.note);
+        rows.back().layout = result.layout;
+    }
 }
 
 void append_core_mat_cases(const Args& args, std::vector<CompareRow>& rows)
@@ -875,6 +904,178 @@ void append_imgproc_cases(const Args& args, std::vector<CompareRow>& rows)
                 shape.rows, shape.cols, DepthId::U8, 1, args.warmup, args.iters, args.repeats, seed);
             append_row(rows, args, "imgproc", "WARP_AFFINE", "linear_inverse_replicate", "headers_baseline", "CV_8U", 1, shape_name, cvh_ms, opencv_ms);
         }
+
+        {
+            cvh::Mat src({shape.rows, shape.cols}, CV_8UC3);
+            fill_u8(src, seed);
+            cvh::Mat map_x({shape.rows, shape.cols}, CV_32FC1);
+            cvh::Mat map_y({shape.rows, shape.cols}, CV_32FC1);
+            for (int row = 0; row < shape.rows; ++row)
+            {
+                for (int col = 0; col < shape.cols; ++col)
+                {
+                    map_x.at<float>(row, col) =
+                        static_cast<float>(col) + 0.28125f;
+                    map_y.at<float>(row, col) =
+                        static_cast<float>(row) - 0.34375f;
+                }
+            }
+            cvh::Mat fixed_coordinates;
+            cvh::Mat fixed_fractions;
+            cvh::convertMaps(
+                map_x,
+                map_y,
+                fixed_coordinates,
+                fixed_fractions,
+                CV_16SC2);
+            struct RemapCase
+            {
+                GeometrySamplingBenchOpId op;
+                const char* variant;
+                bool fixed;
+            };
+            for (const RemapCase& remap_case :
+                 {RemapCase{
+                      GeometrySamplingBenchOpId::RemapFloatLinear,
+                      "float_linear_u8c3",
+                      false},
+                  RemapCase{
+                      GeometrySamplingBenchOpId::RemapFixedLinear,
+                      "fixed_linear_u8c3",
+                      true}})
+            {
+                cvh::Mat dst;
+                const double cvh_ms = measure_cvh_mat_ms(
+                    [&]() {
+                        cvh::remap(
+                            src,
+                            dst,
+                            remap_case.fixed
+                                ? fixed_coordinates
+                                : map_x,
+                            remap_case.fixed
+                                ? fixed_fractions
+                                : map_y,
+                            cvh::INTER_LINEAR,
+                            cvh::BORDER_REFLECT_101);
+                    },
+                    dst,
+                    args);
+                const double opencv_ms =
+                    bench_opencv_geometry_sampling(
+                        remap_case.op,
+                        shape.rows,
+                        shape.cols,
+                        args.warmup,
+                        args.iters,
+                        args.repeats,
+                        seed);
+                append_row(
+                    rows,
+                    args,
+                    "imgproc",
+                    "REMAP",
+                    remap_case.variant,
+                    "public_header_scalar",
+                    "CV_8U",
+                    3,
+                    shape_name,
+                    cvh_ms,
+                    opencv_ms,
+                    "no qualified SIMD fast path");
+            }
+        }
+
+        {
+            cvh::Mat src({shape.rows, shape.cols}, CV_8UC3);
+            fill_u8(src, seed);
+            cvh::Mat matrix({3, 3}, CV_64FC1);
+            matrix.setTo(cvh::Scalar::all(0.0));
+            matrix.at<double>(0, 0) = 1.0;
+            matrix.at<double>(0, 1) = 0.01;
+            matrix.at<double>(0, 2) = 0.25;
+            matrix.at<double>(1, 0) = -0.005;
+            matrix.at<double>(1, 1) = 1.0;
+            matrix.at<double>(1, 2) = 0.5;
+            matrix.at<double>(2, 0) = 0.00002;
+            matrix.at<double>(2, 1) = -0.00003;
+            matrix.at<double>(2, 2) = 1.0;
+            cvh::Mat dst;
+            const double cvh_ms = measure_cvh_mat_ms(
+                [&]() {
+                    cvh::warpPerspective(
+                        src,
+                        dst,
+                        matrix,
+                        cvh::Size(shape.cols, shape.rows),
+                        cvh::INTER_LINEAR | cvh::WARP_INVERSE_MAP,
+                        cvh::BORDER_REFLECT_101);
+                },
+                dst,
+                args);
+            const double opencv_ms =
+                bench_opencv_geometry_sampling(
+                    GeometrySamplingBenchOpId::WarpPerspectiveLinear,
+                    shape.rows,
+                    shape.cols,
+                    args.warmup,
+                    args.iters,
+                    args.repeats,
+                    seed);
+            append_row(
+                rows,
+                args,
+                "imgproc",
+                "WARP_PERSPECTIVE",
+                "projective_linear_u8c3",
+                "public_header_scalar",
+                "CV_8U",
+                3,
+                shape_name,
+                cvh_ms,
+                opencv_ms,
+                "no qualified SIMD fast path");
+        }
+
+        {
+            cvh::Mat src({shape.rows, shape.cols}, CV_8UC3);
+            fill_u8(src, seed);
+            cvh::Mat dst;
+            const double cvh_ms = measure_cvh_mat_ms(
+                [&]() {
+                    cvh::getRectSubPix(
+                        src,
+                        cvh::Size(shape.cols, shape.rows),
+                        cvh::Point2f(
+                            (static_cast<float>(shape.cols) - 1.0f) * 0.5f,
+                            (static_cast<float>(shape.rows) - 1.0f) * 0.5f),
+                        dst);
+                },
+                dst,
+                args);
+            const double opencv_ms =
+                bench_opencv_geometry_sampling(
+                    GeometrySamplingBenchOpId::GetRectSubPix,
+                    shape.rows,
+                    shape.cols,
+                    args.warmup,
+                    args.iters,
+                    args.repeats,
+                    seed);
+            append_row(
+                rows,
+                args,
+                "imgproc",
+                "GET_RECT_SUB_PIX",
+                "full_frame_u8c3",
+                "public_header_scalar",
+                "CV_8U",
+                3,
+                shape_name,
+                cvh_ms,
+                opencv_ms,
+                "no qualified SIMD fast path");
+        }
     }
 }
 
@@ -1410,6 +1611,7 @@ int main(int argc, char** argv)
     cvh_bench_compare::append_imgproc_type_channel_cases(args, rows);
     cvh_bench_compare::append_imgproc_resize_color_cases(args, rows);
     cvh_bench_compare::append_imgproc_roi_cases(args, rows);
+    cvh_bench_compare::append_phase1_cases(args, rows);
 
     if (!args.output_csv.empty())
     {

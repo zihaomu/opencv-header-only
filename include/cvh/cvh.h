@@ -10,6 +10,9 @@
 #include "core/mat.h"
 #include "core/parallel.h"
 #include "core/basic_op.h"
+#include "core/array.h"
+#include "core/math.h"
+#include "core/reduce.h"
 #include "core/utils.h"
 #include "core/gemm.h"
 

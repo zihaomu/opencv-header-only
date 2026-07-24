@@ -4,7 +4,7 @@
 
 `opencv-header-only (cvh)` targets projects that want familiar OpenCV-style APIs without carrying the full OpenCV dependency. The public product direction is intentionally header-only: include headers, link an interface CMake target, and avoid a required library build step.
 
-> **Latest performance report:** [cvh vs OpenCV upstream benchmark (2026-07-23)](benchmark/opencv_compare/results/2026-07-23-opencv-upstream-performance.md)
+> **Latest performance report:** [cvh vs OpenCV upstream benchmark (2026-07-24)](benchmark/opencv_compare/results/2026-07-24-opencv-upstream-performance.md)
 >
 > This is the project's stable public performance checkpoint. This link will be updated to the newest dated report as optimization work lands. We commit to continuous, benchmark-backed speed improvements while keeping regressions and the remaining gap to upstream OpenCV visible.
 
@@ -78,9 +78,13 @@ Legend:
 | `core` | `Mat::create`, `release`, `clone`, `copyTo`, `setTo`, `convertTo`, `reshape`, 2D ROI helpers | Supported | Covers common ownership, layout, continuous/non-contiguous, and conversion paths used by imgproc. | Same behavior as baseline. |
 | `core` | `parallel_for_`, thread controls | Supported | Header-only serial and standard-thread runtime. | Same behavior as baseline. |
 | `core` | `add`, `subtract`, `multiply`, `divide`, `compare`, `merge`, `split` | Supported | Header-only Mat-Mat/Mat-Scalar implementations with continuous and ROI coverage. | Inherits the scalar header baseline; SIMD specialization is pending. |
+| `core` | `absdiff`, `bitwise_and/not/or/xor`, `inRange`, `min`, `max` | Supported | Mat/Mat and applicable Scalar overloads; raw-bit floating bitwise, optional bitwise masks, C1/C3/C4 and ROI coverage. | Inherits the scalar header baseline; benchmark rows are established for future SIMD work. |
+| `core` | `scaleAdd`, `convertScaleAbs`, `convertFp16`, `sqrt`, `pow`, `exp`, `log`, `checkRange`, `patchNaNs` | Supported | FP32/FP64 math, OpenCV-compatible FP16 bit storage, range validation, and F32 NaN patching; continuous, ROI and supported in-place paths. | Inherits the scalar header baseline; representative math benchmark rows are established. |
+| `core` | `norm`, `sum`, `mean`, `meanStdDev`, non-zero predicates, extrema, `reduce`, `reduceArgMin/Max`, `normalize` | Supported | C1/C3/C4 statistics, masks, ROI, N-D extrema, axis 0/1 reductions and norm/min-max normalization for the documented type subset. | Deterministic scalar header baseline; benchmark records single-thread and project-default configurations. |
+| `core` | `copyTo(mask)`, channel routing, `flip/flipND`, `rotate`, `repeat`, concat, `broadcast`, `swap`, `borderInterpolate` | Supported | Byte-preserving 2D/N-D layout operations with explicit alias handling and documented trailing-dimension broadcast rules. | Scalar header baseline; copy/layout benchmark rows are established. |
 | `core` | `transpose`, `transposeND` | Supported | Header-only blocked transpose with continuous, ROI, C1/C3/C4 and non-square coverage. | Inherits the scalar header baseline. |
 | `core` | `gemm`, `gemm_pack_b` | Supported | FP32 activation with FP32/FP16 weights, 2D/broadcast NN and packed-B; INT8 scales remain limited to the existing NT path. | Inherits the scalar header baseline. |
-| `core` | `norm`, `softmax`, `silu`, `rmsnorm`, `rope` | WIP | Declarations remain outside the accepted pure header-only operator contract. | No accepted fast path. |
+| `core` | `softmax`, `silu`, `rmsnorm`, `rope` | WIP | Declarations remain outside the accepted pure header-only operator contract. | No accepted fast path. |
 | `imgproc` | `resize` | Supported + fast path | `CV_8U` / `CV_32F`, `C1` / `C3` / `C4`, `INTER_NEAREST`, `INTER_NEAREST_EXACT`, `INTER_LINEAR`. | `CV_8UC1` exact 2x downsample with `INTER_LINEAR`. |
 | `imgproc` | `cvtColor` | Supported + fast path | `CV_8U` / `CV_32F` common BGR/RGB/GRAY/BGRA/RGBA conversions; `CV_8U` YUV encode/decode families. | `CV_8UC3` `BGR2GRAY` and `RGB2GRAY`. |
 | `imgproc` | `threshold` | Supported + fast path | `CV_8U` / `CV_32F` fixed thresholds; `OTSU` / `TRIANGLE` for `CV_8UC1`. | Row-parallel `CV_32F` fixed thresholds; other modes fall back. |
@@ -91,6 +95,11 @@ Legend:
 | `imgproc` | `boxFilter`, `blur` | Supported + fast path | `CV_8U` / `CV_32F`, common border modes, `blur` as `boxFilter` semantic wrapper. | Specialized 3x3 and generic separable header paths. |
 | `imgproc` | `GaussianBlur` | Supported + fast path | `CV_8U` / `CV_32F`, odd kernel sizes and sigma-based separable path. | Specialized 3x3 and generic separable header paths. |
 | `imgproc` | `Sobel` | Supported + fast path | `CV_8U` / `CV_16S` / `CV_32F` input, `CV_16S` / `CV_32F` output, `ksize=3/5`, first-order derivatives. | `CV_8U`, `ksize=3/5`, first-order header path. |
+| `imgproc` | kernel generators, `integral`, `Scharr`, `Laplacian`, `spatialGradient`, `sqrBoxFilter` | Supported | F32/F64 kernel generation, U8 integral sums, derivative extensions, and wide-accumulator square filtering for the documented subset. | Scalar public-header baseline; benchmark rows are established. |
+| `imgproc` | `medianBlur`, `bilateralFilter`, `stackBlur`, `adaptiveThreshold`, `thresholdWithMask`, `equalizeHist`, `applyColorMap` | Supported | U8/F32 nonlinear filters and masked/statistical intensity transforms for the documented type, channel, border, and colormap subsets. | Scalar public-header baseline; no fast path is claimed. |
+| `imgproc` | accumulate family, `blendLinear`, pyramid family, `cvtColorTwoPlane`, `demosaicing` | Supported | U8/F32 accumulation and blending, fixed-kernel Gaussian pyramids, separate-plane NV12/NV21 decode, and U8 bilinear Bayer decode. | Scalar public-header baseline; benchmark rows are established. |
+| `imgproc` | affine/perspective matrix generators, rotation matrix, affine inverse | Supported | Point2f/Point2d matrix generation plus F32/F64 2x3 inverse with explicit degenerate-input behavior. | Small fixed-size scalar solve; no fast path is needed. |
+| `imgproc` | `remap`, `convertMaps`, `warpPerspective`, `getRectSubPix` | Supported | U8/F32 C1/C3/C4 nearest/bilinear geometric sampling, three map layouts, F32/F64 perspective matrices, and sub-pixel patches. | Public scalar baseline with Mode A/B benchmark rows; SIMD is pending. |
 | `imgproc` | `Canny` | Supported + fast path | Image overload for `CV_8UC1`; derivative overload for `CV_16SC1`; `apertureSize=3/5`; L1/L2 gradient. | Shared header magnitude/NMS/hysteresis path. |
 | `imgproc` | `erode`, `dilate`, `morphologyEx` | Supported + fast path | `CV_8U`; `MORPH_ERODE`, `DILATE`, `OPEN`, `CLOSE`, `GRADIENT`, `TOPHAT`, `BLACKHAT`, `HITMISS`; `HITMISS` limited to `CV_8UC1`. | Shared 3x3 rectangular min/max header path; generic kernels fall back. |
 | `imgcodecs` | `imread` | Supported | stb-backed `CV_8U` image load with `IMREAD_UNCHANGED`, `IMREAD_GRAYSCALE`, `IMREAD_COLOR`; OpenCV-style BGR/BGRA output for color reads. | Same behavior as baseline. |
@@ -121,7 +130,7 @@ These are target areas, but they are not yet supported promises in the pure head
 | Area | Candidate APIs / work | Current intent |
 |---|---|---|
 | Core SIMD | `add/subtract/multiply/divide/transpose/GEMM` | Add UI or platform-specific paths only after the public header baseline is measured against upstream. |
-| AI preprocessing | `normalize`, HWC-to-CHW / CHW-to-HWC, tensor packing | Add as focused preprocessing utilities once `Mat` and imgproc behavior stay stable. |
+| AI preprocessing | HWC-to-CHW / CHW-to-HWC, tensor packing | Add as focused preprocessing utilities once `Mat` and imgproc behavior stay stable. |
 | SIMD expansion | general `resize`, broader `cvtColor`, YUV fast paths | Use direct OpenCV Universal Intrinsics style first; add platform-specific paths only when benchmark data justifies them. |
 | OpenCV compatibility | more flags, depths, borders, and edge cases | Expand only with explicit behavior contracts and regression tests. |
 
@@ -137,7 +146,7 @@ Current accepted fast paths:
 - `resize`: `CV_8UC1` exact 2x downsample with `INTER_LINEAR`
 - general U8 resize and RGB/GRAY/YUV conversion families
 - threshold FP32, U8 LUT, and replicate copyMakeBorder
-- box/Gaussian/filter2D/sepFilter2D/Sobel
+- box/Gaussian/filter2D/sepFilter2D/Sobel; S5 additions remain scalar baselines
 - Canny image/derivative and 3x3 rectangular morphology
 
 Compare workspace:

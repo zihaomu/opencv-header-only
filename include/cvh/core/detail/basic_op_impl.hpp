@@ -262,9 +262,12 @@ void dispatch_unary_negate(const Mat& src, Mat& dst, const char* fn_name)
         case CV_16F:
             apply_unary_negate_impl<hfloat>(src, dst);
             break;
+        case CV_64F:
+            apply_unary_negate_impl<double>(src, dst);
+            break;
         default:
             CV_Error_(Error::StsNotImplemented,
-                      ("%s supports depth in [CV_8U..CV_16F], depth=%d", fn_name, src.depth()));
+                      ("%s does not support depth=%d", fn_name, src.depth()));
     }
 }
 
@@ -329,9 +332,12 @@ void dispatch_add_weighted(const Mat& a, double alpha, const Mat& b, double beta
         case CV_16F:
             apply_add_weighted_impl<hfloat>(a, alpha, b, beta, dst);
             break;
+        case CV_64F:
+            apply_add_weighted_impl<double>(a, alpha, b, beta, dst);
+            break;
         default:
             CV_Error_(Error::StsNotImplemented,
-                      ("%s supports depth in [CV_8U..CV_64F], depth=%d", fn_name, a.depth()));
+                      ("%s does not support depth=%d", fn_name, a.depth()));
     }
 }
 
@@ -406,9 +412,12 @@ void dispatch_mat_scalar_binary_by_depth(const Mat& src,
         case CV_16F:
             apply_mat_scalar_binary_impl<hfloat>(src, scalar, dst, op, scalar_first);
             break;
+        case CV_64F:
+            apply_mat_scalar_binary_impl<double>(src, scalar, dst, op, scalar_first);
+            break;
         default:
             CV_Error_(Error::StsNotImplemented,
-                      ("%s supports depth in [CV_8U..CV_16F], depth=%d", fn_name, src.depth()));
+                      ("%s does not support depth=%d", fn_name, src.depth()));
     }
 }
 
@@ -534,9 +543,12 @@ void dispatch_mat_scalar_compare(const Mat& src,
         case CV_16F:
             apply_mat_scalar_compare_impl<hfloat>(src, scalar, dst, op, scalar_first);
             break;
+        case CV_64F:
+            apply_mat_scalar_compare_impl<double>(src, scalar, dst, op, scalar_first);
+            break;
         default:
             CV_Error_(Error::StsNotImplemented,
-                      ("%s supports depth in [CV_8U..CV_16F], depth=%d", fn_name, src.depth()));
+                      ("%s does not support depth=%d", fn_name, src.depth()));
     }
 }
 
@@ -602,9 +614,12 @@ void dispatch_mat_mat_compare(const Mat& a, const Mat& b, Mat& dst, int op, cons
         case CV_16F:
             apply_mat_mat_compare_impl<hfloat>(a, b, dst, op);
             break;
+        case CV_64F:
+            apply_mat_mat_compare_impl<double>(a, b, dst, op);
+            break;
         default:
             CV_Error_(Error::StsNotImplemented,
-                      ("%s supports depth in [CV_8U..CV_64F], depth=%d", fn_name, a.depth()));
+                      ("%s does not support depth=%d", fn_name, a.depth()));
     }
 }
 
@@ -907,6 +922,316 @@ void copy_split_channels(const Mat& src, Mat* dst)
     }
 }
 
+inline bool prepare_bitwise_dst(const Mat& src,
+                                Mat& dst,
+                                const Mat& mask,
+                                const char* fn_name)
+{
+    ensure_non_empty(src, fn_name);
+    if (!mask.empty())
+    {
+        if (mask.type() != CV_8UC1 || mask.shape() != src.shape())
+        {
+            CV_Error_(Error::StsBadArg,
+                      ("%s mask must be CV_8UC1 with the same shape as src", fn_name));
+        }
+    }
+
+    const bool allocated = dst.empty();
+    ensure_binary_dst_like_src(src, dst, fn_name);
+    if (allocated && !mask.empty())
+    {
+        dst.setTo(Scalar::all(0.0));
+    }
+    return allocated;
+}
+
+template<typename Op>
+void apply_raw_mat_mat_bitwise(const Mat& a,
+                               const Mat& b,
+                               Mat& dst,
+                               const Mat& mask,
+                               Op op)
+{
+    const size_t outer = a.dims > 1 ? static_cast<size_t>(a.size.p[0]) : 1;
+    const size_t pixels_per_outer = a.dims > 1 ? a.total(1, a.dims) : a.total();
+    const size_t pixel_bytes = a.elemSize();
+    const size_t logical_row_bytes = pixels_per_outer * pixel_bytes;
+    const size_t a_step0 = a.dims > 1 ? a.step(0) : logical_row_bytes;
+    const size_t b_step0 = b.dims > 1 ? b.step(0) : logical_row_bytes;
+    const size_t dst_step0 = dst.dims > 1 ? dst.step(0) : logical_row_bytes;
+    const size_t mask_step0 =
+        mask.empty() ? 0 : (mask.dims > 1 ? mask.step(0) : pixels_per_outer);
+
+    for (size_t row = 0; row < outer; ++row)
+    {
+        const uchar* a_row = a.data + row * a_step0;
+        const uchar* b_row = b.data + row * b_step0;
+        uchar* dst_row = dst.data + row * dst_step0;
+        const uchar* mask_row = mask.empty() ? nullptr : mask.data + row * mask_step0;
+        for (size_t pixel = 0; pixel < pixels_per_outer; ++pixel)
+        {
+            if (mask_row != nullptr && mask_row[pixel] == 0)
+            {
+                continue;
+            }
+            const size_t offset = pixel * pixel_bytes;
+            for (size_t byte = 0; byte < pixel_bytes; ++byte)
+            {
+                dst_row[offset + byte] = op(a_row[offset + byte], b_row[offset + byte]);
+            }
+        }
+    }
+}
+
+template<typename T>
+void store_scalar_pixel(const Scalar& scalar, int channels, std::vector<uchar>& pixel)
+{
+    pixel.resize(sizeof(T) * static_cast<size_t>(channels));
+    for (int ch = 0; ch < channels; ++ch)
+    {
+        const T value = saturate_cast<T>(scalar[ch]);
+        std::memcpy(pixel.data() + static_cast<size_t>(ch) * sizeof(T), &value, sizeof(T));
+    }
+}
+
+inline std::vector<uchar> make_scalar_pixel(const Mat& src,
+                                            const Scalar& scalar,
+                                            const char* fn_name)
+{
+    check_scalar_channel_bound(src, fn_name);
+    std::vector<uchar> pixel;
+    switch (src.depth())
+    {
+        case CV_8U: store_scalar_pixel<uchar>(scalar, src.channels(), pixel); break;
+        case CV_8S: store_scalar_pixel<schar>(scalar, src.channels(), pixel); break;
+        case CV_16U: store_scalar_pixel<ushort>(scalar, src.channels(), pixel); break;
+        case CV_16S: store_scalar_pixel<short>(scalar, src.channels(), pixel); break;
+        case CV_32S: store_scalar_pixel<int>(scalar, src.channels(), pixel); break;
+        case CV_32U: store_scalar_pixel<uint>(scalar, src.channels(), pixel); break;
+        case CV_32F: store_scalar_pixel<float>(scalar, src.channels(), pixel); break;
+        case CV_16F: store_scalar_pixel<hfloat>(scalar, src.channels(), pixel); break;
+        case CV_64F: store_scalar_pixel<double>(scalar, src.channels(), pixel); break;
+        default:
+            CV_Error_(Error::StsNotImplemented,
+                      ("%s does not support depth=%d", fn_name, src.depth()));
+    }
+    return pixel;
+}
+
+template<typename Op>
+void apply_raw_mat_scalar_bitwise(const Mat& src,
+                                  const std::vector<uchar>& scalar_pixel,
+                                  Mat& dst,
+                                  const Mat& mask,
+                                  Op op,
+                                  bool scalar_first)
+{
+    const size_t outer = src.dims > 1 ? static_cast<size_t>(src.size.p[0]) : 1;
+    const size_t pixels_per_outer = src.dims > 1 ? src.total(1, src.dims) : src.total();
+    const size_t pixel_bytes = src.elemSize();
+    const size_t logical_row_bytes = pixels_per_outer * pixel_bytes;
+    const size_t src_step0 = src.dims > 1 ? src.step(0) : logical_row_bytes;
+    const size_t dst_step0 = dst.dims > 1 ? dst.step(0) : logical_row_bytes;
+    const size_t mask_step0 =
+        mask.empty() ? 0 : (mask.dims > 1 ? mask.step(0) : pixels_per_outer);
+
+    for (size_t row = 0; row < outer; ++row)
+    {
+        const uchar* src_row = src.data + row * src_step0;
+        uchar* dst_row = dst.data + row * dst_step0;
+        const uchar* mask_row = mask.empty() ? nullptr : mask.data + row * mask_step0;
+        for (size_t pixel = 0; pixel < pixels_per_outer; ++pixel)
+        {
+            if (mask_row != nullptr && mask_row[pixel] == 0)
+            {
+                continue;
+            }
+            const size_t offset = pixel * pixel_bytes;
+            for (size_t byte = 0; byte < pixel_bytes; ++byte)
+            {
+                const uchar src_byte = src_row[offset + byte];
+                const uchar scalar_byte = scalar_pixel[byte];
+                dst_row[offset + byte] =
+                    scalar_first ? op(scalar_byte, src_byte) : op(src_byte, scalar_byte);
+            }
+        }
+    }
+}
+
+template<typename Op>
+void dispatch_raw_mat_mat_bitwise(const Mat& a,
+                                  const Mat& b,
+                                  Mat& dst,
+                                  const Mat& mask,
+                                  Op op,
+                                  const char* fn_name)
+{
+    ensure_same_type_and_shape(a, b, fn_name);
+    prepare_bitwise_dst(a, dst, mask, fn_name);
+    apply_raw_mat_mat_bitwise(a, b, dst, mask, op);
+    cpu::set_last_dispatch_tag(cpu::DispatchTag::Scalar);
+}
+
+template<typename Op>
+void dispatch_raw_mat_scalar_bitwise(const Mat& src,
+                                     const Scalar& scalar,
+                                     Mat& dst,
+                                     const Mat& mask,
+                                     Op op,
+                                     bool scalar_first,
+                                     const char* fn_name)
+{
+    const std::vector<uchar> scalar_pixel = make_scalar_pixel(src, scalar, fn_name);
+    prepare_bitwise_dst(src, dst, mask, fn_name);
+    apply_raw_mat_scalar_bitwise(src, scalar_pixel, dst, mask, op, scalar_first);
+    cpu::set_last_dispatch_tag(cpu::DispatchTag::Scalar);
+}
+
+inline void ensure_inrange_dst(const Mat& src, Mat& dst, const char* fn_name)
+{
+    ensure_non_empty(src, fn_name);
+    if (dst.empty())
+    {
+        dst.create(src.dims, src.size.p, CV_8UC1);
+        return;
+    }
+    if (dst.type() != CV_8UC1 || dst.shape() != src.shape())
+    {
+        CV_Error_(Error::StsBadArg,
+                  ("%s dst must be CV_8UC1 with the same shape as src", fn_name));
+    }
+}
+
+template<typename T>
+void apply_inrange_mat_impl(const Mat& src,
+                            const Mat& lower,
+                            const Mat& upper,
+                            Mat& dst)
+{
+    const int channels = src.channels();
+    const size_t outer = src.dims > 1 ? static_cast<size_t>(src.size.p[0]) : 1;
+    const size_t pixels_per_outer = src.dims > 1 ? src.total(1, src.dims) : src.total();
+    const size_t src_step0 = src.dims > 1 ? src.step(0) : pixels_per_outer * src.elemSize();
+    const size_t lower_step0 =
+        lower.dims > 1 ? lower.step(0) : pixels_per_outer * lower.elemSize();
+    const size_t upper_step0 =
+        upper.dims > 1 ? upper.step(0) : pixels_per_outer * upper.elemSize();
+    const size_t dst_step0 = dst.dims > 1 ? dst.step(0) : pixels_per_outer;
+
+    for (size_t row = 0; row < outer; ++row)
+    {
+        const T* src_row = reinterpret_cast<const T*>(src.data + row * src_step0);
+        const T* lower_row = reinterpret_cast<const T*>(lower.data + row * lower_step0);
+        const T* upper_row = reinterpret_cast<const T*>(upper.data + row * upper_step0);
+        uchar* dst_row = dst.data + row * dst_step0;
+        for (size_t pixel = 0; pixel < pixels_per_outer; ++pixel)
+        {
+            bool inside = true;
+            const size_t offset = pixel * static_cast<size_t>(channels);
+            for (int ch = 0; ch < channels; ++ch)
+            {
+                const size_t idx = offset + static_cast<size_t>(ch);
+                const auto value = src_row[idx];
+                inside = inside && lower_row[idx] <= value && value <= upper_row[idx];
+            }
+            dst_row[pixel] = inside ? static_cast<uchar>(255) : static_cast<uchar>(0);
+        }
+    }
+}
+
+template<typename T>
+inline bool scalar_range_contains(T value, double lower, double upper)
+{
+    if constexpr (std::is_integral<T>::value)
+    {
+        const double numeric_value = static_cast<double>(value);
+        return lower <= numeric_value && numeric_value <= upper;
+    }
+    else
+    {
+        const T typed_lower = saturate_cast<T>(lower);
+        const T typed_upper = saturate_cast<T>(upper);
+        return typed_lower <= value && value <= typed_upper;
+    }
+}
+
+template<typename T>
+void apply_inrange_scalar_impl(const Mat& src,
+                               const Scalar& lower,
+                               const Scalar& upper,
+                               Mat& dst)
+{
+    const int channels = src.channels();
+    const size_t outer = src.dims > 1 ? static_cast<size_t>(src.size.p[0]) : 1;
+    const size_t pixels_per_outer = src.dims > 1 ? src.total(1, src.dims) : src.total();
+    const size_t src_step0 = src.dims > 1 ? src.step(0) : pixels_per_outer * src.elemSize();
+    const size_t dst_step0 = dst.dims > 1 ? dst.step(0) : pixels_per_outer;
+
+    for (size_t row = 0; row < outer; ++row)
+    {
+        const T* src_row = reinterpret_cast<const T*>(src.data + row * src_step0);
+        uchar* dst_row = dst.data + row * dst_step0;
+        for (size_t pixel = 0; pixel < pixels_per_outer; ++pixel)
+        {
+            bool inside = true;
+            const size_t offset = pixel * static_cast<size_t>(channels);
+            for (int ch = 0; ch < channels; ++ch)
+            {
+                const auto value = src_row[offset + static_cast<size_t>(ch)];
+                inside = inside && scalar_range_contains(value, lower[ch], upper[ch]);
+            }
+            dst_row[pixel] = inside ? static_cast<uchar>(255) : static_cast<uchar>(0);
+        }
+    }
+}
+
+inline void dispatch_inrange_mat(const Mat& src,
+                                 const Mat& lower,
+                                 const Mat& upper,
+                                 Mat& dst,
+                                 const char* fn_name)
+{
+    switch (src.depth())
+    {
+        case CV_8U: apply_inrange_mat_impl<uchar>(src, lower, upper, dst); break;
+        case CV_8S: apply_inrange_mat_impl<schar>(src, lower, upper, dst); break;
+        case CV_16U: apply_inrange_mat_impl<ushort>(src, lower, upper, dst); break;
+        case CV_16S: apply_inrange_mat_impl<short>(src, lower, upper, dst); break;
+        case CV_32S: apply_inrange_mat_impl<int>(src, lower, upper, dst); break;
+        case CV_32U: apply_inrange_mat_impl<uint>(src, lower, upper, dst); break;
+        case CV_32F: apply_inrange_mat_impl<float>(src, lower, upper, dst); break;
+        case CV_16F: apply_inrange_mat_impl<hfloat>(src, lower, upper, dst); break;
+        case CV_64F: apply_inrange_mat_impl<double>(src, lower, upper, dst); break;
+        default:
+            CV_Error_(Error::StsNotImplemented,
+                      ("%s does not support depth=%d", fn_name, src.depth()));
+    }
+}
+
+inline void dispatch_inrange_scalar(const Mat& src,
+                                    const Scalar& lower,
+                                    const Scalar& upper,
+                                    Mat& dst,
+                                    const char* fn_name)
+{
+    switch (src.depth())
+    {
+        case CV_8U: apply_inrange_scalar_impl<uchar>(src, lower, upper, dst); break;
+        case CV_8S: apply_inrange_scalar_impl<schar>(src, lower, upper, dst); break;
+        case CV_16U: apply_inrange_scalar_impl<ushort>(src, lower, upper, dst); break;
+        case CV_16S: apply_inrange_scalar_impl<short>(src, lower, upper, dst); break;
+        case CV_32S: apply_inrange_scalar_impl<int>(src, lower, upper, dst); break;
+        case CV_32U: apply_inrange_scalar_impl<uint>(src, lower, upper, dst); break;
+        case CV_32F: apply_inrange_scalar_impl<float>(src, lower, upper, dst); break;
+        case CV_16F: apply_inrange_scalar_impl<hfloat>(src, lower, upper, dst); break;
+        case CV_64F: apply_inrange_scalar_impl<double>(src, lower, upper, dst); break;
+        default:
+            CV_Error_(Error::StsNotImplemented,
+                      ("%s does not support depth=%d", fn_name, src.depth()));
+    }
+}
+
 } // namespace
 
 inline void binaryFunc(BinaryOp op, const Mat& a, const Mat& b, Mat& c)
@@ -994,20 +1319,10 @@ inline void binaryFunc(BinaryOp op, const Mat& a, const Mat& b, Mat& c)
                 "binaryFunc(POW)");
             return;
         case BinaryOp::MAX:
-            dispatch_mat_mat_binary_arith(
-                a,
-                b,
-                c,
-                [](const auto& lhs, const auto& rhs) { return lhs > rhs ? lhs : rhs; },
-                "binaryFunc(MAX)");
+            max(a, b, c);
             return;
         case BinaryOp::MIN:
-            dispatch_mat_mat_binary_arith(
-                a,
-                b,
-                c,
-                [](const auto& lhs, const auto& rhs) { return lhs < rhs ? lhs : rhs; },
-                "binaryFunc(MIN)");
+            min(a, b, c);
             return;
         case BinaryOp::ATAN2:
             dispatch_mat_mat_binary(
@@ -1227,6 +1542,266 @@ inline void compare(const Mat& a, const Scalar& b, Mat& c, int op)
 inline void compare(const Scalar& a, const Mat& b, Mat& c, int op)
 {
     dispatch_mat_scalar_compare(b, a, c, op, true, "compare(Scalar,Mat)");
+}
+
+template<typename T>
+inline auto absdiff_value(T lhs, T rhs)
+{
+    if constexpr (std::is_same<T, hfloat>::value)
+    {
+        return std::fabs(static_cast<float>(lhs) - static_cast<float>(rhs));
+    }
+    else if constexpr (std::is_floating_point<T>::value)
+    {
+        return std::fabs(lhs - rhs);
+    }
+    else if constexpr (std::is_same<T, int>::value)
+    {
+        using U = unsigned int;
+        const U lhs_u = static_cast<U>(lhs);
+        const U rhs_u = static_cast<U>(rhs);
+        return static_cast<int>(lhs > rhs ? lhs_u - rhs_u : rhs_u - lhs_u);
+    }
+    else
+    {
+        return std::fabs(static_cast<double>(lhs) - static_cast<double>(rhs));
+    }
+}
+
+template<typename T>
+inline T min_value(T lhs, T rhs)
+{
+    if constexpr (std::is_same<T, hfloat>::value)
+    {
+        const float lhs_f = static_cast<float>(lhs);
+        const float rhs_f = static_cast<float>(rhs);
+        if (std::isnan(lhs_f))
+        {
+            return lhs;
+        }
+        if (std::isnan(rhs_f))
+        {
+            return rhs;
+        }
+        return rhs_f < lhs_f ? rhs : lhs;
+    }
+    else if constexpr (std::is_floating_point<T>::value)
+    {
+        if (std::isnan(lhs))
+        {
+            return lhs;
+        }
+        if (std::isnan(rhs))
+        {
+            return rhs;
+        }
+        if constexpr (std::is_same<T, double>::value)
+        {
+            return std::fmin(lhs, rhs);
+        }
+        return rhs < lhs ? rhs : lhs;
+    }
+    else
+    {
+        return rhs < lhs ? rhs : lhs;
+    }
+}
+
+template<typename T>
+inline T max_value(T lhs, T rhs)
+{
+    if constexpr (std::is_same<T, hfloat>::value)
+    {
+        const float lhs_f = static_cast<float>(lhs);
+        const float rhs_f = static_cast<float>(rhs);
+        if (std::isnan(lhs_f))
+        {
+            return lhs;
+        }
+        if (std::isnan(rhs_f))
+        {
+            return rhs;
+        }
+        return hfloat(std::fmax(lhs_f, rhs_f));
+    }
+    else if constexpr (std::is_floating_point<T>::value)
+    {
+        if (std::isnan(lhs))
+        {
+            return lhs;
+        }
+        if (std::isnan(rhs))
+        {
+            return rhs;
+        }
+        return std::fmax(lhs, rhs);
+    }
+    else
+    {
+        return lhs < rhs ? rhs : lhs;
+    }
+}
+
+inline void absdiff(const Mat& a, const Mat& b, Mat& c)
+{
+    dispatch_mat_mat_binary_arith(
+        a,
+        b,
+        c,
+        [](const auto& lhs, const auto& rhs) { return absdiff_value(lhs, rhs); },
+        "absdiff(Mat,Mat)");
+}
+
+inline void absdiff(const Mat& a, const Scalar& b, Mat& c)
+{
+    dispatch_mat_scalar_binary_arith(
+        a,
+        b,
+        c,
+        [](const auto& lhs, const auto& rhs) { return absdiff_value(lhs, rhs); },
+        false,
+        "absdiff(Mat,Scalar)");
+}
+
+inline void absdiff(const Scalar& a, const Mat& b, Mat& c)
+{
+    absdiff(b, a, c);
+}
+
+inline void bitwise_and(const Mat& a, const Mat& b, Mat& c, const Mat& mask)
+{
+    dispatch_raw_mat_mat_bitwise(
+        a, b, c, mask, [](uchar lhs, uchar rhs) { return static_cast<uchar>(lhs & rhs); },
+        "bitwise_and(Mat,Mat)");
+}
+
+inline void bitwise_and(const Mat& a, const Scalar& b, Mat& c, const Mat& mask)
+{
+    dispatch_raw_mat_scalar_bitwise(
+        a, b, c, mask, [](uchar lhs, uchar rhs) { return static_cast<uchar>(lhs & rhs); },
+        false, "bitwise_and(Mat,Scalar)");
+}
+
+inline void bitwise_and(const Scalar& a, const Mat& b, Mat& c, const Mat& mask)
+{
+    dispatch_raw_mat_scalar_bitwise(
+        b, a, c, mask, [](uchar lhs, uchar rhs) { return static_cast<uchar>(lhs & rhs); },
+        true, "bitwise_and(Scalar,Mat)");
+}
+
+inline void bitwise_or(const Mat& a, const Mat& b, Mat& c, const Mat& mask)
+{
+    dispatch_raw_mat_mat_bitwise(
+        a, b, c, mask, [](uchar lhs, uchar rhs) { return static_cast<uchar>(lhs | rhs); },
+        "bitwise_or(Mat,Mat)");
+}
+
+inline void bitwise_or(const Mat& a, const Scalar& b, Mat& c, const Mat& mask)
+{
+    dispatch_raw_mat_scalar_bitwise(
+        a, b, c, mask, [](uchar lhs, uchar rhs) { return static_cast<uchar>(lhs | rhs); },
+        false, "bitwise_or(Mat,Scalar)");
+}
+
+inline void bitwise_or(const Scalar& a, const Mat& b, Mat& c, const Mat& mask)
+{
+    dispatch_raw_mat_scalar_bitwise(
+        b, a, c, mask, [](uchar lhs, uchar rhs) { return static_cast<uchar>(lhs | rhs); },
+        true, "bitwise_or(Scalar,Mat)");
+}
+
+inline void bitwise_xor(const Mat& a, const Mat& b, Mat& c, const Mat& mask)
+{
+    dispatch_raw_mat_mat_bitwise(
+        a, b, c, mask, [](uchar lhs, uchar rhs) { return static_cast<uchar>(lhs ^ rhs); },
+        "bitwise_xor(Mat,Mat)");
+}
+
+inline void bitwise_xor(const Mat& a, const Scalar& b, Mat& c, const Mat& mask)
+{
+    dispatch_raw_mat_scalar_bitwise(
+        a, b, c, mask, [](uchar lhs, uchar rhs) { return static_cast<uchar>(lhs ^ rhs); },
+        false, "bitwise_xor(Mat,Scalar)");
+}
+
+inline void bitwise_xor(const Scalar& a, const Mat& b, Mat& c, const Mat& mask)
+{
+    dispatch_raw_mat_scalar_bitwise(
+        b, a, c, mask, [](uchar lhs, uchar rhs) { return static_cast<uchar>(lhs ^ rhs); },
+        true, "bitwise_xor(Scalar,Mat)");
+}
+
+inline void bitwise_not(const Mat& src, Mat& dst, const Mat& mask)
+{
+    prepare_bitwise_dst(src, dst, mask, "bitwise_not");
+    const std::vector<uchar> zero_pixel(src.elemSize(), static_cast<uchar>(0));
+    apply_raw_mat_scalar_bitwise(
+        src,
+        zero_pixel,
+        dst,
+        mask,
+        [](uchar lhs, uchar) { return static_cast<uchar>(~lhs); },
+        false);
+    cpu::set_last_dispatch_tag(cpu::DispatchTag::Scalar);
+}
+
+inline void inRange(const Mat& src, const Mat& lower, const Mat& upper, Mat& dst)
+{
+    ensure_same_type_and_shape(src, lower, "inRange(Mat,Mat,Mat)");
+    ensure_same_type_and_shape(src, upper, "inRange(Mat,Mat,Mat)");
+    ensure_inrange_dst(src, dst, "inRange(Mat,Mat,Mat)");
+    dispatch_inrange_mat(src, lower, upper, dst, "inRange(Mat,Mat,Mat)");
+    cpu::set_last_dispatch_tag(cpu::DispatchTag::Scalar);
+}
+
+inline void inRange(const Mat& src, const Scalar& lower, const Scalar& upper, Mat& dst)
+{
+    check_scalar_channel_bound(src, "inRange(Mat,Scalar,Scalar)");
+    ensure_inrange_dst(src, dst, "inRange(Mat,Scalar,Scalar)");
+    dispatch_inrange_scalar(src, lower, upper, dst, "inRange(Mat,Scalar,Scalar)");
+    cpu::set_last_dispatch_tag(cpu::DispatchTag::Scalar);
+}
+
+inline void min(const Mat& a, const Mat& b, Mat& c)
+{
+    dispatch_mat_mat_binary_arith(
+        a,
+        b,
+        c,
+        [](const auto& lhs, const auto& rhs) { return min_value(lhs, rhs); },
+        "min(Mat,Mat)");
+}
+
+inline void min(const Mat& a, const Scalar& b, Mat& c)
+{
+    dispatch_mat_scalar_binary_arith(
+        a,
+        b,
+        c,
+        [](const auto& lhs, const auto& rhs) { return min_value(lhs, rhs); },
+        false,
+        "min(Mat,Scalar)");
+}
+
+inline void max(const Mat& a, const Mat& b, Mat& c)
+{
+    dispatch_mat_mat_binary_arith(
+        a,
+        b,
+        c,
+        [](const auto& lhs, const auto& rhs) { return max_value(lhs, rhs); },
+        "max(Mat,Mat)");
+}
+
+inline void max(const Mat& a, const Scalar& b, Mat& c)
+{
+    dispatch_mat_scalar_binary_arith(
+        a,
+        b,
+        c,
+        [](const auto& lhs, const auto& rhs) { return max_value(lhs, rhs); },
+        false,
+        "max(Mat,Scalar)");
 }
 
 inline void merge(const Mat* src, size_t nsrc, Mat& dst)

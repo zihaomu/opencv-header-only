@@ -853,6 +853,30 @@ Completion notes:
 - `cvh_benchmark_core_mat_header` and `cvh_benchmark_imgproc_header` are the
   only canonical Mode A product targets.
 
+### P-Bench-16: Phase 1 Full Mode B Coverage
+
+Status: complete.
+
+Purpose: extend Mode B after the first Core/Imgproc API phase so every newly
+supported operation family has a representative upstream comparison.
+
+Completion notes:
+
+- Added a shared `Phase1OpId` contract and one shared case implementation
+  included by isolated CVH and OpenCV translation units.
+- Added 76 representative cases; together with the existing `remap`,
+  `warpPerspective`, and `getRectSubPix` matrix, all 79 Phase 1 operation
+  families are measured.
+- Quick preflight produced 122 valid rows and confirmed Phase 1 coverage
+  `79/79`.
+- The single-thread Apple M5 full run uses `warmup=1`, `iters=10`,
+  `repeats=3` and produced 321 rows: 320 valid and one explicit unsupported
+  upstream BGR-to-NV12 case.
+- The dated report now contains 92 Phase 1 performance cases and marks every
+  result as `P1 新增` or `既有`.
+- The report generator derives Phase 1 measured counts from the CSV instead
+  of retaining the former hard-coded `3/79` snapshot.
+
 ## Suggested Execution Order
 
 1. Finish P-Bench-0 and commit documentation/artifact cleanup. Done.
@@ -872,6 +896,7 @@ Completion notes:
 14. Complete P-Bench-13 Mode A baseline and gate stabilization. Done.
 15. Complete P-Bench-14 Mode B coverage expansion. Done.
 16. Complete P-Bench-15 diagnostic target retirement. Done.
+17. Complete P-Bench-16 Phase 1 full Mode B coverage. Done.
 
 ## Acceptance Rule For New Fast Paths
 

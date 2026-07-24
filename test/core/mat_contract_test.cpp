@@ -261,11 +261,59 @@ TEST(MatContract_TEST, convert_to_uint8_preserves_shape_and_saturates)
     EXPECT_EQ(out[4], static_cast<uchar>(255));
 }
 
-TEST(MatContract_TEST, convert_to_unsupported_type_throws)
+TEST(MatContract_TEST, convert_to_f64_and_back_preserves_values)
 {
     Mat src({1, 4}, CV_32F);
-    Mat dst;
-    EXPECT_THROW(src.convertTo(dst, CV_64F), Exception);
+    src.at<float>(0, 0) = -3.5f;
+    src.at<float>(0, 1) = 0.0f;
+    src.at<float>(0, 2) = 12.25f;
+    src.at<float>(0, 3) = 255.75f;
+
+    Mat f64;
+    src.convertTo(f64, CV_64F);
+    ASSERT_EQ(f64.type(), CV_64FC1);
+    EXPECT_DOUBLE_EQ(f64.at<double>(0, 0), -3.5);
+    EXPECT_DOUBLE_EQ(f64.at<double>(0, 1), 0.0);
+    EXPECT_DOUBLE_EQ(f64.at<double>(0, 2), 12.25);
+    EXPECT_DOUBLE_EQ(f64.at<double>(0, 3), 255.75);
+
+    Mat roundtrip;
+    f64.convertTo(roundtrip, CV_32F);
+    ASSERT_EQ(roundtrip.type(), CV_32FC1);
+    for (int x = 0; x < 4; ++x)
+    {
+        EXPECT_FLOAT_EQ(roundtrip.at<float>(0, x), src.at<float>(0, x));
+    }
+}
+
+TEST(MatContract_TEST, convert_between_u8_and_f64_preserves_and_saturates_values)
+{
+    Mat u8({1, 4}, CV_8U);
+    u8.at<uchar>(0, 0) = 0;
+    u8.at<uchar>(0, 1) = 1;
+    u8.at<uchar>(0, 2) = 127;
+    u8.at<uchar>(0, 3) = 255;
+
+    Mat f64;
+    u8.convertTo(f64, CV_64F);
+    ASSERT_EQ(f64.type(), CV_64FC1);
+    EXPECT_DOUBLE_EQ(f64.at<double>(0, 0), 0.0);
+    EXPECT_DOUBLE_EQ(f64.at<double>(0, 1), 1.0);
+    EXPECT_DOUBLE_EQ(f64.at<double>(0, 2), 127.0);
+    EXPECT_DOUBLE_EQ(f64.at<double>(0, 3), 255.0);
+
+    f64.at<double>(0, 0) = -1.0;
+    f64.at<double>(0, 1) = 12.6;
+    f64.at<double>(0, 2) = 254.4;
+    f64.at<double>(0, 3) = 300.0;
+
+    Mat roundtrip;
+    f64.convertTo(roundtrip, CV_8U);
+    ASSERT_EQ(roundtrip.type(), CV_8UC1);
+    EXPECT_EQ(roundtrip.at<uchar>(0, 0), static_cast<uchar>(0));
+    EXPECT_EQ(roundtrip.at<uchar>(0, 1), static_cast<uchar>(13));
+    EXPECT_EQ(roundtrip.at<uchar>(0, 2), static_cast<uchar>(254));
+    EXPECT_EQ(roundtrip.at<uchar>(0, 3), static_cast<uchar>(255));
 }
 
 TEST(MatContract_TEST, setto_covers_all_elements_for_odd_16bit_shape)
@@ -340,11 +388,39 @@ TEST(MatContract_TEST, external_memory_is_not_owned_by_mat)
     std::free(raw);
 }
 
+TEST(MatContract_TEST, f64_multichannel_lifecycle_and_roi_are_supported)
+{
+    Mat base({4, 6}, CV_64FC3);
+    base.setTo(Scalar(1.25, -2.5, 7.75));
+    ASSERT_EQ(base.elemSize1(), sizeof(double));
+    ASSERT_EQ(base.elemSize(), 3 * sizeof(double));
+
+    Mat roi = base(Range(1, 3), Range(2, 5));
+    ASSERT_FALSE(roi.isContinuous());
+    EXPECT_EQ(roi.step(0), base.step(0));
+    EXPECT_DOUBLE_EQ(roi.at<double>(0, 0, 0), 1.25);
+    EXPECT_DOUBLE_EQ(roi.at<double>(0, 0, 1), -2.5);
+    EXPECT_DOUBLE_EQ(roi.at<double>(0, 0, 2), 7.75);
+
+    Mat cloned = roi.clone();
+    ASSERT_TRUE(cloned.isContinuous());
+    ASSERT_EQ(cloned.type(), CV_64FC3);
+    EXPECT_DOUBLE_EQ(cloned.at<double>(1, 2, 0), 1.25);
+    EXPECT_DOUBLE_EQ(cloned.at<double>(1, 2, 1), -2.5);
+    EXPECT_DOUBLE_EQ(cloned.at<double>(1, 2, 2), 7.75);
+
+    Mat copied;
+    cloned.copyTo(copied);
+    ASSERT_EQ(copied.type(), CV_64FC3);
+    EXPECT_EQ(copied.shape(), cloned.shape());
+    EXPECT_DOUBLE_EQ(copied.at<double>(1, 2, 2), 7.75);
+}
+
 TEST(MatContract_TEST, unsupported_depth_is_rejected_in_create)
 {
     Mat m;
     const int sizes[2] = {2, 2};
-    EXPECT_THROW(m.create(2, sizes, CV_64F), Exception);
+    EXPECT_THROW(m.create(2, sizes, CV_16BF), Exception);
 }
 
 TEST(MatContract_TEST, at_i0_checks_upper_bound)
@@ -370,6 +446,7 @@ TEST(MatContract_TEST, transpose2d_preserves_interleaved_bytes_for_multi_type_mu
         CV_16SC1,
         CV_16SC3,
         CV_16FC4,
+        CV_64FC3,
         CV_32SC2,
         CV_32FC3,
         CV_32FC4,

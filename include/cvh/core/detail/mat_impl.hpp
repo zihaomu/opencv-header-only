@@ -18,7 +18,21 @@ namespace lite_mat_detail
 
 inline bool is_supported_depth(int depth)
 {
-    return depth >= CV_8U && depth <= CV_16F;
+    switch (depth)
+    {
+        case CV_8U:
+        case CV_8S:
+        case CV_16U:
+        case CV_16S:
+        case CV_32F:
+        case CV_32S:
+        case CV_32U:
+        case CV_16F:
+        case CV_64F:
+            return true;
+        default:
+            return false;
+    }
 }
 
 inline bool is_supported_type(int type)
@@ -127,6 +141,7 @@ inline bool convert_dispatch_dst(int ddepth, const uchar* src, uchar* dst, size_
         case CV_32S: convert_array<SrcT, int>(src, dst, count); return true;
         case CV_32U: convert_array<SrcT, uint>(src, dst, count); return true;
         case CV_16F: convert_array<SrcT, hfloat>(src, dst, count); return true;
+        case CV_64F: convert_array<SrcT, double>(src, dst, count); return true;
         default:
             return false;
     }
@@ -144,6 +159,7 @@ inline bool convert_dispatch(int sdepth, int ddepth, const uchar* src, uchar* ds
         case CV_32S: return convert_dispatch_dst<int>(ddepth, src, dst, count);
         case CV_32U: return convert_dispatch_dst<uint>(ddepth, src, dst, count);
         case CV_16F: return convert_dispatch_dst<hfloat>(ddepth, src, dst, count);
+        case CV_64F: return convert_dispatch_dst<double>(ddepth, src, dst, count);
         default:
             return false;
     }
@@ -748,7 +764,7 @@ inline size_t Mat::elemSize1() const
     if (!lite_mat_detail::is_supported_depth(d))
     {
         CV_Error_(Error::StsNotImplemented,
-                  ("Mat::elemSize1 supports scalar depth in [CV_8U..CV_16F], depth=%d", d));
+                  ("Mat::elemSize1 does not support depth=%d", d));
     }
 
     return static_cast<size_t>(CV_ELEM_SIZE1(d));
@@ -889,6 +905,12 @@ inline void Mat::setTo(float v)
                 std::fill(out, out + scalar_count, hf);
                 break;
             }
+            case CV_64F:
+            {
+                double* out = reinterpret_cast<double*>(ptr);
+                std::fill(out, out + scalar_count, static_cast<double>(v));
+                break;
+            }
             default:
                 CV_Error_(Error::StsNotImplemented, ("Unsupported type:%d in setTo function!", d));
         }
@@ -947,6 +969,9 @@ inline void Mat::setTo(const Scalar& s)
                 break;
             case CV_16F:
                 lite_mat_detail::fill_scalar_pattern(reinterpret_cast<hfloat*>(row_ptr), pixel_per_outer, cn, s);
+                break;
+            case CV_64F:
+                lite_mat_detail::fill_scalar_pattern(reinterpret_cast<double*>(row_ptr), pixel_per_outer, cn, s);
                 break;
             default:
                 CV_Error_(Error::StsNotImplemented, ("Unsupported type:%d in setTo(Scalar)", d));
@@ -1074,6 +1099,15 @@ inline void Mat::print(int len) const
         }
         std::cout << std::endl;
     }
+    else if (depth() == CV_64F)
+    {
+        const double* p = reinterpret_cast<const double*>(data);
+        for (size_t i = 0; i < printLen; ++i)
+        {
+            std::cout << p[i] << ",";
+        }
+        std::cout << std::endl;
+    }
     else
     {
         CV_Error_(Error::StsBadType, ("Unsupported format at function Mat::print type=%d", type()));
@@ -1193,7 +1227,7 @@ inline void Mat::convertTo(Mat& m, int type_) const
     if (!lite_mat_detail::is_supported_depth(sdepth) || !lite_mat_detail::is_supported_depth(ddepth))
     {
         CV_Error_(Error::StsNotImplemented,
-                  ("Mat::convertTo supports only depths in [CV_8U..CV_16F], sdepth=%d ddepth=%d", sdepth, ddepth));
+                  ("Mat::convertTo unsupported depth, sdepth=%d ddepth=%d", sdepth, ddepth));
     }
 
     if (dchannels != src_channels)

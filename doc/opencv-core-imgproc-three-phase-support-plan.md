@@ -1,787 +1,123 @@
-# OpenCV Core / Imgproc Three-Phase Support Plan
+# OpenCV Core / Imgproc 三阶段支持清单
 
-Last updated: 2026-07-24
+更新时间：2026-07-24
 
-Status: planned
+## 1. 文档范围
 
-## 1. Goal
+本清单依据
+[opencv-core-imgproc-api-coverage.md](opencv-core-imgproc-api-coverage.md)
+中的 220 个 upstream CPU C++ 操作族进行分期。
 
-This plan sequences the gaps recorded in
-[opencv-core-imgproc-api-coverage.md](opencv-core-imgproc-api-coverage.md) into
-three implementation phases.
+第一阶段已完成后，当前共有 107 个可调用操作族，没有仅声明未实现的
+第一阶段 API，另有 113 个操作族未支持。本清单只回答：
 
-The tracked baseline is:
+- 每个阶段支持哪些 `core` 算子；
+- 每个阶段支持哪些 `imgproc` 算子；
+- 为什么把这些算子放在该阶段。
 
-- 220 upstream CPU C++ operation families: 97 `core` and 123 `imgproc`.
-- 28 families currently have a callable cvh subset.
-- `norm` is declared but has no accepted header-only definition.
-- 191 families are missing.
+本清单不描述实现方法、测试步骤、SIMD 策略或交付流程。第三阶段完成后的
+`220 / 220` 表示操作族名称级覆盖，不表示完整覆盖 OpenCV 的全部重载、类型、
+类成员或后端。
 
-The three phases cover all 192 outstanding operation families:
+## 2. 三阶段总览
 
-| Phase | Theme | Core gaps | Imgproc gaps | Total added | Cumulative callable coverage |
+| 阶段 | 定位 | Core | Imgproc | 本阶段新增 | 累计覆盖 |
 |---|---|---:|---:|---:|---:|
-| P-API-1 | Foundation and common pipelines | 43 | 36 | 79 | 107 / 220, 48.6% |
-| P-API-2 | Numerical analysis, features, and shapes | 35 | 47 | 82 | 189 / 220, 85.9% |
-| P-API-3 | Complex algorithms and long-tail APIs | 5 | 26 | 31 | 220 / 220, 100% |
-
-The final percentage is operation-family name coverage under documented cvh
-contracts. It is not full OpenCV overload, type, ABI, class-method, or backend
-compatibility.
-
-Each phase is a macro phase, not one pull request. A wave should normally add
-no more than one coherent dependency cluster and should remain independently
-reviewable.
-
-### Progress Tracker
-
-Allowed status values: `not started`, `in progress`, `complete`, `blocked`.
-
-| Wave | Purpose | Status |
-|---|---|---|
-| P-API-1.0 | Type and test prerequisites | not started |
-| P-API-1.1 | Core element-wise and logical primitives | not started |
-| P-API-1.2 | Core conversion, math, and validation | not started |
-| P-API-1.3 | Core reductions and statistics | not started |
-| P-API-1.4 | Core layout, copy, and channel utilities | not started |
-| P-API-1.5 | Imgproc kernel, filter, and intensity primitives | not started |
-| P-API-1.6 | Imgproc accumulation, pyramids, and color input | not started |
-| P-API-1.7 | Imgproc geometric transform foundation | not started |
-| P-API-1.8 | P-API-1 phase gate | not started |
-| P-API-2.0 | Type and object prerequisites | not started |
-| P-API-2.1 | Core linear algebra and statistical analysis | not started |
-| P-API-2.2 | Core coordinate, spectral, random, and ordering APIs | not started |
-| P-API-2.3 | Imgproc histogram, spectral, region, and polar APIs | not started |
-| P-API-2.4 | Imgproc corners and feature selection | not started |
-| P-API-2.5 | Imgproc contours and shape analysis | not started |
-| P-API-2.6 | P-API-2 phase gate | not started |
-| P-API-3.0 | Class prerequisites | not started |
-| P-API-3.1 | Core numerical long tail | not started |
-| P-API-3.2 | Imgproc drawing and text | not started |
-| P-API-3.3 | Imgproc Hough and detector objects | not started |
-| P-API-3.4 | Imgproc segmentation and specialized algorithms | not started |
-| P-API-3.5 | Full inventory gate | not started |
-
-## 2. Product Constraints
-
-All three phases must preserve the current product direction:
-
-- Pure header-only public implementation. No accepted operator may require a
-  project `.cpp`.
-- CPU only.
-- `cvh::headers` and `cvh::headers_fast` expose the same APIs.
-- `cvh::headers_fast` only selects validated fast paths.
-- Scalar/header C++ correctness lands before SIMD optimization.
-- OpenCV Universal Intrinsics is the preferred SIMD dialect.
-- Do not reintroduce xsimd as an optimization candidate.
-- Current architecture focus is x86 SSE/AVX and ARM NEON.
-- RVV remains a separate future TODO because scalable vectors need a dedicated
-  design.
-- UMat, CUDA, OpenCL, OpenGL, DirectX, and other runtime/hardware integration
-  APIs remain outside this plan.
-
-API-family support means that cvh exposes a public function for the operation
-with a useful, explicit support matrix. It does not require reproducing
-OpenCV's `InputArray` and `OutputArray` wrappers. Concrete `cvh::Mat` APIs are
-acceptable where they keep the header-only design smaller and clearer.
-
-## 3. Common Implementation Workflow
-
-Every wave follows the same sequence.
-
-### 3.1 Contract First
-
-Before implementation:
-
-- Record the upstream declaration, overloads, accepted depths, channels,
-  layouts, flags, and in-place behavior.
-- Define the initial cvh support matrix.
-- Decide whether the public API belongs in an existing header or a new focused
-  header.
-- Add the public header to the correct umbrella header.
-- Explicitly reject unsupported combinations.
-
-Initial support should prioritize:
-
-- Pixel operations: `CV_8U`, `CV_16S`, and `CV_32F`, then other existing cvh
-  depths when semantics are clear.
-- Image operations: C1, C3, and C4, including continuous and ROI inputs where
-  OpenCV permits them.
-- Numerical linear algebra: `CV_32F` and `CV_64F`.
-- Drawing and display-oriented operations: `CV_8U` first.
-
-### 3.2 Scalar Correctness
-
-- Implement the complete accepted matrix in ODR-safe headers.
-- Add focused contract tests under `test/core/` or `test/imgproc/`.
-- Differentially compare against the local OpenCV checkout.
-- Cover empty/invalid input, odd sizes, single-row/single-column cases, ROI,
-  non-contiguous steps, aliasing, and in-place behavior where applicable.
-- Use exact comparison for integer results and an operation-specific tolerance
-  for floating-point results.
-
-### 3.3 Performance
-
-- Do not add SIMD merely because an API is new.
-- Add Mode A regression rows for operations that can regress existing cvh
-  pipelines.
-- Add Mode B `cvh::headers_fast` versus OpenCV rows for CPU hotspots.
-- Start OpenCV UI work only after profiling identifies the kernel cost.
-- Preserve a scalar fallback and explicit SIMD tail handling.
-
-### 3.4 Documentation And Status
-
-After a wave passes:
-
-- Move each accepted family in
-  `opencv-core-imgproc-api-coverage.md` from `Missing` or `Declared only` to
-  `Available (subset)`.
-- Record its exact type, channel, flag, and layout matrix.
-- Update the root README operator table when the public surface materially
-  changes.
-- Update benchmark reports only when comparable measurements exist.
-
-## 4. P-API-1: Foundation And Common Pipelines
-
-Status: planned
-
-Goal: add the reusable primitives needed by most preprocessing pipelines and
-by the later analytical algorithms.
-
-P-API-1 adds 79 operation families: 43 `core` and 36 `imgproc`.
-
-### P-API-1.0: Type And Test Prerequisites
-
-Operation-family count: 0
-
-Required foundation work:
-
-- Make `CV_64F` a real `Mat` depth across allocation, element size, typed
-  access, conversion, scalar fill, and tests. The macro exists today, but
-  `Mat` currently rejects the depth.
-- Add the minimum floating-point geometry types needed by upstream-style
-  transforms, including `Point2f` and `Point2d`.
-- Decide whether to generalize `Point`/`Size` as templates or add narrow
-  aliases without destabilizing existing APIs.
-- Add reusable OpenCV differential-test helpers for generated matrices,
-  tolerances, ROI, and parameterized type/channel cases.
-- Add API coverage metadata so tests can identify the family and accepted
-  matrix they cover.
-
-Exit gate:
-
-- `CV_64F` Mat lifecycle and conversion tests pass.
-- Existing Mat ABI assumptions used inside cvh remain intact.
-- Header compile, include-only, ODR, and header-only contract checks pass.
-
-### P-API-1.1: Core Element-Wise And Logical Primitives
-
-Operation-family count: 8
-
-APIs:
-
-- `absdiff`
-- `bitwise_and`
-- `bitwise_not`
-- `bitwise_or`
-- `bitwise_xor`
-- `inRange`
-- `min`
-- `max`
-
-Dependency rationale:
-
-- These are low-level pixel kernels reused by masks, morphology, thresholding,
-  compositing, and later algorithms.
-- They share iteration, scalar broadcasting, ROI, saturation, and SIMD
-  dispatch infrastructure.
-
-### P-API-1.2: Core Conversion, Math, And Validation
-
-Operation-family count: 9
-
-APIs:
-
-- `scaleAdd`
-- `convertScaleAbs`
-- `convertFp16`
-- `sqrt`
-- `pow`
-- `exp`
-- `log`
-- `checkRange`
-- `patchNaNs`
-
-Dependency rationale:
-
-- Conversion and unary math establish reusable typed loops for normalization,
-  numerical analysis, and image statistics.
-- `checkRange` and `patchNaNs` provide validation and cleanup paths needed by
-  later solvers.
-
-### P-API-1.3: Core Reductions And Statistics
-
-Operation-family count: 13
-
-APIs:
-
-- `norm`
-- `sum`
-- `mean`
-- `meanStdDev`
-- `countNonZero`
-- `hasNonZero`
-- `findNonZero`
-- `minMaxIdx`
-- `minMaxLoc`
-- `reduce`
-- `reduceArgMax`
-- `reduceArgMin`
-- `normalize`
-
-Dependency rationale:
-
-- This wave turns the current declared-only `norm` into a real header-only
-  API.
-- The operations share reduction, mask, accumulation precision, and
-  parallel-partition logic.
-- Reductions are prerequisites for statistics, feature scoring, histogram
-  validation, and numerical tests in P-API-2.
-
-### P-API-1.4: Core Layout, Copy, And Channel Utilities
-
-Operation-family count: 13
-
-APIs:
-
-- `borderInterpolate`
-- `copyTo`
-- `extractChannel`
-- `insertChannel`
-- `mixChannels`
-- `flip`
-- `flipND`
-- `rotate`
-- `repeat`
-- `hconcat`
-- `vconcat`
-- `broadcast`
-- `swap`
-
-Dependency rationale:
-
-- These APIs share step-aware copy and channel-routing kernels.
-- `borderInterpolate` removes duplicated border logic from imgproc filters.
-- Layout primitives simplify pyramid, remap, histogram, and shape test data.
-
-### P-API-1.5: Imgproc Kernel, Filter, And Intensity Primitives
-
-Operation-family count: 17
-
-APIs:
-
-- `getStructuringElement`
-- `getGaussianKernel`
-- `getDerivKernels`
-- `getGaborKernel`
-- `createHanningWindow`
-- `integral`
-- `Scharr`
-- `Laplacian`
-- `spatialGradient`
-- `sqrBoxFilter`
-- `medianBlur`
-- `bilateralFilter`
-- `stackBlur`
-- `adaptiveThreshold`
-- `thresholdWithMask`
-- `equalizeHist`
-- `applyColorMap`
-
-Dependency rationale:
-
-- Kernel factories should be shared by existing filters and new derivative
-  operators.
-- `integral` supports adaptive thresholding and later region statistics.
-- Scharr, Laplacian, and spatial gradients build on the existing Sobel and
-  separable-filter infrastructure.
-- Histogram equalization and color maps are common preprocessing and
-  visualization operations with limited external dependencies.
-
-### P-API-1.6: Imgproc Accumulation, Pyramids, And Color Input
-
-Operation-family count: 10
-
-APIs:
-
-- `accumulate`
-- `accumulateProduct`
-- `accumulateSquare`
-- `accumulateWeighted`
-- `blendLinear`
-- `pyrDown`
-- `pyrUp`
-- `buildPyramid`
-- `cvtColorTwoPlane`
-- `demosaicing`
-
-Dependency rationale:
-
-- Accumulation APIs share typed floating-point accumulation loops.
-- Pyramid operations reuse Gaussian filtering and resize/layout primitives.
-- Two-plane color conversion extends the current YUV implementation without
-  introducing a new color-conversion engine.
-- Demosaicing should reuse border and color-channel helpers but remain a
-  distinct kernel.
-
-### P-API-1.7: Imgproc Geometric Transform Foundation
-
-Operation-family count: 9
-
-APIs:
-
-- `remap`
-- `convertMaps`
-- `warpPerspective`
-- `getAffineTransform`
-- `getPerspectiveTransform`
-- `getRotationMatrix2D`
-- `getRotationMatrix2D_`
-- `invertAffineTransform`
-- `getRectSubPix`
-
-Dependency rationale:
-
-- `remap` is the shared sampling engine.
-- `warpPerspective` should reuse remap interpolation, border, and coordinate
-  logic instead of creating a separate sampler.
-- Matrix-construction helpers depend on the P-API-1.0 floating-point geometry
-  and `CV_64F` work.
-- The existing `warpAffine` path should be refactored only when sharing code
-  reduces duplication without changing its accepted behavior.
-
-### P-API-1.8: Phase Gate
-
-P-API-1 is complete only when:
-
-- All 79 families are public, header-defined, and contract-tested.
-- The coverage document reports 107 / 220 callable families.
-- Common pixel/reduction kernels have Mode A rows.
-- At minimum, reductions, median/bilateral filtering, pyramids, remap, and
-  warpPerspective have Mode B rows.
-- No accepted API requires a `.cpp`.
-- Existing operator tests and header-only smoke/ODR checks pass.
-
-## 5. P-API-2: Numerical Analysis, Features, And Shapes
-
-Status: planned
-
-Goal: build the numerical and image-analysis layer on top of P-API-1.
-
-P-API-2 adds 82 operation families: 35 `core` and 47 `imgproc`.
-
-### P-API-2.0: Type And Object Prerequisites
-
-Operation-family count: 0
-
-Required foundation work:
-
-- Add `Rect`/`Rect2f`, `RotatedRect`, `Moments`, `TermCriteria`, and the
-  minimum fixed-size vector aliases required by accepted APIs.
-- Add a minimal header-only `RNG` object before exposing `theRNG`, `randu`,
-  `randn`, and `randShuffle`.
-- Define stable result containers for contours, labels, histograms, and shape
-  fitting without introducing `InputArray`/`OutputArray` wrappers by accident.
-- Introduce minimal `PCA`, `SVD`, and `CLAHE` classes only where the public
-  operation contract requires class behavior. Keep their first accepted
-  surface narrow.
-
-### P-API-2.1: Core Linear Algebra And Statistical Analysis
-
-Operation-family count: 16
-
-APIs:
-
-- `setIdentity`
-- `trace`
-- `determinant`
-- `completeSymm`
-- `invert`
-- `solve`
-- `mulTransposed`
-- `SVDecomp`
-- `SVBackSubst`
-- `calcCovarMatrix`
-- `PCACompute`
-- `PCAProject`
-- `PCABackProject`
-- `Mahalanobis`
-- `PSNR`
-- `batchDistance`
-
-Dependency rationale:
-
-- Matrix decomposition and solve kernels should share pivoting, workspace,
-  and precision policy.
-- PCA and covariance build on GEMM, reductions, transpose, and decomposition.
-- PSNR and Mahalanobis build on reductions and linear algebra.
-- Start with `CV_32F`/`CV_64F`; integer inputs may convert through explicit
-  documented paths.
-
-### P-API-2.2: Core Coordinate, Spectral, Random, And Ordering APIs
-
-Operation-family count: 19
-
-APIs:
-
-- `cartToPolar`
-- `polarToCart`
-- `phase`
-- `magnitude`
-- `transform`
-- `perspectiveTransform`
-- `dft`
-- `idft`
-- `dct`
-- `idct`
-- `mulSpectrums`
-- `getOptimalDFTSize`
-- `randu`
-- `randn`
-- `randShuffle`
-- `setRNGSeed`
-- `theRNG`
-- `sort`
-- `sortIdx`
-
-Dependency rationale:
-
-- Coordinate transforms share vector math from P-API-1.
-- Spectral transforms are prerequisites for phase correlation and fast
-  template matching.
-- Random generation and sorting are reusable test and clustering
-  infrastructure.
-
-### P-API-2.3: Imgproc Histogram, Spectral, Region, And Polar APIs
-
-Operation-family count: 15
-
-APIs:
-
-- `calcHist`
-- `calcBackProject`
-- `compareHist`
-- `createCLAHE`
-- `matchTemplate`
-- `phaseCorrelate`
-- `phaseCorrelateIterative`
-- `divSpectrums`
-- `connectedComponents`
-- `connectedComponentsWithStats`
-- `distanceTransform`
-- `floodFill`
-- `linearPolar`
-- `logPolar`
-- `warpPolar`
-
-Dependency rationale:
-
-- Histogram storage and binning should be shared by histogram comparison,
-  backprojection, equalization, and CLAHE.
-- Phase correlation and spectrum division depend on P-API-2.2.
-- Connected components, distance transform, and flood fill establish reusable
-  region/label infrastructure.
-- Polar transforms reuse the P-API-1 remap engine.
-
-### P-API-2.4: Imgproc Corners And Feature Selection
-
-Operation-family count: 6
-
-APIs:
-
-- `cornerEigenValsAndVecs`
-- `cornerHarris`
-- `cornerMinEigenVal`
-- `cornerSubPix`
-- `preCornerDetect`
-- `goodFeaturesToTrack`
-
-Dependency rationale:
-
-- This cluster shares derivative, local covariance, reduction, sorting, and
-  sub-pixel refinement infrastructure.
-- It should reuse P-API-1 Scharr/Sobel and P-API-2 ordering utilities.
-
-### P-API-2.5: Imgproc Contours And Shape Analysis
-
-Operation-family count: 26
-
-APIs:
-
-- `HuMoments`
-- `approxPolyDP`
-- `approxPolyN`
-- `arcLength`
-- `boundingRect`
-- `boxPoints`
-- `contourArea`
-- `convexHull`
-- `convexityDefects`
-- `findContours`
-- `findContoursLinkRuns`
-- `fitEllipse`
-- `fitEllipseAMS`
-- `fitEllipseDirect`
-- `fitLine`
-- `getClosestEllipsePoints`
-- `intersectConvexConvex`
-- `isContourConvex`
-- `matchShapes`
-- `minAreaRect`
-- `minEnclosingCircle`
-- `minEnclosingConvexPolygon`
-- `minEnclosingTriangle`
-- `moments`
-- `pointPolygonTest`
-- `rotatedRectangleIntersection`
-
-Dependency rationale:
-
-- Contour extraction lands before approximation, hull, moments, and fitting.
-- Shape fitting depends on P-API-2 linear algebra.
-- Geometry result types are established in P-API-2.0 and shared by all
-  functions in this wave.
-- This large wave should be split into contour extraction, polygon/hull,
-  moments/matching, and fitting/enclosing pull requests.
-
-### P-API-2.6: Phase Gate
-
-P-API-2 is complete only when:
-
-- All 82 families are public, header-defined, and contract-tested.
-- The coverage document reports 189 / 220 callable families.
-- FP32/FP64 numerical tolerances are documented per algorithm family.
-- DFT, solve/decomposition, histogram, matchTemplate, connected components,
-  and contour extraction have Mode B benchmark coverage.
-- Shape APIs agree with OpenCV on representative degenerate and boundary
-  inputs, not only normal images.
-- P-API-1 regression and performance gates remain green.
-
-## 6. P-API-3: Complex Algorithms And Long-Tail APIs
-
-Status: planned
-
-Goal: finish the operation-family inventory after the shared primitives,
-numerical tools, region model, and geometry types are stable.
-
-P-API-3 adds 31 operation families: 5 `core` and 26 `imgproc`.
-
-The family count is smaller than earlier phases, but expected implementation
-cost and algorithmic risk are higher.
-
-### P-API-3.0: Class Prerequisites
-
-Operation-family count: 0
-
-Required foundation work:
-
-- Finalize the minimum object model needed by `LineSegmentDetector` and
-  `GeneralizedHough` factories.
-- Schedule class-only `Subdiv2D` and `IntelligentScissorsMB` after the
-  operation-family gate. They do not contribute to the 220 denominator.
-- Do not introduce a general OpenCV `Algorithm` hierarchy unless multiple
-  implemented classes gain a concrete benefit from it.
-- Add deterministic workspace and allocation policies for iterative
-  algorithms.
-
-### P-API-3.1: Core Numerical Long Tail
-
-Operation-family count: 5
-
-APIs:
-
-- `eigen`
-- `eigenNonSymmetric`
-- `solveCubic`
-- `solvePoly`
-- `kmeans`
-
-Dependency rationale:
-
-- These algorithms need the P-API-2 solver, decomposition, random, sorting,
-  and convergence infrastructure.
-- `kmeans` should land before `grabCut`.
-- Non-symmetric eigen and polynomial solvers require independent numerical
-  stability gates and must not be accepted from nominal examples alone.
-
-### P-API-3.2: Imgproc Drawing And Text
-
-Operation-family count: 15
-
-APIs:
-
-- `arrowedLine`
-- `circle`
-- `clipLine`
-- `drawContours`
-- `drawMarker`
-- `ellipse`
-- `ellipse2Poly`
-- `fillConvexPoly`
-- `fillPoly`
-- `getFontScaleFromHeight`
-- `getTextSize`
-- `line`
-- `polylines`
-- `putText`
-- `rectangle`
-
-Dependency rationale:
-
-- All drawing operations should share clipping, line rasterization, fill,
-  color conversion, and anti-aliasing helpers.
-- Text measurement and rendering must use one font-metric implementation.
-- `drawContours` reuses P-API-2 contour containers.
-
-### P-API-3.3: Imgproc Hough And Detector Objects
-
-Operation-family count: 7
-
-APIs:
-
-- `HoughCircles`
-- `HoughLines`
-- `HoughLinesP`
-- `HoughLinesPointSet`
-- `createGeneralizedHoughBallard`
-- `createGeneralizedHoughGuil`
-- `createLineSegmentDetector`
-
-Dependency rationale:
-
-- Standard Hough implementations reuse the existing Canny path, P-API-2
-  sorting, and P-API-3 geometry/vector types.
-- Generalized Hough and line-segment objects should reuse common accumulator,
-  voting, and result-filtering infrastructure.
-
-### P-API-3.4: Imgproc Segmentation And Specialized Algorithms
-
-Operation-family count: 4
-
-APIs:
-
-- `EMD`
-- `grabCut`
-- `pyrMeanShiftFiltering`
-- `watershed`
-
-Dependency rationale:
-
-- `grabCut` depends on P-API-3 `kmeans` plus P-API-2 region and histogram
-  primitives.
-- Watershed depends on stable neighborhood, label, and queue handling.
-- Pyramid mean shift depends on P-API-1 pyramids and color conversion.
-- EMD is a standalone optimization algorithm and should not be allowed to
-  distort the earlier foundational API design.
-
-### P-API-3.5: Full Inventory Gate
-
-P-API-3 is complete only when:
-
-- All 31 families are public, header-defined, and contract-tested.
-- The coverage document reports 220 / 220 callable operation families.
-- The 220-family inventory is regenerated against the pinned upstream commit
-  and has no unassigned names.
-- Factories return usable header-only objects for their accepted subset.
-- Complex algorithms include deterministic tests and bounded workspace
-  behavior.
-- Representative Hough, drawing, GrabCut, watershed, and mean-shift cases
-  have Mode B measurements.
-- No completion claim is made for excluded class methods, C APIs, GPU/runtime
-  backends, or full overload/type parity.
-
-## 7. Class And Infrastructure Policy
-
-The three phases target the 220 free-function operation families. Class
-coverage is tracked separately because counting each method as an operation
-would make the denominator unstable.
-
-| Class/infrastructure area | Planned handling |
+| 第一阶段 | 高频基础算子与通用图像流水线 | 43 | 36 | 79 | 107 / 220，48.6% |
+| 第二阶段 | 数值分析、特征与形状分析 | 35 | 47 | 82 | 189 / 220，85.9% |
+| 第三阶段 | 高复杂度算法与长尾接口 | 5 | 26 | 31 | 220 / 220，100% |
+
+## 3. 第一阶段：高频基础算子与通用图像流水线
+
+第一阶段优先补齐调用频率高、复用范围广，并且会被第二、三阶段反复依赖的
+基础能力。
+
+详细落地顺序与验收标准见
+[opencv-core-imgproc-phase1-implementation-plan.md](opencv-core-imgproc-phase1-implementation-plan.md)。
+
+### 3.1 Core 支持列表
+
+<!-- P1_CORE_API_LIST_START -->
+| 类别 | 算子 | 数量 | 放在第一阶段的原因 |
+|---|---|---:|---|
+| 逐元素与逻辑运算 | `absdiff`<br>`bitwise_and`<br>`bitwise_not`<br>`bitwise_or`<br>`bitwise_xor`<br>`inRange`<br>`min`<br>`max` | 8 | 掩码、阈值、形态学、合成和后续区域算法都会直接使用。 |
+| 转换、数学与数据校验 | `scaleAdd`<br>`convertScaleAbs`<br>`convertFp16`<br>`sqrt`<br>`pow`<br>`exp`<br>`log`<br>`checkRange`<br>`patchNaNs` | 9 | 是归一化、数值预处理、浮点数据清理和后续统计计算的基础。 |
+| 归约与统计 | `norm`<br>`sum`<br>`mean`<br>`meanStdDev`<br>`countNonZero`<br>`hasNonZero`<br>`findNonZero`<br>`minMaxIdx`<br>`minMaxLoc`<br>`reduce`<br>`reduceArgMax`<br>`reduceArgMin`<br>`normalize` | 13 | 使用频率高，并为特征评分、直方图、距离度量和数值算法提供公共能力。 |
+| 布局、复制与通道操作 | `borderInterpolate`<br>`copyTo`<br>`extractChannel`<br>`insertChannel`<br>`mixChannels`<br>`flip`<br>`flipND`<br>`rotate`<br>`repeat`<br>`hconcat`<br>`vconcat`<br>`broadcast`<br>`swap` | 13 | 解决数据搬运和布局转换，能够被滤波、金字塔、几何变换及测试数据构造复用。 |
+| **合计** |  | **43** |  |
+<!-- P1_CORE_API_LIST_END -->
+
+### 3.2 Imgproc 支持列表
+
+<!-- P1_IMGPROC_API_LIST_START -->
+| 类别 | 算子 | 数量 | 放在第一阶段的原因 |
+|---|---|---:|---|
+| 核生成、滤波与强度处理 | `getStructuringElement`<br>`getGaussianKernel`<br>`getDerivKernels`<br>`getGaborKernel`<br>`createHanningWindow`<br>`integral`<br>`Scharr`<br>`Laplacian`<br>`spatialGradient`<br>`sqrBoxFilter`<br>`medianBlur`<br>`bilateralFilter`<br>`stackBlur`<br>`adaptiveThreshold`<br>`thresholdWithMask`<br>`equalizeHist`<br>`applyColorMap` | 17 | 与现有滤波、Sobel、threshold 路径关联紧密，也是最常见的预处理能力。 |
+| 累积、金字塔与颜色输入 | `accumulate`<br>`accumulateProduct`<br>`accumulateSquare`<br>`accumulateWeighted`<br>`blendLinear`<br>`pyrDown`<br>`pyrUp`<br>`buildPyramid`<br>`cvtColorTwoPlane`<br>`demosaicing` | 10 | 视频统计、图像融合、多尺度处理和相机/YUV 输入场景使用频率较高。 |
+| 几何变换基础 | `remap`<br>`convertMaps`<br>`warpPerspective`<br>`getAffineTransform`<br>`getPerspectiveTransform`<br>`getRotationMatrix2D`<br>`getRotationMatrix2D_`<br>`invertAffineTransform`<br>`getRectSubPix` | 9 | remap 和变换矩阵是透视、极坐标、配准及后续几何算法的共同基础。 |
+| **合计** |  | **36** |  |
+<!-- P1_IMGPROC_API_LIST_END -->
+
+## 4. 第二阶段：数值分析、特征与形状分析
+
+第二阶段建立在第一阶段的归约、滤波、布局和几何能力之上，重点覆盖计算机
+视觉分析流程中常用但依赖关系更复杂的算子。
+
+### 4.1 Core 支持列表
+
+<!-- P2_CORE_API_LIST_START -->
+| 类别 | 算子 | 数量 | 放在第二阶段的原因 |
+|---|---|---:|---|
+| 线性代数与统计分析 | `setIdentity`<br>`trace`<br>`determinant`<br>`completeSymm`<br>`invert`<br>`solve`<br>`mulTransposed`<br>`SVDecomp`<br>`SVBackSubst`<br>`calcCovarMatrix`<br>`PCACompute`<br>`PCAProject`<br>`PCABackProject`<br>`Mahalanobis`<br>`PSNR`<br>`batchDistance` | 16 | PCA、拟合、距离和质量评估依赖矩阵分解、求解、GEMM 与第一阶段归约能力。 |
+| 坐标、频域、随机与排序 | `cartToPolar`<br>`polarToCart`<br>`phase`<br>`magnitude`<br>`transform`<br>`perspectiveTransform`<br>`dft`<br>`idft`<br>`dct`<br>`idct`<br>`mulSpectrums`<br>`getOptimalDFTSize`<br>`randu`<br>`randn`<br>`randShuffle`<br>`setRNGSeed`<br>`theRNG`<br>`sort`<br>`sortIdx` | 19 | 频域算子支撑模板匹配和相位相关；随机与排序支撑聚类、特征选择和测试数据。 |
+| **合计** |  | **35** |  |
+<!-- P2_CORE_API_LIST_END -->
+
+### 4.2 Imgproc 支持列表
+
+<!-- P2_IMGPROC_API_LIST_START -->
+| 类别 | 算子 | 数量 | 放在第二阶段的原因 |
+|---|---|---:|---|
+| 直方图、频域、区域与极坐标 | `calcHist`<br>`calcBackProject`<br>`compareHist`<br>`createCLAHE`<br>`matchTemplate`<br>`phaseCorrelate`<br>`phaseCorrelateIterative`<br>`divSpectrums`<br>`connectedComponents`<br>`connectedComponentsWithStats`<br>`distanceTransform`<br>`floodFill`<br>`linearPolar`<br>`logPolar`<br>`warpPolar` | 15 | 依赖第一阶段 remap/归约和本阶段 DFT，同时为分割、匹配和区域分析提供基础。 |
+| 角点与特征选择 | `cornerEigenValsAndVecs`<br>`cornerHarris`<br>`cornerMinEigenVal`<br>`cornerSubPix`<br>`preCornerDetect`<br>`goodFeaturesToTrack` | 6 | 共用梯度、局部协方差、排序和亚像素计算，适合作为一个关联算子组。 |
+| 轮廓与形状分析 | `HuMoments`<br>`approxPolyDP`<br>`approxPolyN`<br>`arcLength`<br>`boundingRect`<br>`boxPoints`<br>`contourArea`<br>`convexHull`<br>`convexityDefects`<br>`findContours`<br>`findContoursLinkRuns`<br>`fitEllipse`<br>`fitEllipseAMS`<br>`fitEllipseDirect`<br>`fitLine`<br>`getClosestEllipsePoints`<br>`intersectConvexConvex`<br>`isContourConvex`<br>`matchShapes`<br>`minAreaRect`<br>`minEnclosingCircle`<br>`minEnclosingConvexPolygon`<br>`minEnclosingTriangle`<br>`moments`<br>`pointPolygonTest`<br>`rotatedRectangleIntersection` | 26 | 轮廓提取是多边形、凸包、矩、拟合和包围几何的共同入口，内部依赖关系紧密。 |
+| **合计** |  | **47** |  |
+<!-- P2_IMGPROC_API_LIST_END -->
+
+## 5. 第三阶段：高复杂度算法与长尾接口
+
+第三阶段处理实现复杂度高、数值稳定性要求高、需要对象模型，或者相对低频的
+算法。这些算子会复用前两阶段已经建立的矩阵、频域、轮廓、区域和几何能力。
+
+### 5.1 Core 支持列表
+
+<!-- P3_CORE_API_LIST_START -->
+| 类别 | 算子 | 数量 | 放在第三阶段的原因 |
+|---|---|---:|---|
+| 高复杂度数值算法 | `eigen`<br>`eigenNonSymmetric`<br>`solveCubic`<br>`solvePoly`<br>`kmeans` | 5 | 对收敛性、数值稳定性和边界输入要求较高；kmeans 还会被 GrabCut 依赖。 |
+| **合计** |  | **5** |  |
+<!-- P3_CORE_API_LIST_END -->
+
+### 5.2 Imgproc 支持列表
+
+<!-- P3_IMGPROC_API_LIST_START -->
+| 类别 | 算子 | 数量 | 放在第三阶段的原因 |
+|---|---|---:|---|
+| 绘制与文本 | `arrowedLine`<br>`circle`<br>`clipLine`<br>`drawContours`<br>`drawMarker`<br>`ellipse`<br>`ellipse2Poly`<br>`fillConvexPoly`<br>`fillPoly`<br>`getFontScaleFromHeight`<br>`getTextSize`<br>`line`<br>`polylines`<br>`putText`<br>`rectangle` | 15 | 对核心预处理性能影响较小，但需要共享光栅化、裁剪、填充和字体能力。 |
+| Hough 与检测器 | `HoughCircles`<br>`HoughLines`<br>`HoughLinesP`<br>`HoughLinesPointSet`<br>`createGeneralizedHoughBallard`<br>`createGeneralizedHoughGuil`<br>`createLineSegmentDetector` | 7 | 依赖 Canny、排序、几何类型和累加器，并涉及较复杂的检测器对象接口。 |
+| 分割与专用算法 | `EMD`<br>`grabCut`<br>`pyrMeanShiftFiltering`<br>`watershed` | 4 | 算法复杂、工作区大、依赖链长；GrabCut 依赖 kmeans，均适合在基础能力稳定后支持。 |
+| **合计** |  | **26** |  |
+<!-- P3_IMGPROC_API_LIST_END -->
+
+## 6. 分期原则
+
+| 原则 | 对应阶段 |
 |---|---|
-| `Mat`, `MatExpr`, scalar/geometry types | Expand only when a scheduled operation requires it. |
-| `RNG` | Minimal header-only object in P-API-2.0. |
-| `PCA`, `SVD` | Minimal interfaces in P-API-2 if required by accepted APIs. |
-| `CLAHE` | Minimal usable class with `createCLAHE` in P-API-2.3. |
-| `LineSegmentDetector`, `GeneralizedHough*` | Minimal usable classes in P-API-3.3. |
-| `Subdiv2D`, `IntelligentScissorsMB` | Follow-up work after the P-API-3 operation-family gate. |
-| `InputArray`/`OutputArray` wrappers | Not required; concrete Mat APIs remain acceptable. |
-| `SparseMat`, persistence, async, quaternion/affine helper families | Not covered by this operator plan; require separate demand and design review. |
-| UMat/CUDA/OpenCL/OpenGL/DirectX/VA | Explicit non-goals for the CPU pure header-only product. |
+| 高频、通用、可被大量其他算子复用 | 第一阶段 |
+| 依赖基础算子，面向分析、特征、匹配和形状计算 | 第二阶段 |
+| 高复杂度、长依赖链、对象型接口或低频长尾能力 | 第三阶段 |
 
-## 8. Per-API Definition Of Done
-
-An operation family is counted as callable only when all applicable items are
-complete:
-
-- Public declaration is reachable through the correct cvh umbrella header.
-- Definition is inline/header-safe and passes multi-translation-unit ODR
-  checks.
-- Accepted types, channels, flags, borders, interpolation modes, and layouts
-  are documented.
-- Unsupported combinations fail explicitly.
-- Correctness tests compare with local OpenCV for the accepted matrix.
-- ROI/non-contiguous and in-place behavior is tested where supported.
-- Integer and floating-point comparison policy is explicit.
-- Existing tests remain green.
-- Hot operations have benchmark coverage before fast-path work is accepted.
-- Coverage and README status are updated.
-
-Phase completion additionally requires:
-
-```bash
-./scripts/check_header_only_contract.sh
-./scripts/ci_headers_all.sh
-./scripts/ci_benchmark_headers_quick.sh
-git diff --check
-```
-
-Operator-specific test and benchmark targets must be added to this minimum
-gate as each wave lands.
-
-## 9. Risk Controls
-
-### Scope Inflation
-
-Name-level coverage must not silently become a promise to implement every
-OpenCV overload. Each operation starts from a useful support matrix and expands
-only with tests and demand.
-
-### Header Size And Compile Time
-
-- Keep public headers focused by operation family.
-- Put implementation details in `detail/*_impl.hpp`.
-- Avoid broad inclusion of unrelated operators.
-- Measure umbrella-header compile time and binary size at every phase gate.
-
-### Numerical Stability
-
-- Use `CV_64F` where algorithmic stability requires it.
-- Port algorithms from the pinned OpenCV source only with source-path and
-  commit attribution.
-- Do not weaken tolerances merely to make differential tests pass.
-
-### Performance Regression
-
-- Correct scalar support is not automatically a fast path.
-- SIMD should target measured kernels, not orchestration-heavy algorithms.
-- Every fast path keeps scalar fallback and tail coverage.
-- Regressions remain visible in the dated OpenCV comparison report.
-
-### Plan Drift
-
-When upstream adds or removes an API:
-
-1. Update the coverage inventory and denominator.
-2. Assign the new family to a phase or a follow-up queue.
-3. Record dependency and scope decisions in this document.
-4. Do not change historical phase counts without explaining the delta.
+类成员 API、C API、`UMat`、CUDA、OpenCL、OpenGL、DirectX 等不在这份
+三阶段算子清单中，其范围以
+[opencv-core-imgproc-api-coverage.md](opencv-core-imgproc-api-coverage.md)
+为准。

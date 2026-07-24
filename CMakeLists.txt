@@ -29,6 +29,10 @@ option(CVH_USE_OPENMP "Internal/development-only: enable OpenMP in legacy .cpp e
 option(CVH_ENABLE_OPENCV_COMPARE "Build cvh vs OpenCV compare benchmark target" OFF)
 set(CVH_OPENCV_BENCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/opencv_compare/opencv-bench-slim" CACHE PATH "Path to opencv-bench-slim source repository")
 
+if(CVH_ENABLE_OPENCV_COMPARE)
+    find_package(OpenCV REQUIRED COMPONENTS core imgproc)
+endif()
+
 set(CVH_ENABLE_NATIVE_BACKEND OFF)
 if(CVH_BUILD_NATIVE_BACKEND)
     set(CVH_ENABLE_NATIVE_BACKEND ON)
@@ -186,10 +190,9 @@ if(CVH_BUILD_BENCHMARKS)
     target_compile_features(cvh_benchmark_imgproc_header PRIVATE cxx_std_17)
 
     if(CVH_ENABLE_OPENCV_COMPARE)
-        find_package(OpenCV REQUIRED COMPONENTS core imgproc)
-
         add_library(cvh_benchmark_opencv_compare_backend_obj OBJECT
             benchmark/opencv_compare_opencv_backend.cpp
+            benchmark/opencv_compare_phase1_opencv_backend.cpp
         )
         target_compile_features(cvh_benchmark_opencv_compare_backend_obj PRIVATE cxx_std_17)
         target_include_directories(cvh_benchmark_opencv_compare_backend_obj PRIVATE
@@ -198,6 +201,7 @@ if(CVH_BUILD_BENCHMARKS)
 
         add_executable(cvh_benchmark_opencv_compare_headers_fast
             benchmark/opencv_compare_header_benchmark.cpp
+            benchmark/opencv_compare_phase1_header_benchmark.cpp
             $<TARGET_OBJECTS:cvh_benchmark_opencv_compare_backend_obj>
         )
         target_link_libraries(cvh_benchmark_opencv_compare_headers_fast PRIVATE cvh::headers_fast ${OpenCV_LIBS})
@@ -290,6 +294,11 @@ if(CVH_BUILD_TESTS)
         test/imgproc/imgproc_pipeline_regression_test.cpp
         test/imgproc/imgproc_lut_contract_test.cpp
         test/imgproc/imgproc_filter_contract_test.cpp
+        test/imgproc/imgproc_phase1_kernels_contract_test.cpp
+        test/imgproc/imgproc_phase1_intensity_contract_test.cpp
+        test/imgproc/imgproc_phase1_pyramid_color_contract_test.cpp
+        test/imgproc/imgproc_phase1_geometry_matrix_contract_test.cpp
+        test/imgproc/imgproc_phase1_geometric_sampling_contract_test.cpp
         test/imgproc/imgproc_filter2d_contract_test.cpp
         test/imgproc/imgproc_sep_filter2d_contract_test.cpp
         test/imgproc/imgproc_copy_make_border_contract_test.cpp
@@ -319,12 +328,16 @@ if(CVH_BUILD_TESTS)
     )
 
     set(CVH_CORE_TEST_LITE_SOURCES
+        test/core/array_ops_contract_test.cpp
         test/core/core_ops_test.cpp
         test/core/binary_op_contract_test.cpp
         test/core/gemm_pack_contract_test.cpp
+        test/core/geometry_types_contract_test.cpp
+        test/core/layout_ops_contract_test.cpp
         test/core/mat_channel_contract_test.cpp
         test/core/mat_layout_semantics_test.cpp
         test/core/mat_contract_test.cpp
+        test/core/math_ops_contract_test.cpp
         test/core/mat_expr_scalar_compare_test.cpp
         test/core/mat_shape_display_test.cpp
         test/core/mat_opencv_compat_test.cpp
@@ -332,6 +345,7 @@ if(CVH_BUILD_TESTS)
         test/core/mat_submat_test.cpp
         test/core/mat_upstream_channel_port_test.cpp
         test/core/parallel_for_runtime_test.cpp
+        test/core/reduction_ops_contract_test.cpp
         test/core/scalar_contract_test.cpp
     )
 
@@ -347,6 +361,32 @@ if(CVH_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/test
     )
+
+    if(CVH_ENABLE_OPENCV_COMPARE)
+        add_library(cvh_test_opencv_contract_backend_obj OBJECT
+            test/opencv_contract/opencv_contract_backend.cpp
+        )
+        target_compile_features(cvh_test_opencv_contract_backend_obj PRIVATE cxx_std_17)
+        target_include_directories(cvh_test_opencv_contract_backend_obj PRIVATE
+            ${OpenCV_INCLUDE_DIRS}
+            ${CMAKE_CURRENT_SOURCE_DIR}/test/opencv_contract
+        )
+
+        add_executable(cvh_test_opencv_contract_smoke
+            test/opencv_contract/opencv_contract_smoke_test.cpp
+            $<TARGET_OBJECTS:cvh_test_opencv_contract_backend_obj>
+        )
+        target_link_libraries(cvh_test_opencv_contract_smoke PRIVATE
+            cvh::headers
+            gtest_main
+            ${OpenCV_LIBS}
+        )
+        target_compile_features(cvh_test_opencv_contract_smoke PRIVATE cxx_std_17)
+        target_include_directories(cvh_test_opencv_contract_smoke PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/test/opencv_contract
+        )
+    endif()
 
     if(TARGET cvh_native_backend)
         add_executable(cvh_test_highgui_native
@@ -389,6 +429,9 @@ if(CVH_BUILD_TESTS)
         add_test(NAME cvh_test_imgproc COMMAND cvh_test_imgproc)
         add_test(NAME cvh_test_highgui COMMAND cvh_test_highgui)
         add_test(NAME cvh_test_core_lite COMMAND cvh_test_core_lite)
+        if(TARGET cvh_test_opencv_contract_smoke)
+            add_test(NAME cvh_test_opencv_contract_smoke COMMAND cvh_test_opencv_contract_smoke)
+        endif()
         add_test(NAME cvh_test_core COMMAND cvh_test_core_lite)
         if(TARGET cvh_native_backend)
             add_test(NAME cvh_test_highgui_native COMMAND cvh_test_highgui_native)

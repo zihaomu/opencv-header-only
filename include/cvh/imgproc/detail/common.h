@@ -1,7 +1,7 @@
 #ifndef CVH_IMGPROC_DETAIL_COMMON_H
 #define CVH_IMGPROC_DETAIL_COMMON_H
 
-#include "../../core/mat.h"
+#include "../../core/array.h"
 #include "../../core/saturate.h"
 #include "../../core/types.h"
 
@@ -15,8 +15,18 @@ enum InterpolationFlags
 {
     INTER_NEAREST = 0,
     INTER_LINEAR = 1,
+    INTER_MAX = 7,
     INTER_NEAREST_EXACT = 6,
     WARP_INVERSE_MAP = 16,
+    WARP_RELATIVE_MAP = 32,
+};
+
+enum InterpolationMasks
+{
+    INTER_BITS = 5,
+    INTER_BITS2 = INTER_BITS * 2,
+    INTER_TAB_SIZE = 1 << INTER_BITS,
+    INTER_TAB_SIZE2 = INTER_TAB_SIZE * INTER_TAB_SIZE,
 };
 
 enum ColorConversionCodes
@@ -92,6 +102,14 @@ enum ColorConversionCodes
     COLOR_BGR2YUV_YV12 = 68,
     COLOR_RGB2YUV_YV12 = 69,
     COLOR_RGB2GRAY = 70,
+    COLOR_BayerBG2BGR = 71,
+    COLOR_BayerGB2BGR = 72,
+    COLOR_BayerRG2BGR = 73,
+    COLOR_BayerGR2BGR = 74,
+    COLOR_BayerBG2RGB = COLOR_BayerRG2BGR,
+    COLOR_BayerGB2RGB = COLOR_BayerGR2BGR,
+    COLOR_BayerRG2RGB = COLOR_BayerBG2BGR,
+    COLOR_BayerGR2RGB = COLOR_BayerGB2BGR,
 };
 
 enum ThresholdTypes
@@ -107,6 +125,38 @@ enum ThresholdTypes
     THRESH_DRYRUN = 128,
 };
 
+enum AdaptiveThresholdTypes
+{
+    ADAPTIVE_THRESH_MEAN_C = 0,
+    ADAPTIVE_THRESH_GAUSSIAN_C = 1,
+};
+
+enum ColormapTypes
+{
+    COLORMAP_AUTUMN = 0,
+    COLORMAP_BONE = 1,
+    COLORMAP_JET = 2,
+    COLORMAP_WINTER = 3,
+    COLORMAP_RAINBOW = 4,
+    COLORMAP_OCEAN = 5,
+    COLORMAP_SUMMER = 6,
+    COLORMAP_SPRING = 7,
+    COLORMAP_COOL = 8,
+    COLORMAP_HSV = 9,
+    COLORMAP_PINK = 10,
+    COLORMAP_HOT = 11,
+    COLORMAP_PARULA = 12,
+    COLORMAP_MAGMA = 13,
+    COLORMAP_INFERNO = 14,
+    COLORMAP_PLASMA = 15,
+    COLORMAP_VIRIDIS = 16,
+    COLORMAP_CIVIDIS = 17,
+    COLORMAP_TWILIGHT = 18,
+    COLORMAP_TWILIGHT_SHIFTED = 19,
+    COLORMAP_TURBO = 20,
+    COLORMAP_DEEPGREEN = 21,
+};
+
 enum MorphTypes
 {
     MORPH_ERODE = 0,
@@ -119,18 +169,12 @@ enum MorphTypes
     MORPH_HITMISS = 7,
 };
 
-enum BorderTypes
+enum MorphShapes
 {
-    BORDER_CONSTANT = 0,
-    BORDER_REPLICATE = 1,
-    BORDER_REFLECT = 2,
-    BORDER_WRAP = 3,
-    BORDER_REFLECT_101 = 4,
-    BORDER_TRANSPARENT = 5,
-
-    BORDER_REFLECT101 = BORDER_REFLECT_101,
-    BORDER_DEFAULT = BORDER_REFLECT_101,
-    BORDER_ISOLATED = 16,
+    MORPH_RECT = 0,
+    MORPH_CROSS = 1,
+    MORPH_ELLIPSE = 2,
+    MORPH_DIAMOND = 3,
 };
 
 namespace detail {
@@ -169,47 +213,7 @@ inline bool is_supported_filter_border(int border_type)
 
 inline int border_interpolate(int p, int len, int border_type)
 {
-    CV_Assert(len > 0);
-
-    if (static_cast<unsigned>(p) < static_cast<unsigned>(len))
-    {
-        return p;
-    }
-
-    if (border_type == BORDER_CONSTANT)
-    {
-        return -1;
-    }
-
-    if (border_type == BORDER_REPLICATE)
-    {
-        return p < 0 ? 0 : (len - 1);
-    }
-
-    if (border_type == BORDER_REFLECT || border_type == BORDER_REFLECT_101)
-    {
-        if (len == 1)
-        {
-            return 0;
-        }
-
-        const int delta = border_type == BORDER_REFLECT_101 ? 1 : 0;
-        while (p < 0 || p >= len)
-        {
-            if (p < 0)
-            {
-                p = -p - 1 + delta;
-            }
-            else
-            {
-                p = len - 1 - (p - len) - delta;
-            }
-        }
-        return p;
-    }
-
-    CV_Error_(Error::StsBadArg, ("filter: unsupported borderType=%d", border_type));
-    return -1;
+    return cvh::borderInterpolate(p, len, border_type);
 }
 
 inline double default_gaussian_sigma_for_ksize(int ksize)

@@ -10,6 +10,89 @@ from pathlib import Path
 from typing import Optional
 
 
+PHASE1_BENCHMARK_OPS = {
+    "ABSDIFF",
+    "BITWISE_AND",
+    "BITWISE_NOT",
+    "BITWISE_OR",
+    "BITWISE_XOR",
+    "IN_RANGE",
+    "MIN",
+    "MAX",
+    "SCALE_ADD",
+    "CONVERT_SCALE_ABS",
+    "CONVERT_FP16",
+    "SQRT",
+    "POW",
+    "EXP",
+    "LOG",
+    "CHECK_RANGE",
+    "PATCH_NANS",
+    "NORM",
+    "SUM",
+    "MEAN",
+    "MEAN_STD_DEV",
+    "COUNT_NON_ZERO",
+    "HAS_NON_ZERO",
+    "FIND_NON_ZERO",
+    "MIN_MAX_IDX",
+    "MIN_MAX_LOC",
+    "REDUCE",
+    "REDUCE_ARG_MAX",
+    "REDUCE_ARG_MIN",
+    "NORMALIZE",
+    "BORDER_INTERPOLATE",
+    "COPY_TO",
+    "EXTRACT_CHANNEL",
+    "INSERT_CHANNEL",
+    "MIX_CHANNELS",
+    "FLIP",
+    "FLIP_ND",
+    "ROTATE",
+    "REPEAT",
+    "HCONCAT",
+    "VCONCAT",
+    "BROADCAST",
+    "SWAP",
+    "GET_STRUCTURING_ELEMENT",
+    "GET_GAUSSIAN_KERNEL",
+    "GET_DERIV_KERNELS",
+    "GET_GABOR_KERNEL",
+    "CREATE_HANNING_WINDOW",
+    "INTEGRAL",
+    "SCHARR",
+    "LAPLACIAN",
+    "SPATIAL_GRADIENT",
+    "SQR_BOX_FILTER",
+    "MEDIAN_BLUR",
+    "BILATERAL_FILTER",
+    "STACK_BLUR",
+    "ADAPTIVE_THRESHOLD",
+    "THRESHOLD_WITH_MASK",
+    "EQUALIZE_HIST",
+    "APPLY_COLOR_MAP",
+    "ACCUMULATE",
+    "ACCUMULATE_PRODUCT",
+    "ACCUMULATE_SQUARE",
+    "ACCUMULATE_WEIGHTED",
+    "BLEND_LINEAR",
+    "PYR_DOWN",
+    "PYR_UP",
+    "BUILD_PYRAMID",
+    "CVT_COLOR_TWO_PLANE",
+    "DEMOSAICING",
+    "REMAP",
+    "CONVERT_MAPS",
+    "WARP_PERSPECTIVE",
+    "GET_AFFINE_TRANSFORM",
+    "GET_PERSPECTIVE_TRANSFORM",
+    "GET_ROTATION_MATRIX_2D",
+    "GET_ROTATION_MATRIX_2D_",
+    "INVERT_AFFINE_TRANSFORM",
+    "GET_RECT_SUB_PIX",
+}
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Render cvh vs OpenCV compare CSV to Markdown")
     p.add_argument("--input", required=True, help="Input CSV path")
@@ -42,6 +125,10 @@ def row_suite(row: dict) -> str:
     return "core_mat" if (row.get("op", "") or "").startswith("MAT_") else "imgproc"
 
 
+def phase_label(op: str) -> str:
+    return "P1 新增" if op in PHASE1_BENCHMARK_OPS else "既有"
+
+
 def geometric_mean(values) -> float:
     positive = [x for x in values if x > 0.0]
     if not positive:
@@ -70,6 +157,20 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
     opencv_faster_or_equal = sum(1 for x in speedups if x <= 1.0)
     geo_speedup = geometric_mean(speedups)
     median_speedup = statistics.median(speedups) if speedups else 0.0
+    measured_phase1_core = {
+        r.get("op", "")
+        for r in supported
+        if row_suite(r) == "core_mat" and r.get("op", "") in PHASE1_BENCHMARK_OPS
+    }
+    measured_phase1_imgproc = {
+        r.get("op", "")
+        for r in supported
+        if row_suite(r) == "imgproc" and r.get("op", "") in PHASE1_BENCHMARK_OPS
+    }
+    measured_phase1 = measured_phase1_core | measured_phase1_imgproc
+    phase1_case_count = sum(
+        1 for r in supported if r.get("op", "") in PHASE1_BENCHMARK_OPS
+    )
 
     generated_at = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
 
@@ -83,11 +184,36 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
     lines.append("- `opencv-header-only` 当前公共定位是纯 header-only，不依赖项目内 `.cpp` 扩展层。")
     lines.append("- Mode B 只比较当前 `cvh::headers_fast` 与同机编译的 upstream OpenCV；`cvh::headers_fast` 表示最快 header-only 构建配置。")
     lines.append("- `cvh::headers_fast` 完整继承 `cvh::headers`。算子没有专用 fast-path 时继续执行继承的 header 实现并参与 benchmark，不因缺少 SIMD 特化而跳过。")
+    lines.append("- Core/Imgproc 第一阶段完成后，名称级可调用覆盖为 `107/220`：Core `57/97`，Imgproc `50/123`。")
     lines.append("- Core 的 `add/subtract/multiply/divide/transpose/GEMM` 已迁入 ODR-safe headers；本报告通过公共 API 测量，不链接 legacy core 对象。")
     lines.append("- OpenCV Universal Intrinsics 是默认 SIMD 方言，kernel 直接使用 OpenCV UI；项目已移除 xsimd 性能路径。")
     lines.append("- ARM 当前关注 NEON，本次实测平台为 Apple ARM；x86 目标是 SSE/AVX 系列，RVV 因 scalable vector 设计问题暂缓。")
     lines.append("- Imgproc legacy `.cpp` fast-path 已迁入 ODR-safe detail headers；resize/cvtColor UI、filter、LUT、border、Sobel、Canny 和 morphology 均从公共 header API 进入。")
-    lines.append("- Stable imgproc 矩阵覆盖代表性的 `CV_8U` / `CV_32F` 与 C1/C3/C4；full profile 额外覆盖非连续 ROI。")
+    lines.append(f"- 第一阶段新增的 `79` 个操作族已全部进入 Mode B，本报告包含 `{phase1_case_count}` 个 P1 性能 case。")
+    lines.append(f"- `{meta.get('profile', 'unknown')}` profile 覆盖代表性的 `CV_8U` / `CV_32F`、C1/C3/C4、尺寸、布局与非连续 ROI 扩展。")
+    lines.append("")
+
+    lines.append("## 第一阶段新增算子")
+    lines.append("")
+    lines.append("本节记录第一阶段相对原有覆盖新增的 API 操作族。API 已实现不等于已经进入本次 Mode B 性能矩阵；只有建立了同输入、同参数 OpenCV 对照 case 的算子才计为“本报告实测”。")
+    lines.append("")
+    lines.append("| 模块 | 第一阶段新增 | 本报告实测 | 已实现但本报告未测 |")
+    lines.append("| --- | ---: | ---: | ---: |")
+    lines.append(f"| Core | 43 | {len(measured_phase1_core)} | {43 - len(measured_phase1_core)} |")
+    lines.append(f"| Imgproc | 36 | {len(measured_phase1_imgproc)} | {36 - len(measured_phase1_imgproc)} |")
+    lines.append(f"| **合计** | **79** | **{len(measured_phase1)}** | **{79 - len(measured_phase1)}** |")
+    lines.append("")
+    lines.append("| 模块/类别 | 新增操作族 | 数量 | 本报告 Mode B 状态 |")
+    lines.append("| --- | --- | ---: | --- |")
+    lines.append("| Core：逐元素与逻辑 | `absdiff`、`bitwise_and`、`bitwise_not`、`bitwise_or`、`bitwise_xor`、`inRange`、`min`、`max` | 8 | 8/8 已实测 |")
+    lines.append("| Core：转换、数学与校验 | `scaleAdd`、`convertScaleAbs`、`convertFp16`、`sqrt`、`pow`、`exp`、`log`、`checkRange`、`patchNaNs` | 9 | 9/9 已实测 |")
+    lines.append("| Core：归约与统计 | `norm`、`sum`、`mean`、`meanStdDev`、`countNonZero`、`hasNonZero`、`findNonZero`、`minMaxIdx`、`minMaxLoc`、`reduce`、`reduceArgMax`、`reduceArgMin`、`normalize` | 13 | 13/13 已实测 |")
+    lines.append("| Core：布局、复制与通道 | `borderInterpolate`、`copyTo`、`extractChannel`、`insertChannel`、`mixChannels`、`flip`、`flipND`、`rotate`、`repeat`、`hconcat`、`vconcat`、`broadcast`、`swap` | 13 | 13/13 已实测 |")
+    lines.append("| Imgproc：核、滤波与强度 | `getStructuringElement`、`getGaussianKernel`、`getDerivKernels`、`getGaborKernel`、`createHanningWindow`、`integral`、`Scharr`、`Laplacian`、`spatialGradient`、`sqrBoxFilter`、`medianBlur`、`bilateralFilter`、`stackBlur`、`adaptiveThreshold`、`thresholdWithMask`、`equalizeHist`、`applyColorMap` | 17 | 17/17 已实测 |")
+    lines.append("| Imgproc：累积、金字塔与颜色 | `accumulate`、`accumulateProduct`、`accumulateSquare`、`accumulateWeighted`、`blendLinear`、`pyrDown`、`pyrUp`、`buildPyramid`、`cvtColorTwoPlane`、`demosaicing` | 10 | 10/10 已实测 |")
+    lines.append("| Imgproc：几何变换 | `remap`、`convertMaps`、`warpPerspective`、`getAffineTransform`、`getPerspectiveTransform`、`getRotationMatrix2D`、`getRotationMatrix2D_`、`invertAffineTransform`、`getRectSubPix` | 9 | 9/9 已实测 |")
+    lines.append("")
+    lines.append("后续表中的 `ADD`、`GEMM`、`resize`、`cvtColor` 等仍是既有算子基线；带有 `P1 新增` 标记的行是本轮新增并已进入性能对比的算子。")
     lines.append("")
 
     lines.append("## 高层优化结构")
@@ -98,7 +224,7 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
     lines.append("| SIMD 方言 | OpenCV Universal Intrinsics | 在 Apple ARM 上映射到 NEON |")
     lines.append("| 专用 kernel | `cvtColor`、特定 `resize` UI kernel | 记录为 `dispatch_path=opencv_ui`；core 计算当前仍为 baseline |")
     lines.append("| Header fast-path | 行并行 filter、LUT、border、Sobel、Canny、morphology | 记录为 `dispatch_path=header_fastpath` |")
-    lines.append("| 通用实现 | `cvh::headers` 中的 header baseline | 无专用 fast-path 时自动继承，记录为 `headers_baseline` |")
+    lines.append("| 通用实现 | `cvh::headers` 中的 header baseline | 无专用 fast-path 时自动继承，记录为 `headers_baseline` 或 `public_header_scalar` |")
     lines.append("| 对照实现 | upstream OpenCV `core` / `imgproc` | 相同输入、尺寸、border 和线程配置 |")
     lines.append("")
 
@@ -188,6 +314,7 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
             op_rows.append(
                 [
                     op,
+                    phase_label(op),
                     ", ".join(dispatches),
                     str(len(values)),
                     f"{ratio:.4f}",
@@ -196,7 +323,7 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
             )
         lines.append(
             md_table(
-                ["Op", "CVH dispatch", "Cases", "几何平均 OpenCV/CVH", "领先方"],
+                ["Op", "阶段", "CVH dispatch", "Cases", "几何平均 OpenCV/CVH", "领先方"],
                 op_rows,
             )
         )
@@ -226,6 +353,7 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
             table_rows.append(
                 [
                     r.get("op", ""),
+                    phase_label(r.get("op", "")),
                     r.get("variant", "") or "default",
                     r.get("dispatch_path", "") or "unknown",
                     r.get("depth", ""),
@@ -240,7 +368,7 @@ def render_report(rows, title: str, input_path: Path, meta_path: Optional[Path] 
             )
         lines.append(
             md_table(
-                ["Op", "Variant", "CVH dispatch", "Depth", "Ch", "Layout", "Shape", "CVH ms", "OpenCV ms", "OpenCV/CVH", "Note"],
+                ["Op", "阶段", "Variant", "CVH dispatch", "Depth", "Ch", "Layout", "Shape", "CVH ms", "OpenCV ms", "OpenCV/CVH", "Note"],
                 table_rows,
             )
         )

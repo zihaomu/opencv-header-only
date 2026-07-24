@@ -8,8 +8,16 @@
 
 - `smoke`：最小编译/链接与入口可用性检查。
 - `core`：`Mat` 与基础算子行为测试。
+- `core/reduction_ops_contract_test.cpp`：归约、统计、non-zero、extrema、
+  axis reduce 和 normalize 的 header-only contract。
+- `core/array_ops_contract_test.cpp`、`layout_ops_contract_test.cpp`、
+  `math_ops_contract_test.cpp`：第一阶段逐元素、布局与数学 contract。
+- `opencv_contract`：与官方 OpenCV 隔离编译的 POD/字节差分测试，避免两套
+  类型系统出现在同一翻译单元。
 - `upstream`：OpenCV 上游用例快照与兼容迁移台账（用于接口完整性跟踪）。
 - `imgproc`：图像处理算法正确性测试。
+- `imgproc/imgproc_phase1_*_contract_test.cpp`：第一阶段 kernel、强度、
+  金字塔/颜色、几何矩阵和几何采样 contract。
 - `imgcodecs`：读写链路与异常路径测试。
 - `utils`：测试工具与数据加载辅助。
 

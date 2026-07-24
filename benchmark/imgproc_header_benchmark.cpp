@@ -8,6 +8,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace cvh_bench {
@@ -167,7 +168,14 @@ ResultRow make_row(const Args& args,
     ResultRow row;
     row.op = op;
     row.variant = variant;
-    row.depth = CV_MAT_DEPTH(type) == CV_32F ? "CV_32F" : CV_MAT_DEPTH(type) == CV_16S ? "CV_16S" : "CV_8U";
+    switch (CV_MAT_DEPTH(type))
+    {
+        case CV_16S: row.depth = "CV_16S"; break;
+        case CV_32S: row.depth = "CV_32S"; break;
+        case CV_32F: row.depth = "CV_32F"; break;
+        case CV_64F: row.depth = "CV_64F"; break;
+        default: row.depth = "CV_8U"; break;
+    }
     row.channels = CV_MAT_CN(type);
     row.shape = shape.name;
     row.elements = elements;
@@ -853,6 +861,390 @@ void append_shape_rows(const Args& args, const ShapeCase& shape, std::vector<Res
         rows.push_back(row);
     }
 
+    for (const int kernel_size : {3, 5})
+    {
+        cvh::Mat dst;
+        const auto result = measure(
+            [&]() { cvh::medianBlur(gray, dst, kernel_size); },
+            dst,
+            args);
+        auto row = make_row(
+            args,
+            shape,
+            "MEDIAN_BLUR",
+            std::to_string(kernel_size) + "x" +
+                std::to_string(kernel_size) + "_U8C1",
+            CV_8UC1,
+            shape.rows,
+            shape.cols,
+            gray_bytes + logical_bytes(dst),
+            result);
+        row.dispatch_path = "scalar_baseline";
+        row.note = "Not qualified as a fast path";
+        rows.push_back(row);
+    }
+
+    {
+        cvh::Mat dst;
+        const auto result = measure(
+            [&]() {
+                cvh::bilateralFilter(
+                    gray,
+                    dst,
+                    5,
+                    35.0,
+                    2.0,
+                    cvh::BORDER_REFLECT_101);
+            },
+            dst,
+            args);
+        auto row = make_row(
+            args,
+            shape,
+            "BILATERAL_FILTER",
+            "D5_SIGMA35_2_U8C1",
+            CV_8UC1,
+            shape.rows,
+            shape.cols,
+            gray_bytes + logical_bytes(dst),
+            result);
+        row.dispatch_path = "scalar_baseline";
+        row.note = "Not qualified as a fast path";
+        rows.push_back(row);
+    }
+
+    {
+        cvh::Mat dst;
+        const auto result = measure(
+            [&]() {
+                cvh::adaptiveThreshold(
+                    gray,
+                    dst,
+                    255.0,
+                    cvh::ADAPTIVE_THRESH_MEAN_C,
+                    cvh::THRESH_BINARY,
+                    5,
+                    2.0);
+            },
+            dst,
+            args);
+        auto row = make_row(
+            args,
+            shape,
+            "ADAPTIVE_THRESHOLD",
+            "MEAN_K5_BINARY_U8C1",
+            CV_8UC1,
+            shape.rows,
+            shape.cols,
+            gray_bytes + logical_bytes(dst),
+            result);
+        row.dispatch_path = "scalar_baseline";
+        row.note = "Not qualified as a fast path";
+        rows.push_back(row);
+    }
+
+    {
+        cvh::Mat dst;
+        const auto result = measure(
+            [&]() { cvh::equalizeHist(gray, dst); },
+            dst,
+            args);
+        auto row = make_row(
+            args,
+            shape,
+            "EQUALIZE_HIST",
+            "U8C1",
+            CV_8UC1,
+            shape.rows,
+            shape.cols,
+            gray_bytes + logical_bytes(dst),
+            result);
+        row.dispatch_path = "scalar_baseline";
+        row.note = "Not qualified as a fast path";
+        rows.push_back(row);
+    }
+
+    {
+        cvh::Mat accumulator({shape.rows, shape.cols}, CV_32FC1);
+        accumulator.setTo(cvh::Scalar::all(0.0));
+        const auto result = measure(
+            [&]() {
+                cvh::accumulateWeighted(
+                    gray, accumulator, 0.125);
+            },
+            accumulator,
+            args);
+        auto row = make_row(
+            args,
+            shape,
+            "ACCUMULATE_WEIGHTED",
+            "ALPHA_0.125_U8C1_TO_F32",
+            CV_32FC1,
+            shape.rows,
+            shape.cols,
+            gray_bytes + logical_bytes(accumulator),
+            result);
+        row.dispatch_path = "scalar_baseline";
+        row.note = "In-place accumulator update";
+        rows.push_back(row);
+    }
+
+    {
+        cvh::Mat weights1({shape.rows, shape.cols}, CV_32FC1);
+        cvh::Mat weights2({shape.rows, shape.cols}, CV_32FC1);
+        weights1.setTo(cvh::Scalar::all(0.35));
+        weights2.setTo(cvh::Scalar::all(0.65));
+        cvh::Mat dst;
+        const auto result = measure(
+            [&]() {
+                cvh::blendLinear(
+                    bgr, bgr, weights1, weights2, dst);
+            },
+            dst,
+            args);
+        auto row = make_row(
+            args,
+            shape,
+            "BLEND_LINEAR",
+            "U8C3_F32_WEIGHTS",
+            CV_8UC3,
+            shape.rows,
+            shape.cols,
+            bgr_bytes * 2 + logical_bytes(weights1) * 2,
+            result);
+        row.dispatch_path = "scalar_baseline";
+        row.note = "Not qualified as a fast path";
+        rows.push_back(row);
+    }
+
+    {
+        cvh::Mat dst;
+        const auto result = measure(
+            [&]() { cvh::pyrDown(gray, dst); },
+            dst,
+            args);
+        auto row = make_row(
+            args,
+            shape,
+            "PYR_DOWN",
+            "GAUSSIAN5_U8C1",
+            CV_8UC1,
+            (shape.rows + 1) / 2,
+            (shape.cols + 1) / 2,
+            gray_bytes + logical_bytes(dst),
+            result);
+        row.dispatch_path = "scalar_baseline";
+        row.note = "Not qualified as a fast path";
+        rows.push_back(row);
+    }
+
+    {
+        cvh::Mat dst;
+        const auto result = measure(
+            [&]() { cvh::pyrUp(gray, dst); },
+            dst,
+            args);
+        auto row = make_row(
+            args,
+            shape,
+            "PYR_UP",
+            "GAUSSIAN5_U8C1",
+            CV_8UC1,
+            shape.rows * 2,
+            shape.cols * 2,
+            gray_bytes + logical_bytes(dst),
+            result);
+        row.dispatch_path = "scalar_baseline";
+        row.note = "Not qualified as a fast path";
+        rows.push_back(row);
+    }
+
+    {
+        cvh::Mat uv(
+            {shape.rows / 2, shape.cols / 2}, CV_8UC2);
+        common::fill_mat_u8_lcg(
+            uv,
+            static_cast<std::uint32_t>(
+                shape.rows * 29 + shape.cols * 31));
+        for (const auto code_and_name :
+             {std::pair<int, const char*>(
+                  cvh::COLOR_YUV2BGR_NV12, "NV12_TO_BGR"),
+              std::pair<int, const char*>(
+                  cvh::COLOR_YUV2RGB_NV21, "NV21_TO_RGB")})
+        {
+            cvh::Mat dst;
+            const auto result = measure(
+                [&]() {
+                    cvh::cvtColorTwoPlane(
+                        gray, uv, dst, code_and_name.first);
+                },
+                dst,
+                args);
+            auto row = make_row(
+                args,
+                shape,
+                "CVTCOLOR_TWO_PLANE",
+                code_and_name.second,
+                CV_8UC3,
+                shape.rows,
+                shape.cols,
+                gray_bytes + logical_bytes(uv) + logical_bytes(dst),
+                result);
+            row.dispatch_path = "scalar_baseline";
+            row.note = "Separate Y and UV planes";
+            rows.push_back(row);
+        }
+    }
+
+    {
+        cvh::Mat dst;
+        const auto result = measure(
+            [&]() {
+                cvh::demosaicing(
+                    gray, dst, cvh::COLOR_BayerBG2BGR);
+            },
+            dst,
+            args);
+        auto row = make_row(
+            args,
+            shape,
+            "DEMOSAICING",
+            "BAYER_BG_TO_BGR_U8",
+            CV_8UC3,
+            shape.rows,
+            shape.cols,
+            gray_bytes + logical_bytes(dst),
+            result);
+        row.dispatch_path = "scalar_baseline";
+        row.note = "Bilinear Bayer decode";
+        rows.push_back(row);
+    }
+
+    {
+        cvh::Mat map_x({shape.rows, shape.cols}, CV_32FC1);
+        cvh::Mat map_y({shape.rows, shape.cols}, CV_32FC1);
+        for (int row_index = 0; row_index < shape.rows; ++row_index)
+        {
+            for (int col_index = 0; col_index < shape.cols; ++col_index)
+            {
+                map_x.at<float>(row_index, col_index) =
+                    static_cast<float>(col_index) + 0.28125f;
+                map_y.at<float>(row_index, col_index) =
+                    static_cast<float>(row_index) - 0.34375f;
+            }
+        }
+        cvh::Mat fixed_coordinates;
+        cvh::Mat fixed_fractions;
+        cvh::convertMaps(
+            map_x,
+            map_y,
+            fixed_coordinates,
+            fixed_fractions,
+            CV_16SC2);
+        for (const bool fixed : {false, true})
+        {
+            cvh::Mat dst;
+            const auto result = measure(
+                [&]() {
+                    cvh::remap(
+                        bgr,
+                        dst,
+                        fixed ? fixed_coordinates : map_x,
+                        fixed ? fixed_fractions : map_y,
+                        cvh::INTER_LINEAR,
+                        cvh::BORDER_REFLECT_101);
+                },
+                dst,
+                args);
+            auto row = make_row(
+                args,
+                shape,
+                "REMAP",
+                fixed ? "FIXED_LINEAR_U8C3" : "FLOAT_LINEAR_U8C3",
+                CV_8UC3,
+                shape.rows,
+                shape.cols,
+                bgr_bytes +
+                    (fixed
+                         ? logical_bytes(fixed_coordinates) +
+                               logical_bytes(fixed_fractions)
+                         : logical_bytes(map_x) + logical_bytes(map_y)),
+                result);
+            row.dispatch_path = "public_header_scalar";
+            row.note = "No qualified SIMD fast path";
+            rows.push_back(row);
+        }
+    }
+
+    {
+        cvh::Mat matrix({3, 3}, CV_64FC1);
+        matrix.setTo(cvh::Scalar::all(0.0));
+        matrix.at<double>(0, 0) = 1.0;
+        matrix.at<double>(0, 1) = 0.01;
+        matrix.at<double>(0, 2) = 0.25;
+        matrix.at<double>(1, 0) = -0.005;
+        matrix.at<double>(1, 1) = 1.0;
+        matrix.at<double>(1, 2) = 0.5;
+        matrix.at<double>(2, 0) = 0.00002;
+        matrix.at<double>(2, 1) = -0.00003;
+        matrix.at<double>(2, 2) = 1.0;
+        cvh::Mat dst;
+        const auto result = measure(
+            [&]() {
+                cvh::warpPerspective(
+                    bgr,
+                    dst,
+                    matrix,
+                    cvh::Size(shape.cols, shape.rows),
+                    cvh::INTER_LINEAR | cvh::WARP_INVERSE_MAP,
+                    cvh::BORDER_REFLECT_101);
+            },
+            dst,
+            args);
+        auto row = make_row(
+            args,
+            shape,
+            "WARP_PERSPECTIVE",
+            "PROJECTIVE_LINEAR_U8C3",
+            CV_8UC3,
+            shape.rows,
+            shape.cols,
+            bgr_bytes + logical_bytes(dst),
+            result);
+        row.dispatch_path = "public_header_scalar";
+        row.note = "No qualified SIMD fast path";
+        rows.push_back(row);
+    }
+
+    {
+        cvh::Mat dst;
+        const auto result = measure(
+            [&]() {
+                cvh::getRectSubPix(
+                    bgr,
+                    cvh::Size(shape.cols, shape.rows),
+                    cvh::Point2f(
+                        (static_cast<float>(shape.cols) - 1.0f) * 0.5f,
+                        (static_cast<float>(shape.rows) - 1.0f) * 0.5f),
+                    dst);
+            },
+            dst,
+            args);
+        auto row = make_row(
+            args,
+            shape,
+            "GET_RECT_SUB_PIX",
+            "FULL_FRAME_U8C3",
+            CV_8UC3,
+            shape.rows,
+            shape.cols,
+            bgr_bytes + logical_bytes(dst),
+            result);
+        row.dispatch_path = "public_header_scalar";
+        row.note = "No qualified SIMD fast path";
+        rows.push_back(row);
+    }
+
     {
         cvh::Mat kernel({3, 3}, CV_32FC1);
         float* values = reinterpret_cast<float*>(kernel.data);
@@ -896,6 +1288,106 @@ void append_shape_rows(const Args& args, const ShapeCase& shape, std::vector<Res
             dst,
             args);
         rows.push_back(make_row(args, shape, "SOBEL", "DX1_K3_U8C1_TO_F32", CV_32FC1, shape.rows, shape.cols, gray_bytes, result));
+    }
+
+    {
+        cvh::Mat dst;
+        const auto result = measure(
+            [&]() { cvh::integral(gray, dst, CV_32S); },
+            dst,
+            args);
+        rows.push_back(make_row(
+            args,
+            shape,
+            "INTEGRAL",
+            "U8C1_TO_S32",
+            CV_32SC1,
+            shape.rows + 1,
+            shape.cols + 1,
+            gray_bytes + logical_bytes(dst),
+            result));
+    }
+
+    {
+        cvh::Mat dst;
+        const auto result = measure(
+            [&]() {
+                cvh::Scharr(
+                    gray,
+                    dst,
+                    CV_16S,
+                    1,
+                    0,
+                    1.0,
+                    0.0,
+                    cvh::BORDER_REPLICATE);
+            },
+            dst,
+            args);
+        rows.push_back(make_row(
+            args,
+            shape,
+            "SCHARR",
+            "DX1_U8C1_TO_S16",
+            CV_16SC1,
+            shape.rows,
+            shape.cols,
+            gray_bytes + logical_bytes(dst),
+            result));
+    }
+
+    {
+        cvh::Mat dst;
+        const auto result = measure(
+            [&]() {
+                cvh::Laplacian(
+                    gray,
+                    dst,
+                    CV_16S,
+                    3,
+                    1.0,
+                    0.0,
+                    cvh::BORDER_REPLICATE);
+            },
+            dst,
+            args);
+        rows.push_back(make_row(
+            args,
+            shape,
+            "LAPLACIAN",
+            "K3_U8C1_TO_S16",
+            CV_16SC1,
+            shape.rows,
+            shape.cols,
+            gray_bytes + logical_bytes(dst),
+            result));
+    }
+
+    {
+        cvh::Mat dst;
+        const auto result = measure(
+            [&]() {
+                cvh::sqrBoxFilter(
+                    gray,
+                    dst,
+                    CV_64F,
+                    cvh::Size(3, 3),
+                    cvh::Point(-1, -1),
+                    true,
+                    cvh::BORDER_REPLICATE);
+            },
+            dst,
+            args);
+        rows.push_back(make_row(
+            args,
+            shape,
+            "SQR_BOX_FILTER",
+            "3x3_U8C1_TO_F64",
+            CV_64FC1,
+            shape.rows,
+            shape.cols,
+            gray_bytes + logical_bytes(dst),
+            result));
     }
 
     {

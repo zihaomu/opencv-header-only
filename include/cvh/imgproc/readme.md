@@ -18,11 +18,31 @@
 - `box_filter.h`：`boxFilter` 算子与 dispatch/fallback。
 - `blur.h`：`blur`（对 `boxFilter` 的语义封装）。
 - `gaussian_blur.h`：`GaussianBlur` 算子与 dispatch/fallback。
+- `kernels.h`：结构元素、Gaussian/derivative/Gabor/Hanning kernel 生成器。
+- `integral.h`：`integral` sum 基础路径。
+- `derivatives.h`：`Scharr/Laplacian/spatialGradient` 导数扩展。
+- `sqr_box_filter.h`：`sqrBoxFilter` 宽累积平方盒滤波。
+- `median_blur.h`：`medianBlur` 通用中值路径。
+- `bilateral_filter.h`：`bilateralFilter` 预计算权重参考路径。
+- `stack_blur.h`：`stackBlur` 可分离三角核路径。
+- `adaptive_threshold.h`：mean/Gaussian 自适应阈值。
+- `equalize_hist.h`：固定 256-bin U8 histogram equalization。
+- `colormap.h`：首批内置与用户 LUT colormap。
+- `accumulate.h`：四个 F32 destination 累积算子。
+- `blend_linear.h`：双图加权融合。
+- `pyramid.h`：`pyrDown/pyrUp/buildPyramid` 固定 Gaussian 金字塔。
+- `cvtcolor_two_plane.h`：独立 Y/UV plane 的 NV12/NV21 decode。
+- `demosaicing.h`：首批 U8 Bayer bilinear decode。
+- `geometry_transform.h`：affine/perspective/rotation 矩阵生成与 affine inverse。
+- `convert_maps.h`：float/fixed remap map 的正反转换。
+- `remap.h`：三种 map 表示的 nearest/linear 通用采样。
+- `warp_perspective.h`：3x3 透视变换。
+- `rect_sub_pix.h`：bilinear 亚像素矩形提取。
 - `canny.h`：`Canny`（图像输入与导数输入两种重载）与 dispatch/fallback。
 - `morphology.h`：`erode/dilate/morphologyEx`（最小形态学）与 dispatch/fallback。
 - `warp_affine.h`：`warpAffine` 算子与 dispatch/fallback。
 
-## 当前能力快照（2026-04）
+## 当前能力快照（2026-07）
 
 - `resize`：`CV_8U/CV_32F`，`INTER_NEAREST/INTER_NEAREST_EXACT/INTER_LINEAR`
 - `cvtColor`：`CV_8U/CV_32F`，`GRAY2BGR/BGR2GRAY/GRAY2BGRA/BGRA2GRAY/GRAY2RGBA/RGBA2GRAY/BGR2RGB/RGB2BGR/BGR2BGRA/BGRA2BGR/RGB2RGBA/RGBA2RGB/BGR2RGBA/RGBA2BGR/RGB2BGRA/BGRA2RGB/BGRA2RGBA/RGBA2BGRA/BGR2YUV/YUV2BGR/RGB2YUV/YUV2RGB/BGR2YUV_NV12/RGB2YUV_NV12/BGR2YUV_NV21/RGB2YUV_NV21/BGR2YUV_I420/RGB2YUV_I420/BGR2YUV_YV12/RGB2YUV_YV12/BGR2YUV_NV16/RGB2YUV_NV16/BGR2YUV_NV61/RGB2YUV_NV61/BGR2YUV_YUY2/RGB2YUV_YUY2/BGR2YUV_UYVY/RGB2YUV_UYVY/BGR2YUV_NV24/RGB2YUV_NV24/BGR2YUV_NV42/RGB2YUV_NV42/BGR2YUV_I444/RGB2YUV_I444/BGR2YUV_YV24/RGB2YUV_YV24/YUV2BGR_NV12/YUV2RGB_NV12/YUV2BGR_NV21/YUV2RGB_NV21/YUV2BGR_I420/YUV2RGB_I420/YUV2BGR_YV12/YUV2RGB_YV12/YUV2BGR_I444/YUV2RGB_I444/YUV2BGR_YV24/YUV2RGB_YV24/YUV2BGR_NV16/YUV2RGB_NV16/YUV2BGR_NV61/YUV2RGB_NV61/YUV2BGR_NV24/YUV2RGB_NV24/YUV2BGR_NV42/YUV2RGB_NV42/YUV2BGR_YUY2/YUV2RGB_YUY2/YUV2BGR_UYVY/YUV2RGB_UYVY`（`NV12/NV21/I420/YV12/NV16/NV61/YUY2/UYVY/NV24/NV42/I444/YV24` 均已支持 `CV_8U` encode/decode）
@@ -35,6 +55,24 @@
 - `boxFilter/blur`：`CV_8U/CV_32F`（`BORDER_CONSTANT/REPLICATE/REFLECT/REFLECT_101`）
 - `GaussianBlur`：`CV_8U/CV_32F`（odd `ksize` + `sigma` 基础路径）
 - `Sobel`：`CV_8U/CV_16S/CV_32F -> CV_16S/CV_32F`（当前支持 `ksize=3/5`，`dx/dy` 一阶）
+- kernel generators：`getStructuringElement/getGaussianKernel/getDerivKernels/getGaborKernel/createHanningWindow`
+- `integral`：`CV_8U C1/C3/C4 -> CV_32S/CV_64F` sum
+- `Scharr/Laplacian/spatialGradient`：沿用已支持导数类型的首批子集
+- `sqrBoxFilter`：`CV_8U/CV_32F C1/C3/C4 -> CV_8U/CV_32F/CV_64F`
+- `medianBlur`：`CV_8U/CV_32F C1/C3/C4`（F32 限 3x3/5x5）
+- `bilateralFilter`：`CV_8U/CV_32F C1/C3`，不支持原地
+- `stackBlur`：`CV_8U/CV_32F C1/C3/C4`
+- `adaptiveThreshold/equalizeHist`：`CV_8UC1`
+- `thresholdWithMask`：继承 threshold 的 U8/F32 子集
+- `applyColorMap`：`CV_8UC1` 输入，首批 5 种内置 map 或用户 U8 C1/C3 LUT
+- accumulate family：`CV_8U/CV_32F C1/C3/C4 -> CV_32F` destination
+- `blendLinear`：U8/F32 image + F32C1 weights
+- `pyrDown/pyrUp/buildPyramid`：`CV_8U/CV_32F C1/C3/C4`
+- `cvtColorTwoPlane`：U8 Y + U8C2 UV，NV12/NV21 到 BGR/RGB
+- `demosaicing`：U8 Bayer BG/GB/RG/GR 到 U8C3
+- geometry matrix family：Point2f/Point2d 到 CV_64F 矩阵；F32/F64 affine inverse
+- `remap/convertMaps`：float pair、float C2、fixed pair，nearest/linear
+- `warpPerspective/getRectSubPix`：U8/F32 C1/C3/C4 几何采样
 - `Canny`：`CV_8UC1`（`apertureSize=3/5`，`L1/L2` 梯度）+ `CV_16SC1` 导数输入重载
 - `erode/dilate`：`CV_8U`（支持自定义 kernel + 迭代 + 基础 border）
 - `morphologyEx`：当前支持 `MORPH_ERODE/MORPH_DILATE/MORPH_OPEN/MORPH_CLOSE/MORPH_GRADIENT/MORPH_TOPHAT/MORPH_BLACKHAT/MORPH_HITMISS`
@@ -54,6 +92,26 @@
 | `boxFilter/blur` | `CV_8U/CV_32F`, `C1/C3/C4` | `3x3` 热路径 | `blur` 为 `boxFilter` 语义封装 |
 | `GaussianBlur` | `CV_8U/CV_32F`, `C1/C3/C4` | odd `ksize` 可分离卷积 | 当前 benchmark 主打 `5x5` |
 | `Sobel` | `CV_8U/CV_16S/CV_32F -> CV_16S/CV_32F`, `C1/C3/C4` | `ksize=3/5` 一阶梯度 | 当前聚焦 `(dx,dy)=(1,0)/(0,1)` |
+| kernel generators | F32/F64 单通道 kernel | 可复用的公开构造路径 | 覆盖 structuring/Gaussian/Sobel-Scharr/Gabor/Hanning；Hanning 遵循 upstream 平方根外积语义 |
+| `integral` | `CV_8U`, `C1/C3/C4 -> CV_32S/CV_64F` | 行累计 + 跨行累计 | 当前仅公开 sum 输出，输出尺寸为 `(rows+1)x(cols+1)` |
+| `Scharr/Laplacian/spatialGradient` | 导数首批类型子集 | 复用 Sobel/可分离采样 | `spatialGradient` 当前为 `CV_8UC1 -> CV_16SC1` |
+| `sqrBoxFilter` | `CV_8U/CV_32F`, `C1/C3/C4 -> CV_8U/CV_32F/CV_64F` | 宽累积 scalar baseline | 支持 normalize 与常用 border |
+| `medianBlur` | `CV_8U/CV_32F`, `C1/C3/C4` | scalar reference | F32 限 3x3/5x5；内部使用 replicate border |
+| `bilateralFilter` | `CV_8U/CV_32F`, `C1/C3` | 预计算空间权重 | 不支持原地；支持选定 border |
+| `stackBlur` | `CV_8U/CV_32F`, `C1/C3/C4` | 可分离三角核 | 正奇数 kernel，replicate border |
+| `adaptiveThreshold` | `CV_8UC1` | 复用 box/Gaussian | MEAN/GAUSSIAN + BINARY/BINARY_INV |
+| `thresholdWithMask` | threshold 的 U8/F32 子集 | 复用 threshold 语义 | mask 未命中像素保留调用前 dst |
+| `equalizeHist` | `CV_8UC1` | 256-bin histogram | 支持 ROI 与原地 |
+| `applyColorMap` | `CV_8UC1 -> CV_8UC1/CV_8UC3` | LUT lookup | 内置 AUTUMN/JET/WINTER/COOL/HOT；用户表为 256-entry U8 C1/C3 |
+| accumulate family | `CV_8U/CV_32F`, `C1/C3/C4 -> CV_32F` | scalar update loop | 支持可选 U8C1 mask；destination 必须预初始化 |
+| `blendLinear` | matching U8/F32 C1/C3/C4 + F32C1 weights | scalar baseline | 分母遵循 upstream `w1+w2+1e-5` |
+| pyramid family | `CV_8U/CV_32F`, `C1/C3/C4` | fixed 5x5 Gaussian | `pyrUp` 当前只支持 BORDER_DEFAULT |
+| `cvtColorTwoPlane` | `CV_8UC1 Y + CV_8UC2 UV -> CV_8UC3` | direct plane traversal | NV12/NV21 到 BGR/RGB，支持独立 ROI stride |
+| `demosaicing` | `CV_8UC1 -> CV_8UC3` | bilinear scalar baseline | Bayer BG/GB/RG/GR 与 RGB aliases |
+| geometry matrix family | Point2f/Point2d；F32/F64 2x3 matrix | fixed-size scalar solve | affine/perspective/rotation 生成；inverse 支持原地 |
+| `remap/convertMaps` | U8/F32 C1/C3/C4；F32/fixed maps | shared scalar sampler | nearest/linear，四种常用 border，5-bit fixed fraction |
+| `warpPerspective` | U8/F32 C1/C3/C4；F32/F64 3x3 | shared scalar sampler | 支持 `WARP_INVERSE_MAP` 与 alias-safe source snapshot |
+| `getRectSubPix` | U8/F32 C1/C3/C4 | shared bilinear sampler | U8 可输出 U8/F32；边缘使用 replicate |
 | `Canny` | 图像重载：`CV_8UC1`；导数重载：`dx/dy=CV_16SC1` | `apertureSize=3/5`，`L1/L2` 梯度 | NMS + 双阈值滞后连接（fallback） |
 | `erode/dilate` | `CV_8U`, `C1/C3/C4` | kernel + iterations correctness | fallback 路径 |
 | `morphologyEx` | `CV_8U`, `C1/C3/C4`（`HITMISS` 限 `C1`） | `MORPH_ERODE/MORPH_DILATE/MORPH_OPEN/MORPH_CLOSE/MORPH_GRADIENT/MORPH_TOPHAT/MORPH_BLACKHAT/MORPH_HITMISS` | 其它 `MORPH_*` 暂未支持 |
@@ -72,6 +130,8 @@
 - `filter2D` 当前限定 `kernel.depth()==CV_32F && kernel.channels()==1`，暂不支持 `CV_64F` kernel。
 - `sepFilter2D` 当前限定 `kernelX/kernelY` 为 `CV_32F` 单通道向量（`1xN` 或 `Nx1`）。
 - `warpAffine` 当前支持 `INTER_NEAREST/INTER_LINEAR` 与 `WARP_INVERSE_MAP`，不支持 `INTER_NEAREST_EXACT` / `WARP_FILL_OUTLIERS` 等扩展 flag。
+- `getPerspectiveTransform` 当前只支持 `DECOMP_LU`；退化 affine/perspective 点集显式报错，奇异 affine inverse 输出零矩阵。
+- `remap/warpPerspective` 当前只支持 nearest/linear 和 CONSTANT/REPLICATE/REFLECT/REFLECT_101；不支持 relative map、transparent border 或高阶插值。
 - `Sobel` 当前支持 `ksize=3/5` 与一阶导数组合；输出 `ddepth` 当前支持 `CV_16S/CV_32F`。
 - `Canny` 当前图像重载仅支持 `CV_8UC1`，导数重载仅支持 `CV_16SC1` 的 `dx/dy`，`apertureSize` 支持 `3/5`。
 - `erode/dilate` 当前仅支持 `CV_8U`。

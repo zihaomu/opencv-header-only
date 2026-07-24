@@ -79,6 +79,9 @@ Mat make_vec_mat_from_doubles(const std::initializer_list<double>& values, int t
             case CV_16F:
                 out.at<hfloat>(0, idx) = saturate_cast<hfloat>(v);
                 break;
+            case CV_64F:
+                out.at<double>(0, idx) = v;
+                break;
             default:
                 CV_Error_(Error::StsNotImplemented, ("Unsupported depth=%d in test helper", depth));
         }
@@ -99,6 +102,7 @@ double read_vec_value_as_double(const Mat& m, int idx)
         case CV_32U: return static_cast<double>(m.at<uint>(0, idx));
         case CV_32F: return static_cast<double>(m.at<float>(0, idx));
         case CV_16F: return static_cast<double>(static_cast<float>(m.at<hfloat>(0, idx)));
+        case CV_64F: return m.at<double>(0, idx);
         default:
             CV_Error_(Error::StsNotImplemented, ("Unsupported depth=%d in test helper", m.depth()));
             return 0.0;
@@ -120,7 +124,7 @@ void expect_vec_match_by_depth(const Mat& m,
         {
             EXPECT_NEAR(actual, expected, half_eps);
         }
-        else if (m.depth() == CV_32F)
+        else if (m.depth() == CV_32F || m.depth() == CV_64F)
         {
             EXPECT_NEAR(actual, expected, float_eps);
         }
@@ -165,7 +169,7 @@ TEST(BinaryOpContract_TEST, sum_is_alias_of_add)
 TEST(BinaryOpContract_TEST, add_supports_all_declared_depths)
 {
     const int types[] = {
-        CV_8UC1, CV_8SC1, CV_16UC1, CV_16SC1, CV_32SC1, CV_32UC1, CV_32FC1, CV_16FC1
+        CV_8UC1, CV_8SC1, CV_16UC1, CV_16SC1, CV_32SC1, CV_32UC1, CV_32FC1, CV_16FC1, CV_64FC1
     };
 
     for (const int type : types)
@@ -628,9 +632,9 @@ TEST(BinaryOpContract_TEST, mean_is_elementwise_average)
     expect_vec_near_f32(out_f, {2.f, 1.f, 0.f});
 }
 
-TEST(BinaryOpContract_TEST, fmod_and_mean_support_float_and_half)
+TEST(BinaryOpContract_TEST, fmod_and_mean_support_float_half_and_double)
 {
-    const int types[] = {CV_32FC1, CV_16FC1};
+    const int types[] = {CV_32FC1, CV_16FC1, CV_64FC1};
     for (const int type : types)
     {
         SCOPED_TRACE(type);

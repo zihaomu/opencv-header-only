@@ -5,45 +5,78 @@
 
 namespace cvh {
 
-struct Point
+template<typename T>
+struct Point_
 {
-    int x;
-    int y;
+    T x;
+    T y;
 
-    Point() : x(0), y(0) {}
-    Point(int x_, int y_) : x(x_), y(y_) {}
+    constexpr Point_() : x(0), y(0) {}
+    constexpr Point_(T x_, T y_) : x(x_), y(y_) {}
+
+    template<typename U>
+    constexpr Point_(const Point_<U>& point)
+        : x(static_cast<T>(point.x)), y(static_cast<T>(point.y))
+    {
+    }
 };
 
-inline bool operator==(const Point& lhs, const Point& rhs)
+template<typename T>
+inline bool operator==(const Point_<T>& lhs, const Point_<T>& rhs)
 {
     return lhs.x == rhs.x && lhs.y == rhs.y;
 }
 
-inline bool operator!=(const Point& lhs, const Point& rhs)
+template<typename T>
+inline bool operator!=(const Point_<T>& lhs, const Point_<T>& rhs)
 {
     return !(lhs == rhs);
 }
 
-struct Size
+using Point2i = Point_<int>;
+using Point2f = Point_<float>;
+using Point2d = Point_<double>;
+using Point = Point2i;
+
+template<typename T>
+struct Size_
 {
-    int width;
-    int height;
+    T width;
+    T height;
 
-    Size() : width(0), height(0) {}
-    Size(int w, int h) : width(w), height(h) {}
+    constexpr Size_() : width(0), height(0) {}
+    constexpr Size_(T width_, T height_) : width(width_), height(height_) {}
 
-    bool empty() const { return width <= 0 || height <= 0; }
+    template<typename U>
+    constexpr Size_(const Size_<U>& size)
+        : width(static_cast<T>(size.width)), height(static_cast<T>(size.height))
+    {
+    }
+
+    constexpr bool empty() const { return width <= 0 || height <= 0; }
 };
 
-inline bool operator==(const Size& lhs, const Size& rhs)
+template<typename T>
+inline bool operator==(const Size_<T>& lhs, const Size_<T>& rhs)
 {
     return lhs.width == rhs.width && lhs.height == rhs.height;
 }
 
-inline bool operator!=(const Size& lhs, const Size& rhs)
+template<typename T>
+inline bool operator!=(const Size_<T>& lhs, const Size_<T>& rhs)
 {
     return !(lhs == rhs);
 }
+
+using Size2i = Size_<int>;
+using Size2f = Size_<float>;
+using Size2d = Size_<double>;
+using Size = Size2i;
+
+enum DecompTypes
+{
+    DECOMP_LU = 0,
+};
 
 struct Scalar
 {

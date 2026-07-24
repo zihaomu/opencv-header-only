@@ -10,8 +10,11 @@ This directory keeps only current project documents.
   upstream `core`/`imgproc` operation-family inventory and current cvh support
   gaps.
 - [opencv-core-imgproc-three-phase-support-plan.md](opencv-core-imgproc-three-phase-support-plan.md):
-  three-phase implementation sequence for the outstanding `core` and
-  `imgproc` operation families.
+  three-phase `core` and `imgproc` operator support scope, grouped by
+  importance and dependency.
+- [opencv-core-imgproc-phase1-implementation-plan.md](opencv-core-imgproc-phase1-implementation-plan.md):
+  ordered implementation steps and acceptance gates for the first 79
+  `core`/`imgproc` operation families.
 - [benchmark-refactor-implementation-plan.md](benchmark-refactor-implementation-plan.md):
   implementation plan for the two-mode benchmark framework.
 - [core-cpp-cleanup-plan.md](core-cpp-cleanup-plan.md): cleanup and

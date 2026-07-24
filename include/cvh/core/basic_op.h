@@ -76,6 +76,33 @@ void compare(const Mat& a, const Mat& b, Mat& c, int op);
 void compare(const Mat& a, const Scalar& b, Mat& c, int op);
 void compare(const Scalar& a, const Mat& b, Mat& c, int op);
 
+// Per-element absolute difference.
+void absdiff(const Mat& a, const Mat& b, Mat& c);
+void absdiff(const Mat& a, const Scalar& b, Mat& c);
+void absdiff(const Scalar& a, const Mat& b, Mat& c);
+
+// Per-element bit operations. Floating-point inputs are processed by raw bit pattern.
+void bitwise_and(const Mat& a, const Mat& b, Mat& c, const Mat& mask = Mat());
+void bitwise_and(const Mat& a, const Scalar& b, Mat& c, const Mat& mask = Mat());
+void bitwise_and(const Scalar& a, const Mat& b, Mat& c, const Mat& mask = Mat());
+void bitwise_or(const Mat& a, const Mat& b, Mat& c, const Mat& mask = Mat());
+void bitwise_or(const Mat& a, const Scalar& b, Mat& c, const Mat& mask = Mat());
+void bitwise_or(const Scalar& a, const Mat& b, Mat& c, const Mat& mask = Mat());
+void bitwise_xor(const Mat& a, const Mat& b, Mat& c, const Mat& mask = Mat());
+void bitwise_xor(const Mat& a, const Scalar& b, Mat& c, const Mat& mask = Mat());
+void bitwise_xor(const Scalar& a, const Mat& b, Mat& c, const Mat& mask = Mat());
+void bitwise_not(const Mat& src, Mat& dst, const Mat& mask = Mat());
+
+// Inclusive per-pixel range test. All source channels must pass.
+void inRange(const Mat& src, const Mat& lower, const Mat& upper, Mat& dst);
+void inRange(const Mat& src, const Scalar& lower, const Scalar& upper, Mat& dst);
+
+// Per-element minimum and maximum.
+void min(const Mat& a, const Mat& b, Mat& c);
+void min(const Mat& a, const Scalar& b, Mat& c);
+void max(const Mat& a, const Mat& b, Mat& c);
+void max(const Mat& a, const Scalar& b, Mat& c);
+
 // Merge multiple source Mats into a multi-channel destination Mat.
 void merge(const Mat* src, size_t nsrc, Mat& dst);
 void merge(const std::vector<Mat>& src, Mat& dst);
@@ -109,17 +136,6 @@ Mat transpose(const Mat& input);
 // transpose Mat according to the input mat and the given new order.
 Mat transposeND(const Mat& input, const std::vector<int> order);
 
-enum NormType
-{
-    NORM_L1 = 1,
-    NORM_L2 = 2,
-    NORM_INF = 3,
-};
-
-// compute the norm of the Mat.
-double norm(const Mat& a, int normType);
-double norm(const Mat& a, const Mat& b, int normType);
-
 // reshape Mat according to the given shape.
 void reshape(const Mat& input, const std::vector<int>& shape, Mat& out);
 
@@ -138,5 +154,6 @@ MAT_AUG_OPERATOR(/=, divide(a, b, (Mat &) a))
 
 #include "detail/basic_op_impl.hpp"
 #include "detail/mat_expr_impl.hpp"
+#include "reduce.h"
 
 #endif //CVH_BASIC_OP_H

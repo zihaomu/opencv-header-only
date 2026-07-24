@@ -776,6 +776,94 @@ double bench_opencv_warp_affine(int rows,
         repeats);
 }
 
+double bench_opencv_geometry_sampling(
+    GeometrySamplingBenchOpId op,
+    int rows,
+    int cols,
+    int warmup,
+    int iters,
+    int repeats,
+    std::uint32_t seed)
+{
+    cv::Mat src(rows, cols, CV_8UC3);
+    cv::Mat dst;
+    fill_u8(src, seed);
+    cv::Mat map_x(rows, cols, CV_32FC1);
+    cv::Mat map_y(rows, cols, CV_32FC1);
+    for (int row = 0; row < rows; ++row)
+    {
+        for (int col = 0; col < cols; ++col)
+        {
+            map_x.at<float>(row, col) =
+                static_cast<float>(col) + 0.28125f;
+            map_y.at<float>(row, col) =
+                static_cast<float>(row) - 0.34375f;
+        }
+    }
+    cv::Mat fixed_coordinates;
+    cv::Mat fixed_fractions;
+    cv::convertMaps(
+        map_x,
+        map_y,
+        fixed_coordinates,
+        fixed_fractions,
+        CV_16SC2);
+    cv::Mat perspective = cv::Mat::eye(3, 3, CV_64FC1);
+    perspective.at<double>(0, 1) = 0.01;
+    perspective.at<double>(0, 2) = 0.25;
+    perspective.at<double>(1, 0) = -0.005;
+    perspective.at<double>(1, 2) = 0.5;
+    perspective.at<double>(2, 0) = 0.00002;
+    perspective.at<double>(2, 1) = -0.00003;
+
+    return measure_ms(
+        [&]() {
+            switch (op)
+            {
+                case GeometrySamplingBenchOpId::RemapFloatLinear:
+                    cv::remap(
+                        src,
+                        dst,
+                        map_x,
+                        map_y,
+                        cv::INTER_LINEAR,
+                        cv::BORDER_REFLECT_101);
+                    break;
+                case GeometrySamplingBenchOpId::RemapFixedLinear:
+                    cv::remap(
+                        src,
+                        dst,
+                        fixed_coordinates,
+                        fixed_fractions,
+                        cv::INTER_LINEAR,
+                        cv::BORDER_REFLECT_101);
+                    break;
+                case GeometrySamplingBenchOpId::WarpPerspectiveLinear:
+                    cv::warpPerspective(
+                        src,
+                        dst,
+                        perspective,
+                        cv::Size(cols, rows),
+                        cv::INTER_LINEAR | cv::WARP_INVERSE_MAP,
+                        cv::BORDER_REFLECT_101);
+                    break;
+                case GeometrySamplingBenchOpId::GetRectSubPix:
+                    cv::getRectSubPix(
+                        src,
+                        cv::Size(cols, rows),
+                        cv::Point2f(
+                            (static_cast<float>(cols) - 1.0f) * 0.5f,
+                            (static_cast<float>(rows) - 1.0f) * 0.5f),
+                        dst);
+                    break;
+            }
+        },
+        [&]() { return checksum(dst); },
+        warmup,
+        iters,
+        repeats);
+}
+
 double bench_opencv_sobel(int rows,
                           int cols,
                           int channels,

@@ -97,6 +97,7 @@ static_assert(sizeof(int64) == 8, "cvh::int64 must be 64-bit on all platforms");
 #define CV_32SC(n) CV_MAKETYPE(CV_32S, (n))
 #define CV_32UC(n) CV_MAKETYPE(CV_32U, (n))
 #define CV_16FC(n) CV_MAKETYPE(CV_16F, (n))
+#define CV_64FC(n) CV_MAKETYPE(CV_64F, (n))
 
 #define CV_8UC1 CV_8UC(1)
 #define CV_8UC2 CV_8UC(2)
@@ -137,6 +138,11 @@ static_assert(sizeof(int64) == 8, "cvh::int64 must be 64-bit on all platforms");
 #define CV_16FC2 CV_16FC(2)
 #define CV_16FC3 CV_16FC(3)
 #define CV_16FC4 CV_16FC(4)
+
+#define CV_64FC1 CV_64FC(1)
+#define CV_64FC2 CV_64FC(2)
+#define CV_64FC3 CV_64FC(3)
+#define CV_64FC4 CV_64FC(4)
 
 #define CV_MAX CV_DEPTH_MAX
 

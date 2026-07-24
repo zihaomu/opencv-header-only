@@ -9,18 +9,31 @@
 namespace cvh {
 namespace detail {
 
-inline std::array<int, 256> histogram_u8_single_channel(const Mat& src)
+inline std::array<int, 256> histogram_u8_single_channel(
+    const Mat& src,
+    const Mat* mask = nullptr)
 {
     CV_Assert(src.depth() == CV_8U && "threshold auto mode requires CV_8U source");
     CV_Assert(src.channels() == 1 && "threshold auto mode requires single-channel source");
+    if (mask)
+    {
+        CV_Assert(mask->type() == CV_8UC1);
+        CV_Assert(mask->dims == 2 && src.dims == 2);
+        CV_Assert(
+            mask->size.p[0] == src.size.p[0] &&
+            mask->size.p[1] == src.size.p[1]);
+    }
 
     std::array<int, 256> hist = {};
-    if (src.isContinuous())
+    if (src.isContinuous() && (!mask || mask->isContinuous()))
     {
         const size_t count = src.total();
         for (size_t i = 0; i < count; ++i)
         {
-            ++hist[src.data[i]];
+            if (!mask || mask->data[i] != 0)
+            {
+                ++hist[src.data[i]];
+            }
         }
         return hist;
     }
@@ -32,17 +45,25 @@ inline std::array<int, 256> histogram_u8_single_channel(const Mat& src)
     for (int y = 0; y < rows; ++y)
     {
         const uchar* row = src.data + static_cast<size_t>(y) * src_step;
+        const uchar* mask_row =
+            mask
+                ? mask->data + static_cast<size_t>(y) * mask->step(0)
+                : nullptr;
         for (int x = 0; x < cols; ++x)
         {
-            ++hist[row[x]];
+            if (!mask_row || mask_row[x] != 0)
+            {
+                ++hist[row[x]];
+            }
         }
     }
     return hist;
 }
 
-inline double threshold_otsu_u8(const Mat& src)
+inline double threshold_otsu_u8(const Mat& src, const Mat* mask = nullptr)
 {
-    const std::array<int, 256> hist = histogram_u8_single_channel(src);
+    const std::array<int, 256> hist =
+        histogram_u8_single_channel(src, mask);
 
     int64_t total = 0;
     double sum = 0.0;
@@ -91,9 +112,10 @@ inline double threshold_otsu_u8(const Mat& src)
     return static_cast<double>(best_thresh);
 }
 
-inline double threshold_triangle_u8(const Mat& src)
+inline double threshold_triangle_u8(const Mat& src, const Mat* mask = nullptr)
 {
-    std::array<int, 256> hist = histogram_u8_single_channel(src);
+    std::array<int, 256> hist =
+        histogram_u8_single_channel(src, mask);
 
     int left_bound = 0;
     int right_bound = 0;
@@ -385,6 +407,194 @@ namespace cvh {
 inline double threshold(const Mat& src, Mat& dst, double thresh, double maxval, int type)
 {
     return detail::threshold_fast_impl(src, dst, thresh, maxval, type);
+}
+
+inline double thresholdWithMask(const Mat& src,
+                                Mat& dst,
+                                const Mat& mask,
+                                double thresh,
+                                double maxval,
+                                int type)
+{
+    if (mask.empty())
+    {
+        return threshold(src, dst, thresh, maxval, type);
+    }
+    if (src.empty() || src.dims != 2 ||
+        (src.depth() != CV_8U && src.depth() != CV_32F))
+    {
+        CV_Error(Error::StsBadArg, "thresholdWithMask unsupported source");
+    }
+    if (mask.dims != 2 || mask.type() != CV_8UC1 ||
+        mask.size.p[0] != src.size.p[0] ||
+        mask.size.p[1] != src.size.p[1])
+    {
+        CV_Error(Error::StsBadArg, "thresholdWithMask invalid mask");
+    }
+    if (dst.empty() || dst.type() != src.type() ||
+        dst.dims != src.dims ||
+        dst.size.p[0] != src.size.p[0] ||
+        dst.size.p[1] != src.size.p[1])
+    {
+        CV_Error(
+            Error::StsBadArg,
+            "thresholdWithMask requires preinitialized dst matching src");
+    }
+
+    const bool dry_run = (type & THRESH_DRYRUN) != 0;
+    type &= ~THRESH_DRYRUN;
+    const int automatic = type & ~THRESH_MASK;
+    const int threshold_type = type & THRESH_MASK;
+    if (automatic != 0 &&
+        automatic != THRESH_OTSU &&
+        automatic != THRESH_TRIANGLE)
+    {
+        CV_Error(Error::StsBadFlag, "thresholdWithMask invalid automatic threshold flag");
+    }
+    if (threshold_type != THRESH_BINARY &&
+        threshold_type != THRESH_BINARY_INV &&
+        threshold_type != THRESH_TRUNC &&
+        threshold_type != THRESH_TOZERO &&
+        threshold_type != THRESH_TOZERO_INV)
+    {
+        CV_Error(Error::StsBadFlag, "thresholdWithMask invalid threshold type");
+    }
+    if (automatic != 0 &&
+        (src.type() != CV_8UC1))
+    {
+        CV_Error(
+            Error::StsBadArg,
+            "thresholdWithMask automatic modes require CV_8UC1 source");
+    }
+
+    Mat source_storage;
+    const Mat* source = &src;
+    if (src.data == dst.data)
+    {
+        source_storage = src.clone();
+        source = &source_storage;
+    }
+    Mat mask_storage;
+    const Mat* effective_mask = &mask;
+    if (mask.data == dst.data)
+    {
+        mask_storage = mask.clone();
+        effective_mask = &mask_storage;
+    }
+
+    if (automatic == THRESH_OTSU)
+    {
+        thresh = detail::threshold_otsu_u8(*source, effective_mask);
+    }
+    else if (automatic == THRESH_TRIANGLE)
+    {
+        thresh = detail::threshold_triangle_u8(*source, effective_mask);
+    }
+    const double effective_thresh =
+        source->depth() == CV_8U ? std::floor(thresh) : thresh;
+    if (dry_run)
+    {
+        return effective_thresh;
+    }
+
+    const int rows = source->size.p[0];
+    const int cols = source->size.p[1];
+    const int channels = source->channels();
+    for (int y = 0; y < rows; ++y)
+    {
+        const uchar* mask_row =
+            effective_mask->data +
+            static_cast<size_t>(y) * effective_mask->step(0);
+        if (source->depth() == CV_8U)
+        {
+            const uchar* input =
+                source->data + static_cast<size_t>(y) * source->step(0);
+            uchar* output =
+                dst.data + static_cast<size_t>(y) * dst.step(0);
+            const uchar maximum = saturate_cast<uchar>(maxval);
+            const uchar truncated =
+                saturate_cast<uchar>(effective_thresh);
+            for (int x = 0; x < cols; ++x)
+            {
+                if (mask_row[x] == 0)
+                {
+                    continue;
+                }
+                for (int ch = 0; ch < channels; ++ch)
+                {
+                    const size_t index =
+                        static_cast<size_t>(x) * channels +
+                        static_cast<size_t>(ch);
+                    const uchar value = input[index];
+                    const bool above =
+                        static_cast<double>(value) > effective_thresh;
+                    switch (threshold_type)
+                    {
+                        case THRESH_BINARY:
+                            output[index] = above ? maximum : 0;
+                            break;
+                        case THRESH_BINARY_INV:
+                            output[index] = above ? 0 : maximum;
+                            break;
+                        case THRESH_TRUNC:
+                            output[index] = above ? truncated : value;
+                            break;
+                        case THRESH_TOZERO:
+                            output[index] = above ? value : 0;
+                            break;
+                        case THRESH_TOZERO_INV:
+                            output[index] = above ? 0 : value;
+                            break;
+                    }
+                }
+            }
+        }
+        else
+        {
+            const float* input = reinterpret_cast<const float*>(
+                source->data +
+                static_cast<size_t>(y) * source->step(0));
+            float* output = reinterpret_cast<float*>(
+                dst.data + static_cast<size_t>(y) * dst.step(0));
+            const float maximum = static_cast<float>(maxval);
+            const float truncated = static_cast<float>(effective_thresh);
+            for (int x = 0; x < cols; ++x)
+            {
+                if (mask_row[x] == 0)
+                {
+                    continue;
+                }
+                for (int ch = 0; ch < channels; ++ch)
+                {
+                    const size_t index =
+                        static_cast<size_t>(x) * channels +
+                        static_cast<size_t>(ch);
+                    const float value = input[index];
+                    const bool above =
+                        static_cast<double>(value) > effective_thresh;
+                    switch (threshold_type)
+                    {
+                        case THRESH_BINARY:
+                            output[index] = above ? maximum : 0.0f;
+                            break;
+                        case THRESH_BINARY_INV:
+                            output[index] = above ? 0.0f : maximum;
+                            break;
+                        case THRESH_TRUNC:
+                            output[index] = above ? truncated : value;
+                            break;
+                        case THRESH_TOZERO:
+                            output[index] = above ? value : 0.0f;
+                            break;
+                        case THRESH_TOZERO_INV:
+                            output[index] = above ? 0.0f : value;
+                            break;
+                    }
+                }
+            }
+        }
+    }
+    return effective_thresh;
 }
 
 }  // namespace cvh

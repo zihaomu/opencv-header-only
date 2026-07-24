@@ -27,6 +27,8 @@
 - `Mat::type()` 返回当前元素类型标识。
 - `Mat` 采用 OpenCV 风格 `type = depth + channels` 编码（`CV_MAKETYPE/CV_MAT_DEPTH/CV_MAT_CN`）。
 - v1.1 的强制支持范围：连续内存语义下 `channels >= 1` 的 `create/clone/copyTo/convertTo/setTo`。
+- 当前稳定存储深度为 `CV_8U/CV_8S/CV_16U/CV_16S/CV_32S/CV_32U/CV_16F/CV_32F/CV_64F`；
+  其他已预留编码的实验深度必须被明确拒绝，不能依赖 depth 编号连续性误判为已支持。
 - `convertTo` 在 `rtype` 仅给 depth 时，必须保持源通道数不变；形状不变。
 - `convertTo` 若显式给出目标 type 且通道数与源不一致，必须返回明确错误（`StsBadArg`）。
 
@@ -91,6 +93,7 @@
 - `copyTo` 类型匹配/不匹配路径验证。
 - `reshape` 成功/失败路径验证。
 - `convertTo` 常见类型转换正确性验证（含边界值）。
+- `CV_32F <-> CV_64F` 与 `CV_8U <-> CV_64F` 双向转换验证。
 - 空 `Mat` 与非法输入的错误路径验证。
 - 连续多通道（例如 `CV_8UC3`）的 `create/setTo/copyTo/convertTo` 成功路径验证。
 - 2D submat（`rowRange/colRange`）共享视图与非连续步长路径验证。

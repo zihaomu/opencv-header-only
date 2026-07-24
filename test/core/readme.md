@@ -33,11 +33,18 @@
 ## 文件职责划分（当前）
 
 - `core_ops_test.cpp`：常用功能路径与结果正确性（例如 `convertTo/copyTo` 正常路径）。
+- `array_ops_contract_test.cpp`：`absdiff`、bitwise、`inRange`、`min/max`
+  的 Mat/Scalar、mask、浮点位模式、ROI 和边界语义。
+- `math_ops_contract_test.cpp`：缩放转换、FP16 bits、F32/F64 数学函数、
+  `checkRange/patchNaNs` 的精度、特殊值、ROI 和原地语义。
 - `mat_channel_contract_test.cpp`：多通道合同首批覆盖（OpenCV type 宏、`CV_*C(n)`、连续多通道 `create/setTo/copyTo/convertTo`）。
 - `mat_opencv_compat_test.cpp`：高频 OpenCV 风格接口对齐（`depth/channels/elemSize/isContinuous/step/step1`）与生命周期安全回归。
 - `mat_submat_test.cpp`：2D submat/view 与非连续步长路径（`rowRange/colRange`、非连续 `setTo/copyTo/convertTo/clone`）回归。
 - `mat_upstream_channel_port_test.cpp`：上游 channel 兼容移植入口（可运行项直接验证；未实现 API 用 `GTEST_SKIP` 明确挂起原因）。
 - `mat_contract_test.cpp`：`Mat` 合同与安全基线（错误路径、所有权、边界与历史回归）。
+- `geometry_types_contract_test.cpp`：`Point_`、`Size_` 及整数/浮点别名的构造、比较和转换合同。
+- `test/opencv_contract`：可选 OpenCV 隔离差分 smoke；仅在
+  `CVH_ENABLE_OPENCV_COMPARE=ON` 时构建，cvh 测试端不包含 OpenCV 头。
 - 规则：同一行为只在一个文件中维护，避免重复 case 导致维护分叉。
 
 ### P2：算子回归
