@@ -6,6 +6,12 @@ This directory keeps only current project documents.
   and SIMD strategy.
 - [mat-contract-v1.md](mat-contract-v1.md): current `cvh::Mat` behavior
   contract.
+- [opencv-core-imgproc-api-coverage.md](opencv-core-imgproc-api-coverage.md):
+  upstream `core`/`imgproc` operation-family inventory and current cvh support
+  gaps.
+- [opencv-core-imgproc-three-phase-support-plan.md](opencv-core-imgproc-three-phase-support-plan.md):
+  three-phase implementation sequence for the outstanding `core` and
+  `imgproc` operation families.
 - [benchmark-refactor-implementation-plan.md](benchmark-refactor-implementation-plan.md):
   implementation plan for the two-mode benchmark framework.
 - [core-cpp-cleanup-plan.md](core-cpp-cleanup-plan.md): cleanup and
